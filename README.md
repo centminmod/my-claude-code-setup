@@ -29,7 +29,7 @@ Claude Code now supports [Agent Skills](https://docs.claude.com/en/docs/claude-c
 
 ### claude-docs-consultant
 
-- **Purpose**: A specialized Claude skill which will selectively consult the official Claude Code documentation from docs.claude.com using selective fetching. This skill will involve only when working on Claude Code hooks, skills, subagents, MCP servers, or any Claude Code feature that requires referencing official documentation for accurate implementation. Fetches only the specific documentation needed rather than loading all docs upfront
+- **Purpose**: A specialized Claude skill which will selectively consult the official Claude Code documentation from docs.claude.com using selective fetching. This skill will invoke only when working on Claude Code hooks, skills, subagents, MCP servers, or any Claude Code feature that requires referencing official documentation for accurate implementation. Fetches only the specific documentation needed rather than loading all docs upfront
 
 ## Claude Code Hooks
 
