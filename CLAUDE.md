@@ -37,7 +37,7 @@ When asked to backup Memory Bank System files, you will copy the core context fi
 
 ## Claude Hooks & Skills & Subagents
 
-Whenever you are asked to work on Claude Hooks, Skills or Subagents you will consult the official online documentation first to get 100% accurate understanding/
+Whenever you are asked to work on Claude Hooks, Skills or Subagents you will consult the official online documentation first to get 100% accurate understanding
 
 - https://docs.claude.com/en/docs/claude-code/hooks-guide.md
 - https://docs.claude.com/en/docs/claude-code/hooks.md
