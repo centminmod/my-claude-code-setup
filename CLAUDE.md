@@ -35,14 +35,9 @@ This project uses a structured memory bank system with specialized context files
 
 When asked to backup Memory Bank System files, you will copy the core context files above and @.claude settings directory to directory @/path/to/backup-directory. If files already exist in the backup directory, you will overwrite them.
 
-## Claude Hooks & Skills & Subagents
+## Claude Code Official Documentation
 
-Whenever you are asked to work on Claude Hooks, Skills or Subagents you will consult the official online documentation first to get 100% accurate understanding
-
-- https://docs.claude.com/en/docs/claude-code/hooks-guide.md
-- https://docs.claude.com/en/docs/claude-code/hooks.md
-- https://docs.claude.com/en/docs/claude-code/skills.md
-- https://docs.claude.com/en/docs/claude-code/sub-agents.md
+When working on Claude Code features (hooks, skills, subagents, MCP servers, etc.), use the `claude-docs-consultant` skill to selectively fetch official documentation from docs.claude.com.
 
 ## Project Overview
 

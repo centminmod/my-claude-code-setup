@@ -23,6 +23,14 @@ I also install the following MCP servers ([install commands](#claude-code-mcp-se
 * [Notion MCP](https://github.com/makenotion/notion-mcp-server)
 * [Claude Code Usage Metrics MCP](https://github.com/centminmod/claude-code-opentelemetry-setup)
 
+## Claude Code Skills
+
+Claude Code now supports [Agent Skills](https://docs.claude.com/en/docs/claude-code/skills).
+
+### claude-docs-consultant
+
+- **Purpose**: A specialized Claude skill which will selectively consult the official Claude Code documentation from docs.claude.com using selective fetching. This skill will involve only when working on Claude Code hooks, skills, subagents, MCP servers, or any Claude Code feature that requires referencing official documentation for accurate implementation. Fetches only the specific documentation needed rather than loading all docs upfront
+
 ## Claude Code Hooks
 
 The Claude Code hook is for `STOP` which uses Terminal-Notifier to show macOS desktop notifications whenever Claude Code stops and finishes it's response https://github.com/centminmod/terminal-notifier-setup.
