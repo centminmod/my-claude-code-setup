@@ -14,6 +14,7 @@ My Claude Code project's starter settings and Claude Code hooks and slash comman
 5. Optional step highly recommended: Sign up for [Github.com](https://github.com/) account and install Git for Visual Studio Code. Checkout YouTube guides [here](https://www.youtube.com/watch?v=twsYxYaQikI) and [here](https://www.youtube.com/watch?v=z5jZ9lrSpqk).
 6. CLAUDE.md updated to instruct models to use faster tools so for macOS: `brew install ripgrep fd jq`
 7. Optional step to setup Claude Code, Codex GPT-5, Gemini CLI, OpenCode, Vercel CLI, Cloudflare Wrangler, Amazon AWS CLI, all in a single isolated [Visual Studio Code dev container running Debian 12](https://claude-devcontainers.centminmod.com/). Allowing you to run YOLO modes for Claude Code with `dangerously_skip_permissions` enabled and Codex CLI with `sandbox_mode = danger-full-access` etc.
+8. Claude Code via Claude Desktop apps use Git Worktrees. You may need to create a `.worktreeinclude` file as outlined [here](https://code.claude.com/docs/en/desktop#claude-code-on-desktop-preview).
 
 I also install the following MCP servers ([install commands](#claude-code-mcp-servers)):
 
