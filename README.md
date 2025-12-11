@@ -418,8 +418,10 @@ claude mcp add --transport sse cf-docs https://docs.mcp.cloudflare.com/sse -s us
 
 [Context 7 MCP](https://github.com/upstash/context7)
 
+with API key
+
 ```bash
-claude mcp add --transport sse context7 https://mcp.context7.com/sse -s user
+claude mcp add --transport http context7 https://mcp.context7.com/mcp --header "CONTEXT7_API_KEY: YOUR_API_KEY" -s user
 ```
 
 ### Notion MCP Server
