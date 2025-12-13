@@ -26,6 +26,62 @@ I also install the following MCP servers ([install commands](#claude-code-mcp-se
 * [Notion MCP](https://github.com/makenotion/notion-mcp-server)
 * [Claude Code Usage Metrics MCP](https://github.com/centminmod/claude-code-opentelemetry-setup)
 
+## Claude Code Statuslines
+
+`~/.claude/statuslines/statusline.sh` configured in `~/.claude/settings.json`.
+
+for `~/.claude/settings.json`
+
+```bash
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statuslines/statusline.sh",
+    "padding": 0
+  },
+```
+
+for `~/.claude/statuslines/statusline.sh`
+
+```bash
+#!/bin/bash
+# Read JSON input from stdin
+input=$(cat)
+
+# Extract model and workspace values
+MODEL_DISPLAY=$(echo "$input" | jq -r '.model.display_name')
+CURRENT_DIR=$(echo "$input" | jq -r '.workspace.current_dir')
+
+# Extract context window metrics
+INPUT_TOKENS=$(echo "$input" | jq -r '.context_window.total_input_tokens')
+OUTPUT_TOKENS=$(echo "$input" | jq -r '.context_window.total_output_tokens')
+CONTEXT_SIZE=$(echo "$input" | jq -r '.context_window.context_window_size')
+
+# Format tokens as Xk
+format_tokens() {
+    local num=$1
+    if [ "$num" -ge 1000 ]; then
+        echo "$((num / 1000))k"
+    else
+        echo "$num"
+    fi
+}
+
+# Calculate total
+TOTAL_TOKENS=$((INPUT_TOKENS + OUTPUT_TOKENS))
+
+# Show git branch if in a git repo
+GIT_BRANCH=""
+if git rev-parse --git-dir > /dev/null 2>&1; then
+    BRANCH=$(git branch --show-current 2>/dev/null)
+    if [ -n "$BRANCH" ]; then
+        GIT_BRANCH=" | 🌿 $BRANCH"
+    fi
+fi
+
+echo "[$MODEL_DISPLAY] 📁 ${CURRENT_DIR##*/}$GIT_BRANCH
+Tokens: $(format_tokens "$TOTAL_TOKENS") (in:$(format_tokens "$INPUT_TOKENS")+out:$(format_tokens "$OUTPUT_TOKENS")) | Ctx:$(format_tokens "$CONTEXT_SIZE")"
+```
+
 ## Claude Code Skills
 
 Claude Code now supports [Agent Skills](https://docs.claude.com/en/docs/claude-code/skills).
