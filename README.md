@@ -56,9 +56,14 @@ INPUT_TOKENS=$(echo "$input" | jq -r '.context_window.total_input_tokens')
 OUTPUT_TOKENS=$(echo "$input" | jq -r '.context_window.total_output_tokens')
 CONTEXT_SIZE=$(echo "$input" | jq -r '.context_window.context_window_size')
 
+# Extract cost metrics
+COST_USD=$(echo "$input" | jq -r '.cost.total_cost_usd')
+LINES_ADDED=$(echo "$input" | jq -r '.cost.total_lines_added')
+LINES_REMOVED=$(echo "$input" | jq -r '.cost.total_lines_removed')
+
 # Format tokens as Xk
 format_tokens() {
-    local num=$1
+    local num="$1"
     if [ "$num" -ge 1000 ]; then
         echo "$((num / 1000))k"
     else
@@ -78,8 +83,9 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
     fi
 fi
 
-echo "[$MODEL_DISPLAY] 📁 ${CURRENT_DIR##*/}$GIT_BRANCH
-Tokens: $(format_tokens "$TOTAL_TOKENS") (in:$(format_tokens "$INPUT_TOKENS")+out:$(format_tokens "$OUTPUT_TOKENS")) | Ctx:$(format_tokens "$CONTEXT_SIZE")"
+echo "[$MODEL_DISPLAY] 📁 ${CURRENT_DIR##*/}${GIT_BRANCH}
+Tokens: $(format_tokens "$TOTAL_TOKENS") (in:$(format_tokens "$INPUT_TOKENS")+out:$(format_tokens "$OUTPUT_TOKENS")) | Ctx:$(format_tokens "$CONTEXT_SIZE")
+Cost: \$${COST_USD} | +${LINES_ADDED} -${LINES_REMOVED} lines"
 ```
 
 ## Claude Code Skills
