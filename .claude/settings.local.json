@@ -80,7 +80,8 @@
       "mcp__chrome-devtools__fill",
       "mcp__chrome-devtools__navigate_page_history",
       "mcp__chrome-devtools__new_page",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Skill(claude-docs-consultant)"
     ],
     "deny": []
   }
