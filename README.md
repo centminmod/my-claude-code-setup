@@ -88,6 +88,236 @@ Tokens: $(format_tokens "$TOTAL_TOKENS") (in:$(format_tokens "$INPUT_TOKENS")+ou
 Cost: \$${COST_USD} | +${LINES_ADDED} -${LINES_REMOVED} lines"
 ```
 
+## Git Worktrees for AI Coding Sessions
+
+Git worktrees allow you to run parallel Claude Code and Codex CLI sessions with complete code isolation. Each worktree has its own isolated working directory while sharing the same Git history and remote connections. This prevents AI instances from interfering with each other when working on multiple tasks simultaneously.
+
+**Benefits:**
+- Run multiple AI coding sessions in parallel
+- Each worktree has independent file state
+- Changes in one worktree won't affect others
+- Ideal for experimental features or YOLO mode usage
+
+**Official Documentation:** [Run parallel Claude Code sessions with git worktrees](https://code.claude.com/docs/en/common-workflows#run-parallel-claude-code-sessions-with-git-worktrees)
+
+### macOS / Linux (Bash/Zsh)
+
+Add these functions to `~/.bashrc`, `~/.zshrc`, or `~/.bash_aliases`:
+
+```bash
+# Codex CLI worktree launcher
+cx() {
+    local branch_name
+    if [ -z "$1" ]; then
+        branch_name="worktree-$(date +%Y%m%d-%H%M%S)"
+    else
+        branch_name="$1"
+    fi
+    git worktree add "../$branch_name" -b "$branch_name" && \
+    cd "../$branch_name" || return 1
+    codex -m gpt-5-codex --config model_reasoning_effort='xhigh'
+}
+
+# Claude Code worktree launcher
+clx() {
+    local branch_name
+    if [ -z "$1" ]; then
+        branch_name="worktree-$(date +%Y%m%d-%H%M%S)"
+    else
+        branch_name="$1"
+    fi
+    git worktree add "../$branch_name" -b "$branch_name" && \
+    cd "../$branch_name" || return 1
+    claude --model opusplan --permission-mode plan
+}
+```
+
+After adding, reload your shell: `source ~/.bashrc` or `source ~/.zshrc`
+
+### Windows (PowerShell)
+
+Add these functions to your PowerShell profile. Open it with `notepad $PROFILE`:
+
+```powershell
+# Codex CLI worktree launcher
+function cx {
+    param([string]$BranchName)
+    if (-not $BranchName) {
+        $BranchName = "worktree-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    }
+    git worktree add "../$BranchName" -b $BranchName
+    if ($LASTEXITCODE -eq 0) {
+        Set-Location "../$BranchName"
+        codex -m gpt-5-codex --config model_reasoning_effort='xhigh'
+    }
+}
+
+# Claude Code worktree launcher
+function clx {
+    param([string]$BranchName)
+    if (-not $BranchName) {
+        $BranchName = "worktree-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    }
+    git worktree add "../$BranchName" -b $BranchName
+    if ($LASTEXITCODE -eq 0) {
+        Set-Location "../$BranchName"
+        claude --model opusplan --permission-mode plan
+    }
+}
+```
+
+After adding, reload PowerShell or run: `. $PROFILE`
+
+### Windows (CMD Batch Files)
+
+Create these batch files in a directory in your PATH (e.g., `C:\Users\YourName\bin\`):
+
+**cx.bat** - Codex CLI launcher:
+
+```batch
+@echo off
+setlocal enabledelayedexpansion
+if "%~1"=="" (
+    for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set datetime=%%I
+    set branch_name=worktree-!datetime:~0,8!-!datetime:~8,6!
+) else (
+    set branch_name=%~1
+)
+git worktree add "../%branch_name%" -b "%branch_name%"
+if %errorlevel% equ 0 (
+    cd "../%branch_name%"
+    codex -m gpt-5-codex --config model_reasoning_effort='xhigh'
+)
+endlocal
+```
+
+**clx.bat** - Claude Code launcher:
+
+```batch
+@echo off
+setlocal enabledelayedexpansion
+if "%~1"=="" (
+    for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set datetime=%%I
+    set branch_name=worktree-!datetime:~0,8!-!datetime:~8,6!
+) else (
+    set branch_name=%~1
+)
+git worktree add "../%branch_name%" -b "%branch_name%"
+if %errorlevel% equ 0 (
+    cd "../%branch_name%"
+    claude --model opusplan --permission-mode plan
+)
+endlocal
+```
+
+### Usage
+
+```bash
+# Create worktree with custom name
+clx feature-auth
+cx bugfix-123
+
+# Create worktree with auto-generated timestamp name
+clx
+cx
+```
+
+### Worktree Management
+
+```bash
+# List all worktrees
+git worktree list
+
+# Remove a worktree when done
+git worktree remove ../worktree-name
+
+# Clean up stale worktree references
+git worktree prune
+```
+
+### Environment Setup
+
+Each new worktree needs its own development environment:
+- **JavaScript/Node.js**: Run `npm install` or `yarn`
+- **Python**: Create virtual environment or run `pip install -r requirements.txt`
+- **Other languages**: Follow your project's standard setup process
+
+### The `.worktreeinclude` File
+
+When Claude Code creates a worktree, files ignored via `.gitignore` aren't automatically available. The `.worktreeinclude` file specifies which ignored files should be copied to new worktrees.
+
+**How It Works:**
+- Uses `.gitignore`-style patterns
+- Only files matched by **both** `.worktreeinclude` **AND** `.gitignore` are copied
+- This prevents accidentally duplicating tracked files
+
+Create a `.worktreeinclude` file in your repository root:
+
+```text
+# Environment files
+.env
+.env.local
+.env.*
+
+# Claude Code local settings
+**/.claude/settings.local.json
+```
+
+**Common Use Cases:**
+- `.env` files with API keys and secrets
+- `.env.local` for local development overrides
+- `.claude/settings.local.json` for personal Claude Code settings
+
+### Claude Desktop Worktree Location
+
+When using Claude Code via the Claude Desktop app:
+- Default worktree location: `~/.claude-worktrees`
+- Configurable through Claude Desktop app settings
+- Repository must be Git initialized for worktree sessions to work
+
+**Official Documentation:** [Claude Code on Desktop](https://code.claude.com/docs/en/desktop#claude-code-on-desktop-preview)
+
+### Local Ignores Without `.gitignore`
+
+To ignore files locally without modifying the shared `.gitignore`, use `.git/info/exclude`:
+
+```bash
+# Edit the local exclude file
+nano .git/info/exclude
+# or
+code .git/info/exclude
+```
+
+Add patterns using the same syntax as `.gitignore`:
+
+```text
+# Local IDE settings
+.idea/
+*.swp
+
+# Personal scripts
+my-local-scripts/
+
+# Local test files
+test-local.sh
+```
+
+**Key Differences:**
+
+| File | Scope | Committed to Git |
+|------|-------|------------------|
+| `.gitignore` | Shared with team | Yes |
+| `.git/info/exclude` | Local only | No |
+| `~/.config/git/ignore` | Global (all repos) | No |
+
+**When to Use `.git/info/exclude`:**
+- Personal IDE or editor files
+- Local testing scripts
+- Machine-specific configurations
+- Files you don't want to clutter the shared `.gitignore`
+
+**Note:** Files in `.git/info/exclude` work with `.worktreeinclude` the same way as `.gitignore` - patterns must appear in both files for copying to worktrees.
+
 ## Claude Code Skills
 
 Claude Code now supports [Agent Skills](https://docs.claude.com/en/docs/claude-code/skills).

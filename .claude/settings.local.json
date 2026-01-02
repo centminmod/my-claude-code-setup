@@ -8,6 +8,7 @@
   },
   "includeCoAuthoredBy": false,
   "permissions": {
+    "defaultMode": "plan",
     "allow": [
       "Bash(.venv/bin/pip:*)",
       "Bash(.venv/bin/python:*)",
@@ -23,9 +24,11 @@
       "Bash(echo:*)",
       "Bash(env)",
       "Bash(find:*)",
+      "Bash(fd:*)",
       "Bash(gemini:*)",
       "Bash(grep:*)",
       "Bash(gtimeout:*)",
+      "Bash(git log:*)",
       "Bash(ls:*)",
       "Bash(mcp:*)",
       "Bash(mkdir:*)",
@@ -63,6 +66,7 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:openrouter.ai)",
       "WebFetch(domain:www.comet.com)",
+      "WebSearch",
       "Bash(mkdir:*)",
       "mcp__chrome-devtools__list_pages",
       "mcp__chrome-devtools__navigate_page",
@@ -80,7 +84,6 @@
       "mcp__chrome-devtools__fill",
       "mcp__chrome-devtools__navigate_page_history",
       "mcp__chrome-devtools__new_page",
-      "Bash(git log:*)",
       "Skill(claude-docs-consultant)"
     ],
     "deny": []
