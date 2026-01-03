@@ -5,7 +5,7 @@
 
 # My Claude Code Project's Starter Settings
 
-My Claude Code project's starter settings and Claude Code hooks and slash commands are provided in this repository for users to try out. Be sure to read the official Claude Code docs first at https://docs.anthropic.com/en/docs/claude-code/overview and sign up for a [paid Claude AI account](https://claude.ai/) to use Claude Code. You can pay for Claude Pro $20/month, Claude Max $100/month or Claude Max $200/month. The paid Claude tier plans will include varying quotas for usage and rate limits outlined [here](https://support.anthropic.com/en/articles/9797557-usage-limit-best-practices).
+My Claude Code project's starter settings and Claude Code hooks and slash commands are provided in this repository for users to try out. The [CLAUDE.md](https://github.com/centminmod/claude-code-memory-bank/blob/main/CLAUDE.md) is setup as set of memory bank files to better retain context over many chat sessions. Be sure to read the official Claude Code docs first at <https://docs.anthropic.com/en/docs/claude-code/overview> and sign up for a [paid Claude AI account](https://claude.ai/) to use Claude Code. You can pay for Claude Pro $20/month, Claude Max $100/month or Claude Max $200/month. The paid Claude tier plans will include varying quotas for usage and rate limits outlined [here](https://support.anthropic.com/en/articles/9797557-usage-limit-best-practices).
 
 1. Copy the files in this Github repo to your project directory (where you intended codebase will be).
 2. Modify the template files and CLAUDE.md`to your liking. `.claude/settings.json` needs to install Terminal-Notifier for macOS https://github.com/centminmod/terminal-notifier-setup. If you're not using macOS, you can remove `.claude/settings.json`.
@@ -16,6 +16,51 @@ My Claude Code project's starter settings and Claude Code hooks and slash comman
 7. Optional step to setup Claude Code, Codex GPT-5, Gemini CLI, OpenCode, Vercel CLI, Cloudflare Wrangler, Amazon AWS CLI, all in a single isolated [Visual Studio Code dev container running Debian 12](https://claude-devcontainers.centminmod.com/). Allowing you to run YOLO modes for Claude Code with `dangerously_skip_permissions` enabled and Codex CLI with `sandbox_mode = danger-full-access` etc.
 8. Claude Code via Claude Desktop apps use Git Worktrees. You may need to create a `.worktreeinclude` file as outlined [here](https://code.claude.com/docs/en/desktop#claude-code-on-desktop-preview).
 9. If you use Cloudflare and ClerkOS platforms in your apps, you can keep either `CLAUDE-cloudflare.md` or `CLAUDE-cloudflare-mini.md` supplementary reference docs and update `CLAUDE.md` referencing either file to help AI understand Cloudflare and ClerkOS platforum documentation and products. Edit documentation templates as needed i.e. if you do not use ClerkOS platform, you can remove those sections.
+
+## CLAUDE.md Memory Bank system
+
+[CLAUDE.md](https://github.com/centminmod/claude-code-memory-bank/blob/main/CLAUDE.md) uses a memory bank system of files for Claude Code to better retain context over many chat sessions. Example of Claude Code thinking output when I ask it to `update memory bank` after a successful task completion and git commit:
+
+```
+> update memory bank
+
+∴ Thinking…
+
+  The user wants me to update the memory bank files. I should update the relevant CLAUDE-*.md files to reflect the v0.1.6 changes and current state. Let me check
+   which memory bank files exist and update them.
+
+∴ Thinking…
+
+  I need to continue updating the memory bank files. I'll update:
+  1. CLAUDE-patterns.md - Add export path handling pattern (Pattern 22)
+  2. CLAUDE-decisions.md - Add ADR-017 for Phoneme API migration and ADR-018 for export path handling
+  3. CLAUDE-troubleshooting.md - Add new issues and solutions for v0.1.6
+
+∴ Thinking…
+
+  The memory bank files have been modified but not committed. The v0.1.6 release was already committed and tagged, but the memory bank documentation updates are
+  still uncommitted. Let me provide a summary of the completed work and offer to commit these documentation changes.
+
+⏺ Summary: v0.1.6 Release Complete ✅
+
+  Memory Bank Updates Complete:
+  - CLAUDE-activeContext.md - v0.1.6 session context
+  - CLAUDE-patterns.md - Added patterns 22-24 (Export Path, Format Detection, API Migration)
+  - CLAUDE-decisions.md - Added ADR-017 & ADR-018
+  - CLAUDE-troubleshooting.md - Added 4 new issue/fix entries
+
+  v0.1.6 Fixes Applied:
+  1. Export to absolute paths (e.g., --export /tmp/test.wav)
+  2. Format detection from filename extension (prevents .mp3.wav)
+  3. Phoneme API migrated to /dev/phonemize
+  4. Test scripts updated for --export "" syntax
+
+  Test Results: All 29 tests passing
+
+  The memory bank documentation updates are ready to commit. Would you like me to commit them
+```
+
+## MCP Servers
 
 I also install the following MCP servers ([install commands](#claude-code-mcp-servers)):
 
