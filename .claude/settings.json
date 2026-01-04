@@ -12,6 +12,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_FILE_PATH\" == *.swift ]]; then swift-format format -i \"$CLAUDE_FILE_PATH\" 2>/dev/null || true; elif [[ \"$CLAUDE_FILE_PATH\" =~ \\.(js|ts|jsx|tsx|html|css|json)$ ]]; then npx prettier --write \"$CLAUDE_FILE_PATH\" 2>/dev/null || true; fi"
+          }
+        ]
+      }
     ]
   }
 }
