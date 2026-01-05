@@ -791,6 +791,24 @@ npx convex env set STRIPE_SECRET_KEY sk_live_... --prod
 
 **VERIFY at:** https://docs.convex.dev/cli
 
+### CLI Setup & Configuration
+
+```bash
+# Initialize new Convex project
+npx convex init
+# - Creates convex/ directory structure
+# - Generates .env.local with CONVEX_DEPLOYMENT
+
+# Log out (switch accounts)
+npx convex logout
+# - Removes stored Convex credentials
+# - Allows switching to different account
+
+# Open documentation
+npx convex docs
+# - Opens Convex documentation in browser
+```
+
 ### Local Development
 
 ```bash
@@ -806,6 +824,22 @@ npx convex dev
 npm run dev  # In separate terminal
 ```
 
+### Running Functions
+
+```bash
+# Execute query/mutation/action with JSON arguments
+npx convex run myFunction '{"arg1": "value"}'
+
+# Run with watch mode (re-run on function changes)
+npx convex run myFunction --watch
+
+# Push functions before running (ensures latest code)
+npx convex run myFunction --push
+
+# Run against production deployment
+npx convex run myFunction --prod
+```
+
 ### Production Deployment
 
 ```bash
@@ -816,8 +850,44 @@ npx convex deploy --prod
 # - Zero-downtime deployment
 # - Returns production deployment URL
 
+# Deploy with build command (e.g., build frontend after backend deployed)
+npx convex deploy --cmd "npm run build"
+# - Runs command after successful deployment
+# - Sets environment variable with deployment URL
+
+# Deploy with custom environment variable for deployment URL
+npx convex deploy --cmd "npm run build" --cmd-url-env-var-name CONVEX_URL
+# - Custom env var name instead of default
+
+# Preview deployments (for CI/CD branches)
+npx convex deploy --preview-create <branch-name>
+# - Creates isolated preview deployment
+# - Useful for PR previews, staging environments
+
+# Run function after preview deployment
+npx convex deploy --preview-create <branch-name> --preview-run setupData
+# - Runs setup function after deployment
+# - Useful for seeding test data
+
 # Deploy to specific environment
 npx convex deploy --prod --project my-prod-project
+```
+
+### Type Generation
+
+```bash
+# Generate TypeScript types from schema
+npx convex codegen
+# - Updates convex/_generated/ directory
+# - Generates types from schema and functions
+# - Provides end-to-end type safety
+# - Automatically run by npx convex dev
+
+# Type check without generating code
+npx convex typecheck
+# - Validates TypeScript code
+# - Checks for type errors
+# - Does not modify files
 ```
 
 ### Data Operations
@@ -832,10 +902,36 @@ npx convex import --table tasks data/tasks.jsonl
 # {"text":"Task 1","isCompleted":false}
 # {"text":"Task 2","isCompleted":true}
 
+# Import from ZIP archive (multiple tables)
+npx convex import data.zip
+# - Imports all tables from ZIP
+# - ZIP contains JSONL files named after tables
+# - Useful for full database migrations
+
 # Export database to JSONL
-npx convex data export
-# - Exports all tables
+npx convex data export --path ./exports
+# - Exports all tables to specified directory
 # - JSONL format for easy re-import
+# - Creates separate file per table
+
+# Export with file storage included
+npx convex data export --include-file-storage --path ./exports
+# - Includes uploaded files in export
+# - Downloads all files from storage
+# - Larger export size but complete backup
+
+# Display table data in terminal
+npx convex data
+# - Lists all tables
+
+npx convex data tasks
+# - Shows data from specific table
+
+npx convex data tasks --limit 10
+# - Limits results to 10 rows
+
+npx convex data tasks --order desc
+# - Orders by creation time descending
 ```
 
 ### Environment Variables
@@ -868,6 +964,14 @@ npx convex logs
 # - Real-time logs from all functions
 # - Shows query/mutation/action execution
 # - Useful for debugging
+
+# Control log display during dev
+npx convex dev --tail-logs always
+# - Always show logs during development
+
+npx convex dev --tail-logs disable
+# - Disable automatic log tailing
+# - Use npx convex logs separately
 
 # Open Convex dashboard
 npx convex dashboard
@@ -1260,6 +1364,772 @@ const handleUpload = async (file: File) => {
 
 ---
 
+## Components
+
+**VERIFY at:** https://docs.convex.dev/components
+
+### What Are Components?
+
+**Convex Components** are self-contained backend modules that package code, schemas, and persistent data into isolated sandboxes. They are "like mini self-contained Convex backends" that can be safely added to any Convex app.
+
+**Key Characteristics:**
+- **Data Isolation**: Components cannot read your app's tables or call your functions unless explicitly passed in
+- **Own Database Tables**: Each component maintains its own isolated database tables
+- **Own File Storage**: Separate file storage independent from the main application
+- **Transactional Consistency**: All writes commit atomically with the parent mutation
+- **Real-time Reactivity**: Component queries are reactive by default
+- **Safe Installation**: Installing components is always safe due to strict isolation
+
+**Why Use Components Instead of npm Packages?**
+
+| Feature | npm Package | Convex Component |
+|---------|-------------|------------------|
+| State Persistence | In-memory (lost on restart) | Database-backed (persistent) |
+| Data Access | Direct database access | Explicit API boundaries |
+| Transactional Guarantees | None (distributed inconsistencies) | Atomic commits across boundaries |
+| Isolation | Shared global state | Isolated environments |
+| Validation | Manual | Runtime validation at boundaries |
+
+**Technical Explanation:**
+Unlike libraries that require third-party services for stateful functionality, Components store state in the same database as your app, providing transactional guarantees and eliminating distributed protocol complexity.
+
+---
+
+### Installation & Configuration
+
+**Step 1: Install Component via npm**
+
+```bash
+npm install @convex-dev/component-name
+```
+
+**Common Components:**
+```bash
+npm install @convex-dev/agent      # AI agents with threads/messages
+npm install @convex-dev/rag        # RAG (Retrieval-Augmented Generation)
+npm install @convex-dev/rate-limiter  # Rate limiting
+```
+
+**Step 2: Configure in convex.config.ts**
+
+Create or update `convex/convex.config.ts`:
+
+```typescript
+import { defineApp } from "convex/server";
+import agent from "@convex-dev/agent/convex.config";
+import rateLimit from "@convex-dev/rate-limiter/convex.config";
+
+const app = defineApp();
+
+// Mount components with names
+app.use(agent, { name: "agent" });
+app.use(rateLimit, { name: "rateLimit" });
+
+// Multiple instances of same component
+app.use(agent, { name: "customerSupport" });
+app.use(agent, { name: "researchAgent" });
+
+export default app;
+```
+
+**Technical Explanation:**
+- `defineApp()` creates the app configuration
+- `use()` mounts components with unique names
+- Each component instance has separate tables/functions
+- Multiple instances enable isolated use cases (e.g., separate agents)
+
+**Step 3: Generate Integration Code**
+
+```bash
+npx convex dev
+```
+
+This generates the `components` object in your API for accessing component functions.
+
+---
+
+### Using Components in Your Code
+
+**Calling Component Functions**
+
+Components are accessed through `components` object in generated API:
+
+**convex/myFunctions.ts:**
+```typescript
+import { query, mutation, action } from "./_generated/server";
+import { components } from "./_generated/api";
+
+// Query calling component query
+export const getThread = query({
+  args: { threadId: v.id("threads") },
+  handler: async (ctx, args) => {
+    // Queries can only call component queries
+    return await ctx.runQuery(components.agent.threads.getThread, {
+      threadId: args.threadId,
+    });
+  },
+});
+
+// Mutation calling component mutation
+export const createMessage = mutation({
+  args: { threadId: v.id("threads"), content: v.string() },
+  handler: async (ctx, args) => {
+    // Mutations can call component mutations
+    await ctx.runMutation(components.agent.messages.create, {
+      threadId: args.threadId,
+      role: "user",
+      content: args.content,
+    });
+  },
+});
+
+// Action calling component action
+export const processWithAI = action({
+  args: { input: v.string() },
+  handler: async (ctx, args) => {
+    // Actions can call component actions
+    return await ctx.runAction(components.agent.generate, {
+      prompt: args.input,
+    });
+  },
+});
+```
+
+**Important Rules:**
+- Queries can only call component **queries** (maintains reactivity)
+- Mutations can call component **mutations** (maintains transactions)
+- Actions can call component **actions**
+- Component queries are reactive by default
+
+---
+
+### Transaction Behavior
+
+**All Writes Commit Together:**
+
+```typescript
+export const createUserWithProfile = mutation({
+  args: { userId: v.id("users"), name: v.string() },
+  handler: async (ctx, args) => {
+    // Write 1: App table
+    await ctx.db.insert("users", { userId: args.userId });
+
+    // Write 2: Component table
+    await ctx.runMutation(components.profiles.create, {
+      userId: args.userId,
+      name: args.name,
+    });
+
+    // Both writes commit atomically
+    // If parent mutation fails, both rollback
+  },
+});
+```
+
+**Error Handling & Partial Rollback:**
+
+```typescript
+export const createWithFallback = mutation({
+  args: { data: v.object({ name: v.string() }) },
+  handler: async (ctx, args) => {
+    // Write 1: App table
+    await ctx.db.insert("items", { name: args.data.name });
+
+    try {
+      // Write 2: Component (might fail)
+      await ctx.runMutation(components.analytics.track, {
+        event: "item_created",
+      });
+    } catch (error) {
+      // Component writes rollback, but parent continues
+      console.error("Analytics failed:", error);
+    }
+
+    // App write still commits even if component failed
+  },
+});
+```
+
+**Technical Explanation:**
+- All writes in a mutation commit together by default
+- If parent mutation throws, all writes (app + component) rollback
+- If component mutation throws but caller catches it, only component writes rollback
+- No distributed protocols needed - single database transaction
+
+---
+
+### Monitoring & Debugging
+
+**Dashboard Access:**
+
+1. Open Convex Dashboard
+2. Use dropdown selector to view component tables
+3. Filter logs by component: `data.function.component_path`
+
+**Example Log Filtering:**
+```bash
+# View logs from specific component
+npx convex logs --filter 'data.function.component_path == "agent"'
+```
+
+**Testing with convex-test:**
+
+```typescript
+import { convexTest } from "convex-test";
+import { expect, test } from "vitest";
+import schema from "./schema";
+import { components } from "./_generated/api";
+
+test("component integration", async () => {
+  const t = convexTest(schema, {
+    // Register components for testing
+    components: {
+      agent: components.agent,
+    },
+  });
+
+  const threadId = await t.mutation(components.agent.createThread, {});
+  expect(threadId).toBeDefined();
+});
+```
+
+---
+
+### Authoring Custom Components
+
+**Directory Structure:**
+
+```
+my-component/
+├── convex.config.ts   # Component configuration
+├── schema.ts          # Component-specific schema
+├── functions.ts       # Public API functions
+├── _internal/         # Internal functions (not exposed)
+└── _generated/        # Auto-generated code
+```
+
+**convex.config.ts:**
+```typescript
+import { defineComponent } from "convex/server";
+
+export default defineComponent("myComponent");
+```
+
+**schema.ts:**
+```typescript
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  items: defineTable({
+    name: v.string(),
+    createdAt: v.number(),
+  }),
+});
+```
+
+**functions.ts (Public API):**
+```typescript
+import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
+
+// Public function (exported = accessible by apps)
+export const createItem = mutation({
+  args: { name: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("items", {
+      name: args.name,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+// Public query
+export const listItems = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("items").collect();
+  },
+});
+```
+
+**_internal/helpers.ts (Internal - Not Exposed):**
+```typescript
+import { internalMutation } from "../_generated/server";
+import { v } from "convex/values";
+
+// Internal function (not accessible by apps)
+export const cleanup = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Internal logic only
+  },
+});
+```
+
+**Key Constraints for Component Authors:**
+
+| Constraint | Reason |
+|------------|--------|
+| No `ctx.auth` | Authentication happens in app, not component |
+| All `Id<"table">` become strings at boundary | ID types don't cross boundaries |
+| No `process.env` access | Components can't access environment variables |
+| Only public functions accessible | Internal functions remain hidden |
+
+**Publishing to NPM:**
+
+```bash
+# 1. Create component from template
+npx create-convex@latest --component
+
+# 2. Build with concurrent watchers
+npx convex codegen --component-dir ./my-component &
+npm run build &
+npx convex dev --typecheck-components
+
+# 3. Expose NPM entry points
+# package.json:
+{
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./convex.config.js": "./convex.config.js",
+    "./_generated/component.js": "./_generated/component.js",
+    "./test": "./dist/test.js"
+  }
+}
+
+# 4. Publish
+npm publish
+```
+
+---
+
+### Popular Components
+
+**Browse All Components:** https://convex.dev/components
+
+**Common Use Cases:**
+- `@convex-dev/agent` - AI agents with threads, messages, tool calls
+- `@convex-dev/rag` - RAG (Retrieval-Augmented Generation) for semantic search
+- `@convex-dev/rate-limiter` - API rate limiting and usage tracking
+- Authentication components (Clerk, Auth0, etc.)
+- Workflow engines
+- Leaderboards & rankings
+- Feature flags
+- Document collaboration
+
+**Technical Explanation:**
+Components enable composability for complex features without building from scratch, while maintaining data isolation and transactional guarantees.
+
+---
+
+## AI & Agents
+
+**VERIFY at:** https://docs.convex.dev/agents
+
+### Agent Component Overview
+
+The **Convex Agent component** is a core building block for constructing AI-powered applications with persistent conversation history, tool calls, and RAG integration.
+
+**Key Capabilities:**
+- Persistent conversation threads with automatic history management
+- Real-time updates across all connected clients (reactivity)
+- Tool calling for external function invocation
+- RAG (Retrieval-Augmented Generation) integration
+- Multi-agent workflows
+- Streaming text and structured object generation
+- Rate limiting and usage tracking
+
+**Use Cases:**
+- AI chatbots with memory
+- Multi-agent systems
+- Customer support agents
+- Research assistants with RAG
+- Workflow automation with AI decision-making
+
+---
+
+### Installation & Setup
+
+```bash
+# Install Agent component
+npm install @convex-dev/agent
+
+# Install RAG component (optional, for RAG features)
+npm install @convex-dev/rag
+```
+
+**Technical Explanation:**
+- Agent component is a Convex component (reusable pattern)
+- Manages threads, messages, and agent interactions
+- Integrates seamlessly with Convex actions and queries
+
+---
+
+### Threads and Messages
+
+**VERIFY at:** https://docs.convex.dev/agents
+
+**convex/agents.ts:**
+```typescript
+import { agent } from "@convex-dev/agent";
+import { OpenAI } from "openai";
+import { action } from "./_generated/server";
+import { api } from "./_generated/api";
+
+// Create agent with OpenAI
+const myAgent = agent({
+  model: "gpt-4",
+  provider: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
+  instructions: "You are a helpful customer support assistant.",
+});
+
+// Start new conversation thread
+export const startThread = action({
+  handler: async (ctx) => {
+    const threadId = await myAgent.createThread(ctx);
+    return threadId;
+  },
+});
+
+// Send message to agent
+export const chat = action({
+  args: { threadId: v.id("threads"), message: v.string() },
+  handler: async (ctx, args) => {
+    // Add user message to thread
+    await myAgent.addMessage(ctx, {
+      threadId: args.threadId,
+      role: "user",
+      content: args.message,
+    });
+
+    // Generate agent response
+    const response = await myAgent.generateText(ctx, {
+      threadId: args.threadId,
+    });
+
+    return response;
+  },
+});
+
+// Get conversation history
+export const getMessages = query({
+  args: { threadId: v.id("threads") },
+  handler: async (ctx, args) => {
+    return await myAgent.getMessages(ctx, args.threadId);
+  },
+});
+```
+
+**Technical Explanation:**
+- **Threads**: Persistent conversation containers
+- **Messages**: Individual messages with role (user/assistant/system)
+- **Automatic context**: Previous messages automatically included in LLM calls
+- **Hybrid search**: Built-in vector/text search over conversation history
+- **Multi-user**: Threads can be shared across users and agents
+
+---
+
+### Tool Calls
+
+**VERIFY at:** https://docs.convex.dev/agents
+
+Enable agents to call external functions as part of their reasoning process.
+
+**Example: Agent with Weather Tool**
+```typescript
+import { agent, tool } from "@convex-dev/agent";
+import { OpenAI } from "openai";
+import { v } from "convex/values";
+
+// Define tool
+const getWeather = tool({
+  name: "get_weather",
+  description: "Get current weather for a location",
+  parameters: v.object({
+    location: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    // Call external weather API
+    const response = await fetch(
+      `https://api.weather.com/current?location=${args.location}`
+    );
+    const data = await response.json();
+    return { temperature: data.temp, conditions: data.conditions };
+  },
+});
+
+// Create agent with tool
+const weatherAgent = agent({
+  model: "gpt-4",
+  provider: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
+  instructions: "You help users with weather information.",
+  tools: [getWeather],
+});
+
+export const askWeather = action({
+  args: { threadId: v.id("threads"), question: v.string() },
+  handler: async (ctx, args) => {
+    await weatherAgent.addMessage(ctx, {
+      threadId: args.threadId,
+      role: "user",
+      content: args.question,
+    });
+
+    // LLM will automatically call getWeather tool if needed
+    const response = await weatherAgent.generateText(ctx, {
+      threadId: args.threadId,
+    });
+
+    return response;
+  },
+});
+```
+
+**Technical Explanation:**
+- **Tool definition**: Name, description, parameters, handler function
+- **Automatic invocation**: LLM decides when to use tools
+- **Multi-turn**: After tool call, LLM can generate final response
+- **Tool response history**: Tool calls and responses persisted in thread
+
+---
+
+### RAG Integration
+
+**VERIFY at:** https://docs.convex.dev/agents/rag
+
+Integrate Retrieval-Augmented Generation for context-aware responses.
+
+**Two Approaches:**
+
+**1. Upfront Context Injection** (search before LLM call)
+```typescript
+import { rag } from "@convex-dev/rag";
+import { agent } from "@convex-dev/agent";
+
+// Create RAG component
+const documentRAG = rag({
+  embeddingModel: "text-embedding-ada-002",
+});
+
+export const chatWithDocs = action({
+  args: { threadId: v.id("threads"), question: v.string() },
+  handler: async (ctx, args) => {
+    // 1. Search for relevant documents
+    const relevantDocs = await documentRAG.search(ctx, {
+      query: args.question,
+      limit: 5,
+    });
+
+    // 2. Inject context into prompt
+    const context = relevantDocs.map(doc => doc.content).join("\n\n");
+    const prompt = `Context:\n${context}\n\nQuestion: ${args.question}`;
+
+    await myAgent.addMessage(ctx, {
+      threadId: args.threadId,
+      role: "user",
+      content: prompt,
+    });
+
+    // 3. Generate response with context
+    return await myAgent.generateText(ctx, { threadId: args.threadId });
+  },
+});
+```
+
+**2. RAG as Tool Calls** (LLM decides when to search)
+```typescript
+// Define RAG as a tool
+const searchDocuments = tool({
+  name: "search_documents",
+  description: "Search knowledge base for relevant information",
+  parameters: v.object({
+    query: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const results = await documentRAG.search(ctx, {
+      query: args.query,
+      limit: 5,
+    });
+    return results.map(doc => doc.content);
+  },
+});
+
+// Agent with RAG tool
+const ragAgent = agent({
+  model: "gpt-4",
+  provider: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
+  instructions: "Search the knowledge base when needed to answer questions.",
+  tools: [searchDocuments],
+});
+```
+
+**Technical Explanation:**
+- **Upfront approach**: Simpler, always includes context
+- **Tool approach**: More flexible, LLM decides when to search
+- **Hybrid vector/text search**: Combines semantic and keyword matching
+- **Automatic embedding**: RAG component handles vector embeddings
+
+---
+
+### Streaming Responses
+
+**VERIFY at:** https://docs.convex.dev/agents
+
+Stream agent responses for real-time UI updates.
+
+```typescript
+export const streamChat = action({
+  args: { threadId: v.id("threads"), message: v.string() },
+  handler: async (ctx, args) => {
+    await myAgent.addMessage(ctx, {
+      threadId: args.threadId,
+      role: "user",
+      content: args.message,
+    });
+
+    // Stream text generation
+    const stream = await myAgent.streamText(ctx, {
+      threadId: args.threadId,
+    });
+
+    return stream; // Client receives incremental updates
+  },
+});
+```
+
+**Client Usage:**
+```typescript
+const streamChat = useAction(api.agents.streamChat);
+
+const handleSend = async (message: string) => {
+  const stream = await streamChat({ threadId, message });
+
+  for await (const chunk of stream) {
+    // Update UI with each chunk
+    setResponse(prev => prev + chunk);
+  }
+};
+```
+
+**Technical Explanation:**
+- **Streaming API**: Returns async iterable
+- **Real-time UI**: Update UI incrementally as text generates
+- **Better UX**: Users see immediate progress vs waiting for full response
+
+---
+
+### Rate Limiting & Usage Tracking
+
+**VERIFY at:** https://docs.convex.dev/agents
+
+Track and limit agent usage per user or team.
+
+```typescript
+import { rateLimit } from "@convex-dev/agent";
+
+export const chatWithLimit = action({
+  args: { userId: v.id("users"), message: v.string() },
+  handler: async (ctx, args) => {
+    // Check rate limit (e.g., 10 messages per hour)
+    const allowed = await rateLimit.check(ctx, {
+      key: `user_${args.userId}`,
+      limit: 10,
+      window: 3600, // 1 hour in seconds
+    });
+
+    if (!allowed) {
+      throw new Error("Rate limit exceeded. Try again later.");
+    }
+
+    // Track usage for billing
+    await ctx.runMutation(api.usage.trackMessage, {
+      userId: args.userId,
+      tokens: 0, // Will be updated after LLM call
+    });
+
+    const response = await myAgent.generateText(ctx, {
+      threadId: args.threadId,
+    });
+
+    // Update token usage for billing
+    await ctx.runMutation(api.usage.updateTokens, {
+      userId: args.userId,
+      tokens: response.usage.totalTokens,
+    });
+
+    return response;
+  },
+});
+```
+
+**Technical Explanation:**
+- **Rate limiting**: Prevent abuse, comply with LLM provider limits
+- **Usage tracking**: Bill per user/team based on token consumption
+- **Cost control**: Monitor and cap spending per user
+
+---
+
+### Multi-Agent Workflows
+
+**VERIFY at:** https://docs.convex.dev/agents/workflows
+
+Coordinate multiple agents for complex tasks.
+
+```typescript
+// Research agent
+const researcher = agent({
+  model: "gpt-4",
+  provider: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
+  instructions: "Research topics and provide factual information.",
+  tools: [searchDocuments],
+});
+
+// Writing agent
+const writer = agent({
+  model: "gpt-4",
+  provider: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
+  instructions: "Write clear, engaging content based on research.",
+});
+
+export const createArticle = action({
+  args: { topic: v.string() },
+  handler: async (ctx, args) => {
+    // Step 1: Research agent gathers information
+    const researchThread = await researcher.createThread(ctx);
+    await researcher.addMessage(ctx, {
+      threadId: researchThread,
+      role: "user",
+      content: `Research this topic: ${args.topic}`,
+    });
+    const research = await researcher.generateText(ctx, {
+      threadId: researchThread,
+    });
+
+    // Step 2: Writing agent creates article from research
+    const writerThread = await writer.createThread(ctx);
+    await writer.addMessage(ctx, {
+      threadId: writerThread,
+      role: "user",
+      content: `Write an article based on this research:\n${research.text}`,
+    });
+    const article = await writer.generateText(ctx, {
+      threadId: writerThread,
+    });
+
+    return article.text;
+  },
+});
+```
+
+**Technical Explanation:**
+- **Agent specialization**: Different agents for different tasks
+- **Sequential workflows**: Output of one agent feeds into another
+- **Durable execution**: Workflows persist across interruptions
+- **Human-in-the-loop**: Can pause for human approval between steps
+
+---
+
 ## Gotchas & Best Practices
 
 ### Query Functions Must Be Deterministic
@@ -1369,6 +2239,122 @@ NEXT_PUBLIC_CONVEX_URL=https://prod-deployment.convex.cloud
 
 ---
 
+### Optimistic Concurrency Control (OCC) & Write Conflicts
+
+**VERIFY at:** https://docs.convex.dev/database/advanced/occ
+
+**What is OCC?**
+
+Convex uses **Optimistic Concurrency Control (OCC)** to provide ACID compliance with true **serializability** (not just snapshot isolation). Instead of locking records, Convex treats each mutation as "a declarative proposal to write records on the basis of any read record versions."
+
+**How It Works:**
+
+```typescript
+// Transaction A: Reads Alice's account (v1: $14)
+const alice = await ctx.db.get(aliceId);  // version 1
+
+// (Meanwhile, Transaction B modifies Alice's account → now v2)
+
+// Transaction A attempts to write
+await ctx.db.patch(aliceId, { balance: alice.balance - 5 });
+// ❌ FAILS: Alice version changed from v1 to v2
+// Convex automatically retries the entire mutation
+```
+
+**Technical Explanation:**
+- At commit time, Convex checks if all read records are still at their original versions
+- If any record changed, the mutation **fails and automatically retries**
+- Similar to Git: "Cannot push because HEAD is out of date → rebase and try again"
+- Because mutations are **deterministic**, retrying is safe and transparent
+
+**Write Conflict Error:**
+
+When retries exceed threshold (high contention), you'll see:
+
+```
+OccRetryThresholdExceeded: Documents read from or written to the
+table 'counters' changed while this mutation was being run and on
+every subsequent retry.
+```
+
+**Common Causes:**
+
+1. **High-frequency updates to same document:**
+
+```typescript
+// ❌ CONFLICT PRONE: Many concurrent calls updating same counter
+export const incrementCounter = mutation({
+  args: { counterId: v.id("counters") },
+  handler: async (ctx, args) => {
+    const counter = await ctx.db.get(args.counterId);
+    await ctx.db.patch(args.counterId, {
+      count: (counter?.count || 0) + 1
+    });
+  },
+});
+
+// Called 100 times/second → conflicts!
+```
+
+**✅ FIX: Use Sharded Counter component**
+```bash
+npm install @convex-dev/sharded-counter
+```
+
+2. **Broad data dependencies (reading entire tables):**
+
+```typescript
+// ❌ CONFLICT PRONE: Reads ALL tasks
+export const addTask = mutation({
+  handler: async (ctx, args) => {
+    // Reading entire table creates conflict with ANY mutation that writes to tasks
+    const allTasks = await ctx.db.query("tasks").collect();
+    const taskCount = allTasks.length;
+
+    await ctx.db.insert("tasks", { ...args, order: taskCount });
+  },
+});
+```
+
+**✅ FIX: Read only necessary data with indexes**
+```typescript
+export const addTask = mutation({
+  args: { userId: v.id("users"), text: v.string() },
+  handler: async (ctx, args) => {
+    // Only read tasks for this user (using index)
+    const userTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    await ctx.db.insert("tasks", {
+      userId: args.userId,
+      text: args.text,
+      order: userTasks.length,
+    });
+  },
+});
+```
+
+**Best Practices to Avoid Conflicts:**
+
+| Issue | Solution |
+|-------|----------|
+| Hot document (many writes to same record) | Shard data across multiple documents |
+| Reading entire tables | Use indexed queries with selective range expressions |
+| Unexpected repeated calls | Avoid mutations in loops, debounce client calls |
+| Single counter for all users | Use Sharded Counter or per-user counters |
+
+**Technical Guarantee:**
+
+Write mutations "as if they will always succeed, and always be guaranteed to be atomic." Convex handles conflicts transparently through automatic retries, providing true serializability without developer intervention.
+
+**When to Use Components:**
+- **Sharded Counter**: Distribute high-frequency writes across multiple documents
+- **Workpool**: Prioritize critical tasks through separate queues
+
+---
+
 ## Performance & Monitoring
 
 **VERIFY at:** https://docs.convex.dev/production/monitoring
@@ -1417,6 +2403,196 @@ const users = await Promise.all(
   tasks.map(task => ctx.db.get(task.userId))
 );
 ```
+
+---
+
+## Production Guarantees & Limits
+
+**VERIFY at:** https://docs.convex.dev/production/state/
+
+### Availability & Uptime
+
+**Availability Target:**
+- **99.99% availability** (four nines) for all Convex deployments
+- Maintenance downtime may occur without prior notice
+- Physical outages will not compromise data durability
+
+**Important Note:**
+Convex currently does not offer formal contractual SLAs beyond their standard Terms of Service. For enterprise requirements, contact support@convex.dev.
+
+**Technical Explanation:**
+Database state is replicated durably across multiple physical availability zones to ensure availability even during infrastructure failures.
+
+---
+
+### Data Protection & Security
+
+**Encryption:**
+- **All user data encrypted at rest** in Convex deployments
+- Encryption happens automatically, no configuration required
+
+**Data Replication:**
+- Database state replicated across **multiple physical availability zones**
+- Protects against data center failures
+- No manual failover required
+
+**Backup Durability:**
+- Regular periodic and incremental backups performed automatically
+- Backups stored with **99.999999999% durability** (eleven nines)
+- Comparable to Amazon S3 Standard storage class
+
+**Technical Explanation:**
+Backup durability of 11 nines means the annual probability of losing a backup is approximately 0.000000001% (1 in 100 billion). Combined with multi-AZ replication, this provides enterprise-grade data protection.
+
+---
+
+### Backward Compatibility Guarantee
+
+**Commitment:**
+- Code written for Convex 1.0+ will continue to work without modification
+- Breaking changes will have **substantial advance notice** to affected teams
+- Direct communication for any potential breaking changes
+
+**What This Means:**
+You can build production applications on Convex with confidence that future updates won't break your existing code without warning.
+
+---
+
+### Platform Limits
+
+**VERIFY at:** https://docs.convex.dev/production/state/limits
+
+#### Function Execution Limits
+
+| Resource | Limit | Notes |
+|----------|-------|-------|
+| Query/Mutation execution | 1 second | User code only (excludes framework overhead) |
+| Action execution | 10 minutes | Long-running operations |
+| Concurrent Node actions (Free/Starter) | 64 | Parallel action executions |
+| Concurrent Node actions (Pro) | 1,000 | Professional plan benefit |
+
+**Technical Explanation:**
+- Queries/mutations have 1-second limit because they're transactional (must be fast)
+- Actions can run up to 10 minutes for external API calls, file processing, etc.
+- Exceeding limits throws error; design functions to complete within timeframes
+
+#### Document & Database Limits
+
+| Resource | Limit | Notes |
+|----------|-------|-------|
+| Document size | 1 MiB | Per document maximum |
+| Fields per document | 1,024 | Total field count |
+| Object/array nesting depth | 16 levels | Nested structures |
+| Array elements | 8,192 | Per array maximum |
+| Tables per deployment | 10,000 | Total tables |
+| Indexes per table | 32 | Maximum indexes |
+
+**Common Gotcha:**
+If you hit the 1 MiB document limit, split data across multiple related documents using references (e.g., store large JSON in separate "metadata" table).
+
+#### Transaction Limits
+
+| Resource | Limit | Notes |
+|----------|-------|-------|
+| Data read/written per transaction | 16 MiB | Total transaction size |
+| Documents written per transaction | 16,000 | Mutation write limit |
+| Documents scanned per transaction | 32,000 | Query/filter limit |
+| Index range reads | 4,096 | Per transaction |
+
+**Technical Explanation:**
+These limits ensure mutations remain fast and prevent runaway transactions. If you need to process more data, use pagination or batch operations across multiple transactions.
+
+#### Storage & Bandwidth Limits
+
+| Plan | Database Storage | File Storage | Database Bandwidth | File Bandwidth | Function Calls |
+|------|------------------|--------------|-------------------|----------------|----------------|
+| Free | 0.5 GiB | 1 GiB | 1 GiB/month | 1 GiB/month | 1M calls/month |
+| Starter | 8 GiB | 10 GiB | 8 GiB/month | 10 GiB/month | 5M calls/month |
+| Professional | 50 GiB | 100 GiB | 50 GiB/month | 50 GiB/month | 25M calls/month |
+
+**Overage Pricing:**
+- Database storage: $1.00/GiB/month
+- File storage: $0.15/GiB/month
+- Additional bandwidth and calls: usage-based pricing
+
+#### Search Limits
+
+| Feature | Limit | Notes |
+|---------|-------|-------|
+| Full-text search indexes | 4 per table | Text search capability |
+| Full-text search results | 1,024 maximum | Per query |
+| Vector search indexes | 4 per table | Semantic/AI search |
+| Vector search results | 256 maximum | Per query |
+
+**Technical Explanation:**
+Search indexes are separate from regular indexes and have their own limits. Design your search features to work within these constraints (e.g., use pagination for large result sets).
+
+---
+
+### Current Limitations (As of 2025)
+
+**No Built-In Authorization Framework:**
+- Only **authentication** exists (identity verification)
+- Authorization (permission checks) must be implemented manually in queries/mutations
+- Pattern: Check `ctx.auth.getUserIdentity()` and validate permissions in code
+
+**Example:**
+```typescript
+export const deleteTask = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new Error("Task not found");
+
+    // ⚠️ Manual authorization check required
+    if (task.userId !== identity.subject) {
+      throw new Error("Forbidden: You don't own this task");
+    }
+
+    await ctx.db.delete(args.taskId);
+  },
+});
+```
+
+**Limited Observability:**
+- Basic dashboard metrics available (function execution time, call frequency)
+- Third-party integration for advanced monitoring still in development
+- Recommendation: Use Sentry, LogRocket, or custom logging for production
+
+**Not Optimized for Analytics (OLAP):**
+- Convex is designed for real-time transactional operations (OLTP)
+- Complex analytical queries (aggregations across large datasets) may hit limits
+- Recommendation: Use streaming export to dedicated analytics database (Snowflake, BigQuery)
+
+---
+
+### When Limits May Increase
+
+The Convex team notes: "Many of these limits will become more permissive over time."
+
+If you encounter limits for your use case, contact support@convex.dev to discuss:
+- Plan-specific limit increases
+- Custom enterprise arrangements
+- Roadmap for future limit expansions
+
+---
+
+### Compliance & Enterprise
+
+**Current Status:**
+- **Terms of Service:** https://convex.dev/terms
+- **Privacy Policy:** https://convex.dev/privacy
+- **No formal GDPR/SOC2 certifications mentioned** in developer documentation
+
+**For Enterprise Requirements:**
+Contact support@convex.dev for:
+- Compliance documentation
+- Security audits
+- Custom agreements
+- SLA contracts
 
 ---
 
@@ -1506,6 +2682,238 @@ Environment Consistency:
 - [ ] Cloudflare Pages preview deployments use dev Convex URL
 - [ ] Production branch triggers production deployment
 ```
+
+### Backup & Disaster Recovery
+
+**VERIFY at:** https://docs.convex.dev/database/backup-restore
+
+#### Manual Backups (Dashboard)
+
+**Access:** Convex Dashboard → Backups → "Backup Now"
+
+**Characteristics:**
+- Creates consistent snapshot of all table data
+- Processing time: seconds to hours (depending on data size)
+- Retention: 7 days
+- Storage limit: Free/Starter plans (2 backups max), Pro plans (unlimited, usage-based pricing)
+- **Includes:** Table data only
+- **Excludes:** Code, environment variables, scheduled functions, configuration
+
+**File Storage Inclusion:**
+```bash
+# Dashboard option: "Include file storage"
+# Or via CLI export:
+npx convex export --path ~/Downloads --include-file-storage
+```
+
+#### Scheduled Backups (Pro Plan)
+
+**Configuration:** Convex Dashboard → Backups → "Backup automatically"
+
+**Options:**
+- **Daily backups**: Retained for 7 days, specify time of day
+- **Weekly backups**: Retained for 14 days, specify day/time
+- **File storage**: Optional inclusion checkbox
+
+**Technical Explanation:**
+Scheduled backups require Convex Pro plan. Each backup is billed for database and file bandwidth (same as user file storage costs).
+
+#### Restore Process
+
+**CRITICAL:** Restoration is **destructive** - wipes existing data before restore
+
+**Best Practice:**
+```bash
+# Step 1: Create backup BEFORE restoring
+# Dashboard → Backup Now
+
+# Step 2: Restore from backup
+# Dashboard → Backups → Select backup → "Restore"
+
+# Step 3: Redeploy code
+npx convex dev  # Verify changes locally first
+npx convex deploy --prod  # Deploy to production
+
+# Step 4: Restore environment variables
+npx convex env set VARIABLE_NAME value --prod
+```
+
+**Cross-Deployment Restore:**
+```bash
+# Use case: Populate dev deployment with prod data
+# Dashboard → Backups → Select backup → "Restore" → Choose target deployment
+```
+
+**File Storage Behavior:**
+- Existing files in deployment are **NOT deleted**
+- Files from backup that don't exist in deployment are uploaded
+- Result: Merge of existing files + backup files
+
+#### Backup Download & Import
+
+**Download Backup (ZIP):**
+
+Dashboard: Backups → Select backup → Download → `snapshot_{timestamp}.zip`
+
+**ZIP Structure:**
+```
+snapshot_1234567890.zip
+├── users/
+│   └── documents.jsonl          # One document per line
+├── tasks/
+│   └── documents.jsonl
+├── _storage/                     # Optional: file storage
+│   └── files...
+└── generated_schema.jsonl        # Preserves Int64, Bytes types
+```
+
+**Import ZIP:**
+```bash
+# Import to dev deployment
+npx convex import snapshot_1234567890.zip
+
+# Import to production (CAUTION!)
+npx convex import snapshot_1234567890.zip --prod
+```
+
+**Technical Explanation:**
+- ZIP imports preserve document `_id` and `_creationTime` fields
+- Maintains referential integrity across table references
+- Import is atomic (except with `--append` flag)
+- Queries never see partially imported state
+
+#### Import from Custom Data Sources
+
+**Single Table Import:**
+
+```bash
+# CSV (requires headers)
+npx convex import --table users users.csv
+
+# JSONLines (one object per line)
+npx convex import --table tasks tasks.jsonl
+
+# JSON (array of objects, 8MiB limit)
+npx convex import --table products products.json
+```
+
+**Import Modes:**
+
+```bash
+# Append to existing data
+npx convex import --table users users.jsonl --append
+
+# Replace all table data (destructive)
+npx convex import --table users users.jsonl --replace
+
+# Default: Fail if table already exists
+npx convex import --table users users.jsonl
+```
+
+**Production Import:**
+```bash
+# ALWAYS test in dev first!
+npx convex import --table users users.jsonl
+
+# Then import to production
+npx convex import --table users users.jsonl --prod
+```
+
+#### Disaster Recovery Scenarios
+
+**Scenario 1: Bad Deployment**
+
+```bash
+# 1. Create immediate backup (if not already automated)
+Dashboard → Backup Now
+
+# 2. Restore from last known-good backup
+Dashboard → Restore from backup (before bad deployment)
+
+# 3. Redeploy validated code
+git checkout <last-good-commit>
+npx convex deploy --prod
+
+# 4. Verify production
+npx convex dashboard  # Check logs and data
+```
+
+**Scenario 2: Data Corruption**
+
+```bash
+# 1. Identify corruption scope (table/documents)
+npx convex data <table-name>  # Inspect data
+
+# 2. Export current state (for forensics)
+npx convex export --path ./corrupt-state
+
+# 3. Restore from backup
+Dashboard → Restore from backup
+
+# 4. Manual corrections (if needed)
+# Write one-off mutations to fix specific records
+```
+
+**Scenario 3: Accidental Deletion**
+
+```bash
+# 1. Immediately stop further writes (if possible)
+# Disable frontend or pause deployment
+
+# 2. Restore from most recent backup
+Dashboard → Restore from backup (within 7 days)
+
+# 3. Assess data loss window
+# Any data between backup and deletion is lost
+# Consider manual reconstruction from logs/analytics
+```
+
+#### Streaming Export (Alternative Backup)
+
+**VERIFY at:** https://docs.convex.dev/production/integrations/streaming-import-export
+
+For continuous data replication to external databases:
+
+```bash
+# Integrate via Fivetran or Airbyte
+# Provides real-time backup to:
+- PostgreSQL
+- Snowflake
+- BigQuery
+- Redshift
+```
+
+**Use Cases:**
+- Real-time analytics warehouse
+- Continuous backup to external system
+- Compliance/audit trail requirements
+- Multi-region data redundancy
+
+**Important:** After restoring from backup, streaming export integrations must be reset.
+
+#### Backup Limitations & Requirements
+
+**What's Included:**
+- ✅ All table data with schemas
+- ✅ File storage (if option selected)
+- ✅ Document IDs and creation times
+- ✅ Advanced types (Int64, Bytes via generated_schema.jsonl)
+
+**What's Excluded:**
+- ❌ Deployment code (functions)
+- ❌ Configuration files
+- ❌ Environment variables
+- ❌ Pending scheduled functions
+- ❌ Authentication provider config
+
+**After Restore, You Must:**
+1. Redeploy code: `npx convex deploy --prod`
+2. Restore environment variables: `npx convex env set ...`
+3. Reconfigure authentication providers (Clerk, etc.)
+4. Reset streaming export integrations (if using)
+5. Verify scheduled functions are running
+
+**Beta Note:** ZIP imports not supported on deployments created before Convex v1.7. Contact support for workarounds.
 
 ---
 
