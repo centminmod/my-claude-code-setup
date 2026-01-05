@@ -620,13 +620,29 @@ npm install @clerk/nextjs  # For Next.js
 npm install @clerk/clerk-react  # For React
 ```
 
-1. **Configure Clerk in Convex Dashboard:**
+2. **Create Clerk JWT Template:**
 
-   - Navigate to Settings → Authentication
-   - Add Clerk as provider
-   - Copy Issuer URL from Clerk dashboard
+   - Clerk Dashboard → Configure → Sessions → JWT templates
+   - Click "+ Add new template" → Select "Convex" preset
+   - Save (template auto-configures claims, don't edit manually)
+   - Copy the **Issuer URL** shown (e.g., `https://xxx.clerk.accounts.dev`)
 
-1. **Add Clerk to Next.js App:**
+3. **Create `convex/auth.config.ts` (file-based auth config):**
+
+```typescript
+export default {
+  providers: [
+    {
+      domain: "https://your-issuer-url.clerk.accounts.dev", // From JWT template
+      applicationID: "convex",
+    },
+  ],
+};
+```
+
+> **Note:** The Convex dashboard auth UI may vary - the `auth.config.ts` file is the reliable approach.
+
+4. **Add Clerk to Next.js App:**
 
 **app/layout.tsx:**
 
@@ -707,6 +723,24 @@ export const getMy = query({
 - **ctx.auth.getUserIdentity()**: Returns user info or null if not authenticated
 - **identity.subject**: Clerk user ID (use as userId in your database)
 - **Authorization in code**: Check auth at function level (no RLS framework)
+
+### Skip Query for Unauthenticated Users
+
+Prevent 401 console errors for visitors who haven't signed in:
+
+```typescript
+// In your React component
+import { useUser } from "@clerk/nextjs";
+
+const { isSignedIn } = useUser();
+// Pass "skip" as second argument when not authenticated
+const tasks = useQuery(api.tasks.getMy, isSignedIn ? undefined : "skip");
+```
+
+**Why this matters:**
+- Without "skip", Convex queries run immediately and return 401 for unauthenticated users
+- This creates noisy console errors even though the app handles auth correctly
+- The "skip" pattern prevents the query from running until the user is authenticated
 
 ---
 

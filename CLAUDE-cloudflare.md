@@ -421,6 +421,37 @@ export default {
 }
 ```
 
+### Testing & Automation
+
+Clerk provides testing features for automated/E2E testing.
+
+**Documentation:** https://clerk.com/docs/testing/overview
+
+**Test Credentials (bypass verification):**
+
+| Type | Pattern | Verification Code |
+|------|---------|-------------------|
+| Email | `+clerk_test` subaddress | `424242` |
+| Phone | `+1 (XXX) 555-0100` to `0199` | `424242` |
+
+Example: `test+clerk_test@example.com` + code `424242`
+
+**Testing Token (bot detection bypass):**
+```bash
+# Get token via Backend API
+curl -X GET https://api.clerk.dev/v1/testing_tokens \
+  -H "Authorization: Bearer $CLERK_SECRET_KEY"
+```
+
+Add to URL: `?__clerk_testing_token=[token]`
+
+**Workers/Pages Integration:**
+```typescript
+// Testing tokens are automatically handled by Clerk SDK
+// Just include the token in the URL query parameter
+// The SDK will recognize and process it for authentication bypass
+```
+
 ---
 
 ## Development Commands
@@ -757,6 +788,7 @@ wrangler logout
 4. **Clerk @clerk/backend** requires BOTH `secretKey` AND `publishableKey`
 5. **D1 batch** for transactions: `await db.batch([stmt1, stmt2])`
 6. **authorizedParties** recommended for Clerk to prevent CSRF attacks
+7. **Clerk Bot Protection** uses Cloudflare Turnstile - blocks automated browser testing (disable in dev: Clerk Dashboard → Configure → Attack protection)
 
 ---
 
