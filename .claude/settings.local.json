@@ -8,7 +8,6 @@
   },
   "includeCoAuthoredBy": false,
   "permissions": {
-    "defaultMode": "plan",
     "allow": [
       "Bash(.venv/bin/pip:*)",
       "Bash(.venv/bin/python:*)",
@@ -84,8 +83,11 @@
       "mcp__chrome-devtools__fill",
       "mcp__chrome-devtools__navigate_page_history",
       "mcp__chrome-devtools__new_page",
-      "Skill(claude-docs-consultant)"
+      "Skill(claude-docs-consultant)",
+      "WebFetch(domain:docs.convex.dev)",
+      "mcp__context7__query-docs"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "plan"
   }
 }
