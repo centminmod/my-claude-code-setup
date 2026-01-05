@@ -1,6 +1,7 @@
 # CLAUDE.md - Convex Database Project Template
 
 ## Project Overview
+
 - **Project Name**: [PROJECT_NAME]
 - **Description**: [BRIEF_DESCRIPTION]
 - **Database**: Convex
@@ -12,75 +13,82 @@
 ## CRITICAL: Documentation Verification Rules
 
 ### Before Writing ANY Code
+
 1. **Determine project language/framework** by inspecting project files
 2. **Lookup current documentation** for the detected stack before implementing
 3. **Never assume** API signatures, function syntax, or hook patterns
 
 ### MCP Tools (if available)
+
 - **context7 MCP**: Query for latest Convex documentation
 - **Cloudflare MCP**: Search Cloudflare Pages deployment docs
 
 ### Documentation URLs (for web fetch if no MCP)
+
 Fetch and read these URLs to verify current APIs:
 
 **Convex Platform:**
+
 | Service | URL |
-|---------|-----|
-| LLM-Optimized Docs | https://docs.convex.dev/llms.txt |
-| Quickstart (Next.js App Router) | https://docs.convex.dev/quickstart/nextjs |
-| Quickstart (Next.js Pages Router) | https://docs.convex.dev/client/nextjs/pages-router/quickstart |
-| Quickstart (React/Vite) | https://docs.convex.dev/quickstart/react |
-| Database Schemas | https://docs.convex.dev/database/schemas |
-| Reading Data (Queries) | https://docs.convex.dev/database/reading-data |
-| Writing Data (Mutations) | https://docs.convex.dev/database/writing-data |
-| Functions Overview | https://docs.convex.dev/functions |
-| Query Functions | https://docs.convex.dev/functions/query-functions |
-| Mutation Functions | https://docs.convex.dev/functions/mutation-functions |
-| Actions | https://docs.convex.dev/functions/actions |
-| HTTP Actions | https://docs.convex.dev/functions/http-actions |
-| Scheduled Functions | https://docs.convex.dev/scheduling/scheduled-functions |
-| Authentication Overview | https://docs.convex.dev/auth |
-| Clerk Integration | https://docs.convex.dev/auth/clerk |
-| Convex Auth | https://docs.convex.dev/auth/convex-auth |
-| Custom Auth | https://docs.convex.dev/auth/custom-auth |
-| Authorization Patterns | https://docs.convex.dev/auth/authorization |
-| Database Indexes | https://docs.convex.dev/database/indexes |
-| Pagination | https://docs.convex.dev/database/pagination |
-| File Storage | https://docs.convex.dev/file-storage |
-| Full-text Search | https://docs.convex.dev/text-search |
-| Vector Search | https://docs.convex.dev/vector-search |
-| TypeScript | https://docs.convex.dev/typescript |
-| Error Handling | https://docs.convex.dev/functions/error-handling |
-| Testing | https://docs.convex.dev/production/testing |
-| Environment Variables | https://docs.convex.dev/production/environment-variables |
-| Production Hosting | https://docs.convex.dev/production/hosting |
-| Monitoring | https://docs.convex.dev/production/monitoring |
-| Convex CLI | https://docs.convex.dev/cli |
+| --------- | ----- |
+| LLM-Optimized Docs | <https://docs.convex.dev/llms.txt> |
+| Quickstart (Next.js App Router) | <https://docs.convex.dev/quickstart/nextjs> |
+| Quickstart (Next.js Pages Router) | <https://docs.convex.dev/client/nextjs/pages-router/quickstart> |
+| Quickstart (React/Vite) | <https://docs.convex.dev/quickstart/react> |
+| Database Schemas | <https://docs.convex.dev/database/schemas> |
+| Reading Data (Queries) | <https://docs.convex.dev/database/reading-data> |
+| Writing Data (Mutations) | <https://docs.convex.dev/database/writing-data> |
+| Functions Overview | <https://docs.convex.dev/functions> |
+| Query Functions | <https://docs.convex.dev/functions/query-functions> |
+| Mutation Functions | <https://docs.convex.dev/functions/mutation-functions> |
+| Actions | <https://docs.convex.dev/functions/actions> |
+| HTTP Actions | <https://docs.convex.dev/functions/http-actions> |
+| Scheduled Functions | <https://docs.convex.dev/scheduling/scheduled-functions> |
+| Authentication Overview | <https://docs.convex.dev/auth> |
+| Clerk Integration | <https://docs.convex.dev/auth/clerk> |
+| Convex Auth | <https://docs.convex.dev/auth/convex-auth> |
+| Custom Auth | <https://docs.convex.dev/auth/custom-auth> |
+| Authorization Patterns | <https://docs.convex.dev/auth/authorization> |
+| Database Indexes | <https://docs.convex.dev/database/indexes> |
+| Pagination | <https://docs.convex.dev/database/pagination> |
+| File Storage | <https://docs.convex.dev/file-storage> |
+| Full-text Search | <https://docs.convex.dev/text-search> |
+| Vector Search | <https://docs.convex.dev/vector-search> |
+| TypeScript | <https://docs.convex.dev/typescript> |
+| Error Handling | <https://docs.convex.dev/functions/error-handling> |
+| Testing | <https://docs.convex.dev/production/testing> |
+| Environment Variables | <https://docs.convex.dev/production/environment-variables> |
+| Production Hosting | <https://docs.convex.dev/production/hosting> |
+| Monitoring | <https://docs.convex.dev/production/monitoring> |
+| Convex CLI | <https://docs.convex.dev/cli> |
 
 **Clerk Authentication:**
+
 | Resource | URL |
-|----------|-----|
-| Clerk + Convex | https://docs.convex.dev/auth/clerk |
-| Clerk Backend SDK | https://clerk.com/docs/reference/backend/overview |
-| Clerk Next.js | https://clerk.com/docs/reference/nextjs/overview |
-| Clerk React | https://clerk.com/docs/reference/react/overview |
+| ---------- | ----- |
+| Clerk + Convex | <https://docs.convex.dev/auth/clerk> |
+| Clerk Backend SDK | <https://clerk.com/docs/reference/backend/overview> |
+| Clerk Next.js | <https://clerk.com/docs/reference/nextjs/overview> |
+| Clerk React | <https://clerk.com/docs/reference/react/overview> |
 
 **Cloudflare Pages Deployment:**
+
 | Resource | URL |
-|----------|-----|
-| Pages Overview | https://developers.cloudflare.com/pages/ |
-| Next.js on Pages | https://developers.cloudflare.com/pages/framework-guides/nextjs/ |
-| Build Configuration | https://developers.cloudflare.com/pages/configuration/build-configuration/ |
-| Pages Functions | https://developers.cloudflare.com/pages/functions/ |
+| ---------- | ----- |
+| Pages Overview | <https://developers.cloudflare.com/pages/> |
+| Next.js on Pages | <https://developers.cloudflare.com/pages/framework-guides/nextjs/> |
+| Build Configuration | <https://developers.cloudflare.com/pages/configuration/build-configuration/> |
+| Pages Functions | <https://developers.cloudflare.com/pages/functions/> |
 
 ---
 
 ## Project Detection & Setup
 
 ### Step 1: Detect Existing Project Type
+
 Inspect project files to determine language/framework:
 
-```
+```text
 File Found                -> Stack              -> Action
 -----------------------------------------------------------------
 convex/ directory         -> Existing Convex    -> Check convex.json, schema.ts
@@ -97,6 +105,7 @@ No convex/ directory      -> New project        -> Run: npx create convex@latest
 ### Step 2: New Project Setup (if no convex/)
 
 **Option 1: Create new Next.js project with Convex**
+
 ```bash
 # VERIFY at: https://docs.convex.dev/quickstart/nextjs
 npx create-next-app@latest my-app
@@ -106,6 +115,7 @@ npx convex dev
 ```
 
 **Option 2: Add Convex to existing project**
+
 ```bash
 # VERIFY at: https://docs.convex.dev/quickstart
 npm install convex
@@ -113,6 +123,7 @@ npx convex dev  # Initializes convex/ directory and cloud project
 ```
 
 **Option 3: Use Convex template (interactive)**
+
 ```bash
 npx create convex@latest  # Interactive setup with framework selection
 ```
@@ -120,11 +131,13 @@ npx create convex@latest  # Interactive setup with framework selection
 ### Step 3: Install Dependencies (after detection)
 
 **Core (always needed):**
+
 ```bash
 npm install convex  # Convex client and server SDK
 ```
 
 **Clerk Authentication (recommended):**
+
 ```bash
 # For Next.js
 npm install @clerk/nextjs
@@ -134,6 +147,7 @@ npm install @clerk/clerk-react
 ```
 
 **Convex Auth (alternative, beta):**
+
 ```bash
 # Built into Convex, configure via dashboard
 # https://docs.convex.dev/auth/convex-auth
@@ -145,7 +159,7 @@ npm install @clerk/clerk-react
 
 ### convex.json (Project Configuration)
 
-**VERIFY at:** https://docs.convex.dev/production/hosting/hosting-and-running
+**VERIFY at:** <https://docs.convex.dev/production/hosting/hosting-and-running>
 
 ```json
 {
@@ -157,6 +171,7 @@ npm install @clerk/clerk-react
 ```
 
 **Technical Explanation:**
+
 - `functions`: Directory containing Convex backend functions (queries, mutations, actions)
 - `externalPackages`: Node.js packages that can be imported in actions (not queries/mutations)
 - Most configuration is managed in Convex dashboard, not this file
@@ -166,6 +181,7 @@ npm install @clerk/clerk-react
 ### Environment Variables
 
 **.env.local (Local Development):**
+
 ```bash
 # VERIFY at: https://docs.convex.dev/production/environment-variables
 
@@ -183,6 +199,7 @@ VITE_CONVEX_URL=https://your-deployment.convex.cloud
 ```
 
 **Technical Explanation:**
+
 - **Frontend vars**: Must be prefixed (`NEXT_PUBLIC_` or `VITE_`) - bundled into client code
 - **Backend vars**: Set via CLI for security - accessible only in actions via `process.env`
 - **Separate deployments**: Dev and prod have separate environment variables
@@ -197,9 +214,10 @@ VITE_CONVEX_URL=https://your-deployment.convex.cloud
 
 #### Next.js App Router
 
-**VERIFY at:** https://docs.convex.dev/quickstart/nextjs
+**VERIFY at:** <https://docs.convex.dev/quickstart/nextjs>
 
 **app/ConvexClientProvider.tsx:**
+
 ```typescript
 // ConvexClientProvider MUST be a client component
 "use client";
@@ -216,11 +234,13 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
 ```
 
 **Technical Explanation:**
+
 - **"use client" required**: React Server Components can't use context providers
 - **ConvexReactClient**: Manages WebSocket connection for real-time updates
 - **Singleton pattern**: Create client once outside component to prevent reconnections
 
 **app/layout.tsx:**
+
 ```typescript
 // VERIFY at: https://docs.convex.dev/quickstart/nextjs
 import { ConvexClientProvider } from "./ConvexClientProvider";
@@ -237,6 +257,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 ```
 
 **Server-Side Rendering (SSR) with App Router:**
+
 ```typescript
 // VERIFY at: https://docs.convex.dev/client/nextjs/app-router
 import { preloadQuery } from "convex/nextjs";
@@ -254,9 +275,10 @@ export default async function ServerComponent() {
 
 #### Next.js Pages Router
 
-**VERIFY at:** https://docs.convex.dev/client/nextjs/pages-router/quickstart
+**VERIFY at:** <https://docs.convex.dev/client/nextjs/pages-router/quickstart>
 
 **pages/_app.tsx:**
+
 ```typescript
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import type { AppProps } from "next/app";
@@ -276,11 +298,13 @@ export default MyApp;
 ```
 
 **Technical Explanation:**
+
 - **_app.tsx pattern**: Wraps all pages with ConvexProvider
 - **Client-side only**: Pages Router has limited SSR support for Convex
 - **API routes**: Use for server-side Convex operations
 
 **API Route Example (pages/api/tasks.ts):**
+
 ```typescript
 // VERIFY at: https://docs.convex.dev/client/nextjs/pages-router/server-rendering
 import { ConvexHttpClient } from "convex/browser";
@@ -299,9 +323,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 #### React (Vite)
 
-**VERIFY at:** https://docs.convex.dev/quickstart/react
+**VERIFY at:** <https://docs.convex.dev/quickstart/react>
 
 **src/main.tsx:**
+
 ```typescript
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -321,6 +346,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 ```
 
 **Technical Explanation:**
+
 - **import.meta.env**: Vite's environment variable syntax (NOT process.env)
 - **VITE_ prefix**: Required for Vite to include variable in build
 - **Client-side only**: Pure React apps are client-rendered
@@ -331,9 +357,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
 ### Schema Definition
 
-**VERIFY at:** https://docs.convex.dev/database/schemas
+**VERIFY at:** <https://docs.convex.dev/database/schemas>
 
 **convex/schema.ts:**
+
 ```typescript
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -362,6 +389,7 @@ export default defineSchema({
 ```
 
 **Technical Explanation:**
+
 - **defineSchema**: Creates schema with type generation
 - **defineTable**: Defines table structure with validators
 - **Validators**: `v.string()`, `v.number()`, `v.boolean()`, `v.id("tableName")`, `v.optional()`, etc.
@@ -373,9 +401,10 @@ export default defineSchema({
 
 ### Queries (Reading Data)
 
-**VERIFY at:** https://docs.convex.dev/database/reading-data
+**VERIFY at:** <https://docs.convex.dev/database/reading-data>
 
 **convex/tasks.ts:**
+
 ```typescript
 import { query } from "./_generated/server";
 import { v } from "convex/values";
@@ -415,6 +444,7 @@ export const getPaginated = query({
 ```
 
 **Query Methods:**
+
 - `.collect()` - Returns all matching documents as array
 - `.take(n)` - Returns first n documents
 - `.first()` - Returns first document or null
@@ -422,6 +452,7 @@ export const getPaginated = query({
 - `.paginate(opts)` - Returns paginated results with cursor
 
 **Technical Explanation:**
+
 - **Deterministic requirement**: Queries MUST return same result for same inputs
 - **❌ Cannot use**: `Math.random()`, `Date.now()`, external API calls
 - **Automatic caching**: Convex caches query results for performance
@@ -432,9 +463,10 @@ export const getPaginated = query({
 
 ### Mutations (Writing Data)
 
-**VERIFY at:** https://docs.convex.dev/database/writing-data
+**VERIFY at:** <https://docs.convex.dev/database/writing-data>
 
 **convex/tasks.ts:**
+
 ```typescript
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
@@ -499,6 +531,7 @@ export const remove = mutation({
 ```
 
 **Technical Explanation:**
+
 - **Automatic transactions**: "The entire mutation function is automatically a single transaction"
 - **Atomicity**: Multiple db operations in one mutation execute as single atomic unit
 - **No BEGIN/COMMIT**: Convex handles transaction management automatically
@@ -510,9 +543,10 @@ export const remove = mutation({
 
 ### Actions (External API Calls)
 
-**VERIFY at:** https://docs.convex.dev/functions/actions
+**VERIFY at:** <https://docs.convex.dev/functions/actions>
 
 **convex/actions.ts:**
+
 ```typescript
 import { action } from "./_generated/server";
 import { v } from "convex/values";
@@ -561,6 +595,7 @@ export const sendEmail = action({
 ```
 
 **Technical Explanation:**
+
 - **Non-deterministic operations**: Actions can use `Date.now()`, `Math.random()`, external APIs
 - **No direct database access**: Actions cannot use `ctx.db` directly
 - **Can call queries/mutations**: Use `ctx.runQuery()` and `ctx.runMutation()`
@@ -573,25 +608,28 @@ export const sendEmail = action({
 
 ### Clerk Integration (Recommended)
 
-**VERIFY at:** https://docs.convex.dev/auth/clerk
+**VERIFY at:** <https://docs.convex.dev/auth/clerk>
 
 **Setup Steps:**
 
 1. **Install Clerk:**
+
 ```bash
 npm install @clerk/nextjs  # For Next.js
 # OR
 npm install @clerk/clerk-react  # For React
 ```
 
-2. **Configure Clerk in Convex Dashboard:**
-- Navigate to Settings → Authentication
-- Add Clerk as provider
-- Copy Issuer URL from Clerk dashboard
+1. **Configure Clerk in Convex Dashboard:**
 
-3. **Add Clerk to Next.js App:**
+   - Navigate to Settings → Authentication
+   - Add Clerk as provider
+   - Copy Issuer URL from Clerk dashboard
+
+1. **Add Clerk to Next.js App:**
 
 **app/layout.tsx:**
+
 ```typescript
 // VERIFY at: https://docs.convex.dev/auth/clerk
 import { ClerkProvider } from "@clerk/nextjs";
@@ -611,6 +649,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 ```
 
 **app/ConvexClientProvider.tsx:**
+
 ```typescript
 "use client";
 
@@ -629,9 +668,10 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
 }
 ```
 
-4. **Access Auth in Convex Functions:**
+1. **Access Auth in Convex Functions:**
 
 **convex/tasks.ts:**
+
 ```typescript
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
@@ -662,6 +702,7 @@ export const getMy = query({
 ```
 
 **Technical Explanation:**
+
 - **JWT verification**: Convex automatically verifies Clerk JWT tokens
 - **ctx.auth.getUserIdentity()**: Returns user info or null if not authenticated
 - **identity.subject**: Clerk user ID (use as userId in your database)
@@ -673,9 +714,10 @@ export const getMy = query({
 
 ### Next.js App Router Hooks
 
-**VERIFY at:** https://docs.convex.dev/client/nextjs/app-router
+**VERIFY at:** <https://docs.convex.dev/client/nextjs/app-router>
 
 **Client Component (app/TaskList.tsx):**
+
 ```typescript
 "use client";
 
@@ -711,6 +753,7 @@ export function TaskList() {
 ```
 
 **Server Component with preloadQuery:**
+
 ```typescript
 // VERIFY at: https://docs.convex.dev/client/nextjs/app-router
 import { preloadQuery } from "convex/nextjs";
@@ -729,9 +772,10 @@ export default async function TasksPage() {
 
 ### Advanced Server-Side Rendering (SSR)
 
-**VERIFY at:** https://docs.convex.dev/client/react/nextjs/server-rendering
+**VERIFY at:** <https://docs.convex.dev/client/react/nextjs/server-rendering>
 
 **Using fetchQuery for Server Components (Non-Reactive):**
+
 ```typescript
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
@@ -752,6 +796,7 @@ export default async function StaticTasksPage() {
 ```
 
 **Using fetchMutation in Server Actions:**
+
 ```typescript
 import { fetchMutation } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
@@ -774,6 +819,7 @@ export default function TaskForm() {
 ```
 
 **SSR with Authentication:**
+
 ```typescript
 import { preloadQuery } from "convex/nextjs";
 import { auth } from "@clerk/nextjs/server";
@@ -796,6 +842,7 @@ export default async function AuthenticatedPage() {
 ```
 
 **Technical Notes:**
+
 - `preloadQuery`: Preloads data, client component becomes reactive
 - `fetchQuery`: One-time fetch, no reactivity (pure server component)
 - `fetchMutation`: Execute mutations from Server Actions or Route Handlers
@@ -805,9 +852,10 @@ export default async function AuthenticatedPage() {
 
 ### React (Vite) Hooks
 
-**VERIFY at:** https://docs.convex.dev/quickstart/react
+**VERIFY at:** <https://docs.convex.dev/quickstart/react>
 
 **src/App.tsx:**
+
 ```typescript
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
@@ -851,6 +899,7 @@ export function App() {
 ```
 
 **Conditional Queries:**
+
 ```typescript
 // Skip query when condition not met
 const userId = useAuth()?.userId;
@@ -864,11 +913,12 @@ const userTasks = useQuery(
 
 ### Optimistic Updates
 
-**VERIFY at:** https://docs.convex.dev/client/react/optimistic-updates
+**VERIFY at:** <https://docs.convex.dev/client/react/optimistic-updates>
 
 Optimistic updates provide instant UI feedback before server confirmation.
 
 **Basic Example:**
+
 ```typescript
 "use client";
 import { useMutation, useQuery } from "convex/react";
@@ -897,6 +947,7 @@ export function Counter() {
 ```
 
 **Chat Message Example:**
+
 ```typescript
 const sendMessage = useMutation(api.messages.send).withOptimisticUpdate(
   (localStore, args) => {
@@ -923,6 +974,7 @@ const sendMessage = useMutation(api.messages.send).withOptimisticUpdate(
 ```
 
 **Best Practices:**
+
 - Always create new objects (don't mutate existing)
 - Check if query is loaded before updating
 - Optimistic data may differ from server response (automatically corrected)
@@ -935,15 +987,17 @@ const sendMessage = useMutation(api.messages.send).withOptimisticUpdate(
 ### Deployment Architecture
 
 **Hybrid Deployment Pattern:**
+
 - **Frontend**: Deployed on Cloudflare Pages (global edge network)
 - **Backend**: Hosted on Convex (managed functions + database)
 - **Benefits**: Geographic distribution, automatic scaling, zero DevOps
 
-**VERIFY at:** https://developers.cloudflare.com/pages/framework-guides/nextjs/
+**VERIFY at:** <https://developers.cloudflare.com/pages/framework-guides/nextjs/>
 
 ### Setup Steps
 
 **1. Create Cloudflare Pages Project:**
+
 - Dashboard → Workers & Pages → Create → Pages → Connect to Git
 - Select GitHub repository
 - Configure build settings:
@@ -952,12 +1006,14 @@ const sendMessage = useMutation(api.messages.send).withOptimisticUpdate(
   - **Build output directory**: `.next` (Next.js) or `dist` (Vite)
 
 **2. Set Environment Variables:**
+
 - Pages dashboard → Settings → Environment variables
 - Add `NEXT_PUBLIC_CONVEX_URL` with your Convex deployment URL
   - Get from: `npx convex dashboard` → Settings → Deployment URL
-  - Example: `https://happy-animal-123.convex.cloud`
+  - Example: `<https://happy-animal-123.convex.cloud`>
 
 **3. Deploy:**
+
 - Push to GitHub → Cloudflare automatically builds and deploys
 - Preview deployments for all branches
 - Production deployment on main branch
@@ -965,16 +1021,19 @@ const sendMessage = useMutation(api.messages.send).withOptimisticUpdate(
 ### Environment Variable Management
 
 **Local (.env.local):**
+
 ```bash
 NEXT_PUBLIC_CONVEX_URL=https://your-dev-deployment.convex.cloud
 ```
 
 **Production (Cloudflare Pages Dashboard):**
+
 ```bash
 NEXT_PUBLIC_CONVEX_URL=https://your-prod-deployment.convex.cloud
 ```
 
 **Convex Backend Variables:**
+
 ```bash
 # Dev environment
 npx convex env set STRIPE_SECRET_KEY sk_test_...
@@ -984,6 +1043,7 @@ npx convex env set STRIPE_SECRET_KEY sk_live_... --prod
 ```
 
 **Technical Explanation:**
+
 - **Build-time variables**: `NEXT_PUBLIC_*` bundled during build on Cloudflare
 - **Runtime variables**: Cloudflare Pages Functions can access runtime environment
 - **Separate Convex deployments**: Use different Convex URLs for dev/staging/prod
@@ -995,7 +1055,7 @@ npx convex env set STRIPE_SECRET_KEY sk_live_... --prod
 **Common Issues and Solutions:**
 
 | Issue | Cause | Solution |
-|-------|-------|----------|
+| ------- | ------- | ---------- |
 | "Convex URL not found" | Missing env var | Add `NEXT_PUBLIC_CONVEX_URL` in Pages dashboard |
 | Build fails on Cloudflare | Node version | Set `NODE_VERSION=18` in env vars |
 | Functions timeout | Edge runtime limits | Use Convex for heavy processing, not Pages Functions |
@@ -1003,6 +1063,7 @@ npx convex env set STRIPE_SECRET_KEY sk_live_... --prod
 | WebSocket connection fails | Proxy/firewall | Ensure `*.convex.cloud` is allowed |
 
 **Environment-Specific Deployment:**
+
 ```bash
 # Create separate Convex projects for each environment
 # Production
@@ -1013,11 +1074,13 @@ npx convex dev --project my-app-staging
 ```
 
 **DNS & Custom Domains:**
+
 - Cloudflare Pages handles frontend domains automatically
 - Convex deployment URL remains `*.convex.cloud`
 - No custom domain needed for Convex (frontend proxies requests)
 
 **Build Optimization:**
+
 ```bash
 # Cloudflare Pages Build Settings
 Build command: npm run build
@@ -1026,6 +1089,7 @@ Root directory: / (or your app subdirectory)
 ```
 
 **Debugging Production Issues:**
+
 ```bash
 # Stream logs from production
 npx convex logs --prod
@@ -1035,6 +1099,7 @@ npx convex dashboard
 ```
 
 **Important Notes:**
+
 - Cloudflare Pages has 100ms CPU time limit for edge functions
 - Use Convex actions for heavy computation (30s limit on paid plans)
 - Real-time features (WebSocket) work out-of-box with Convex
@@ -1044,7 +1109,7 @@ npx convex dashboard
 
 ## Development Commands
 
-**VERIFY at:** https://docs.convex.dev/cli
+**VERIFY at:** <https://docs.convex.dev/cli>
 
 ### CLI Setup & Configuration
 
@@ -1207,6 +1272,7 @@ npx convex env unset STRIPE_SECRET_KEY
 ```
 
 **Technical Explanation:**
+
 - Environment variables accessible in **actions only** (via `process.env`)
 - Separate dev/prod environments
 - Secrets never exposed in client code
@@ -1252,7 +1318,7 @@ npx convex data
 
 ## TypeScript Patterns
 
-**VERIFY at:** https://docs.convex.dev/typescript
+**VERIFY at:** <https://docs.convex.dev/typescript>
 
 ### Generated Types
 
@@ -1272,6 +1338,7 @@ const taskId: Id<"tasks"> = "j57a8c9d0e1f2g3h4i5j6k7l";
 ```
 
 **Technical Explanation:**
+
 - **convex/_generated/api**: Exports typed function references
 - **convex/_generated/dataModel**: Exports `Doc<>`, `Id<>` types based on schema
 - **Automatic updates**: Types regenerate when schema or functions change
@@ -1302,18 +1369,20 @@ await createTask({
 
 ## Testing
 
-**VERIFY at:** https://docs.convex.dev/testing
+**VERIFY at:** <https://docs.convex.dev/testing>
 
 ### convex-test Setup
 
 The `convex-test` library provides a mocked Convex backend for unit testing with Vitest.
 
 **Installation:**
+
 ```bash
 npm install --save-dev convex-test vitest @edge-runtime/vm
 ```
 
 **vitest.config.ts:**
+
 ```typescript
 import { defineConfig } from "vitest/config";
 
@@ -1326,6 +1395,7 @@ export default defineConfig({
 ```
 
 **package.json scripts:**
+
 ```json
 {
   "scripts": {
@@ -1339,6 +1409,7 @@ export default defineConfig({
 ### Writing Tests
 
 **convex/messages.test.ts:**
+
 ```typescript
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
@@ -1436,11 +1507,12 @@ test("action with external API", async () => {
 
 ## CI/CD & Deployment
 
-**VERIFY at:** https://docs.convex.dev/production/hosting
+**VERIFY at:** <https://docs.convex.dev/production/hosting>
 
 ### GitHub Actions Workflow
 
 **.github/workflows/test.yml:**
+
 ```yaml
 name: Test and Deploy
 
@@ -1484,11 +1556,12 @@ jobs:
 
 ### Preview Deployments
 
-**VERIFY at:** https://docs.convex.dev/production/hosting/preview-deployments
+**VERIFY at:** <https://docs.convex.dev/production/hosting/preview-deployments>
 
 Preview deployments create isolated Convex backends for each PR.
 
 **.github/workflows/preview.yml:**
+
 ```yaml
 name: Preview Deployment
 
@@ -1530,6 +1603,7 @@ jobs:
 ### Environment Setup
 
 **Getting CONVEX_DEPLOY_KEY:**
+
 ```bash
 # Generate deploy key for CI/CD
 npx convex deploy-key create
@@ -1541,6 +1615,7 @@ npx convex deploy-key create
 ```
 
 **Preview Deployment Notes:**
+
 - Auto-deleted after 5 days (14 days on Professional)
 - Each PR gets isolated database
 - Use `--preview-run` to seed test data
@@ -1552,7 +1627,7 @@ npx convex deploy-key create
 
 ### Relationship Modeling
 
-**VERIFY at:** https://docs.convex.dev/database/document-ids#relationships
+**VERIFY at:** <https://docs.convex.dev/database/document-ids#relationships>
 
 **No JOIN syntax - fetch related documents in parallel:**
 
@@ -1579,6 +1654,7 @@ export const getTasksWithUsers = query({
 ```
 
 **Technical Explanation:**
+
 - **v.id("tableName")**: Creates typed reference to another table
 - **No JOINs**: Fetch related documents separately, combine in JavaScript
 - **Denormalization trade-off**: Sometimes duplicate data for performance
@@ -1587,9 +1663,10 @@ export const getTasksWithUsers = query({
 
 ### Pagination with usePaginatedQuery
 
-**VERIFY at:** https://docs.convex.dev/database/pagination
+**VERIFY at:** <https://docs.convex.dev/database/pagination>
 
 **Client Component:**
+
 ```typescript
 import { usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -1614,6 +1691,7 @@ export function InfiniteTaskList() {
 ```
 
 **Technical Explanation:**
+
 - **Cursor-based pagination**: More efficient than OFFSET for large datasets
 - **usePaginatedQuery**: Manages pagination state automatically
 - **CanLoadMore status**: Indicates if more items available
@@ -1622,9 +1700,10 @@ export function InfiniteTaskList() {
 
 ### HTTP Actions (Webhooks)
 
-**VERIFY at:** https://docs.convex.dev/functions/http-actions
+**VERIFY at:** <https://docs.convex.dev/functions/http-actions>
 
 **convex/http.ts:**
+
 ```typescript
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
@@ -1670,7 +1749,8 @@ export default http;
 ```
 
 **Technical Explanation:**
-- **HTTP endpoints**: Accessible at `https://your-deployment.convex.site/stripe/webhook`
+
+- **HTTP endpoints**: Accessible at `<https://your-deployment.convex.site/stripe/webhook`>
 - **Use cases**: Stripe webhooks, external API integrations, custom REST endpoints
 - **Cannot access ctx.db directly**: Must call queries/mutations with `ctx.run*()`
 
@@ -1678,9 +1758,10 @@ export default http;
 
 ### Scheduled Functions (Cron Jobs)
 
-**VERIFY at:** https://docs.convex.dev/scheduling/scheduled-functions
+**VERIFY at:** <https://docs.convex.dev/scheduling/scheduled-functions>
 
 **convex/crons.ts:**
+
 ```typescript
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
@@ -1712,6 +1793,7 @@ export default crons;
 ```
 
 **Technical Explanation:**
+
 - **Cron syntax**: Standard cron expressions
 - **Internal functions**: Use `internal.*` to prevent public access
 - **Use cases**: Daily aggregations, cleanup tasks, periodic syncs
@@ -1720,9 +1802,10 @@ export default crons;
 
 ### Error Handling
 
-**VERIFY at:** https://docs.convex.dev/functions/error-handling
+**VERIFY at:** <https://docs.convex.dev/functions/error-handling>
 
 **convex/tasks.ts:**
+
 ```typescript
 import { ConvexError } from "convex/values";
 import { mutation } from "./_generated/server";
@@ -1759,6 +1842,7 @@ export const create = mutation({
 ```
 
 **Client Error Handling:**
+
 ```typescript
 const createTask = useMutation(api.tasks.create);
 
@@ -1773,6 +1857,7 @@ try {
 ```
 
 **Technical Explanation:**
+
 - **ConvexError**: Type-safe error propagation to client
 - **Automatic retry**: Transient failures (network issues) automatically retried
 - **Error typing**: Client receives properly typed error data
@@ -1781,9 +1866,10 @@ try {
 
 ### Validation Patterns
 
-**VERIFY at:** https://docs.convex.dev/database/schemas#validators
+**VERIFY at:** <https://docs.convex.dev/database/schemas#validators>
 
 **Custom Validators:**
+
 ```typescript
 import { v } from "convex/values";
 
@@ -1807,6 +1893,7 @@ export const createUser = mutation({
 ```
 
 **Technical Explanation:**
+
 - **Runtime validation**: Arguments validated before function executes
 - **Schema-level validation**: Enforced on write operations
 - **Type safety**: Validators generate TypeScript types
@@ -1815,9 +1902,10 @@ export const createUser = mutation({
 
 ### File Storage
 
-**VERIFY at:** https://docs.convex.dev/file-storage
+**VERIFY at:** <https://docs.convex.dev/file-storage>
 
 **File Upload Action:**
+
 ```typescript
 import { action } from "./_generated/server";
 import { v } from "convex/values";
@@ -1843,6 +1931,7 @@ export const saveFile = action({
 ```
 
 **Client Upload:**
+
 ```typescript
 const generateUploadUrl = useMutation(api.files.generateUploadUrl);
 const saveFile = useMutation(api.files.saveFile);
@@ -1869,13 +1958,14 @@ const handleUpload = async (file: File) => {
 
 ## Full Text Search
 
-**VERIFY at:** https://docs.convex.dev/text-search
+**VERIFY at:** <https://docs.convex.dev/text-search>
 
 ### Defining Search Indexes
 
 Search indexes enable full-text search over string fields using BM25 scoring.
 
 **convex/schema.ts:**
+
 ```typescript
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -1905,6 +1995,7 @@ export default defineSchema({
 ### Running Search Queries
 
 **convex/messages.ts:**
+
 ```typescript
 import { query } from "./_generated/server";
 import { v } from "convex/values";
@@ -1944,6 +2035,7 @@ export const searchRecent = query({
 ```
 
 **Search Constraints:**
+
 - Up to 16 search terms per query
 - Up to 8 filter expressions
 - Maximum 1024 documents scanned per query
@@ -1954,13 +2046,14 @@ export const searchRecent = query({
 
 ## Vector Search
 
-**VERIFY at:** https://docs.convex.dev/vector-search
+**VERIFY at:** <https://docs.convex.dev/vector-search>
 
 ### Defining Vector Indexes
 
 Vector indexes enable semantic similarity search using embeddings.
 
 **convex/schema.ts:**
+
 ```typescript
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -1982,6 +2075,7 @@ export default defineSchema({
 ### Storing Embeddings
 
 **convex/documents.ts:**
+
 ```typescript
 import { action, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
@@ -2033,6 +2127,7 @@ export const insertDocument = internalMutation({
 ### Running Vector Searches
 
 **convex/search.ts:**
+
 ```typescript
 import { action, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
@@ -2090,6 +2185,7 @@ export const getByIds = internalQuery({
 ```
 
 **Vector Search Constraints:**
+
 - Up to 4 vector indexes per table
 - Maximum 256 results per query
 - Dimensions must match exactly (e.g., 1536 for OpenAI)
@@ -2100,13 +2196,14 @@ export const getByIds = internalQuery({
 
 ## Internal Functions
 
-**VERIFY at:** https://docs.convex.dev/functions/internal-functions
+**VERIFY at:** <https://docs.convex.dev/functions/internal-functions>
 
 ### What Are Internal Functions?
 
 Internal functions can only be called by other Convex functions (not from clients). They reduce your app's attack surface.
 
 **convex/internal.ts:**
+
 ```typescript
 import { internalQuery, internalMutation, internalAction } from "./_generated/server";
 import { v } from "convex/values";
@@ -2167,6 +2264,7 @@ export const handleWebhook = action({
 ```
 
 **When to Use Internal Functions:**
+
 - Privileged operations (admin-only actions)
 - Operations called from scheduled functions/crons
 - Business logic that should bypass client validation
@@ -2176,13 +2274,14 @@ export const handleWebhook = action({
 
 ## Components
 
-**VERIFY at:** https://docs.convex.dev/components
+**VERIFY at:** <https://docs.convex.dev/components>
 
 ### What Are Components?
 
 **Convex Components** are self-contained backend modules that package code, schemas, and persistent data into isolated sandboxes. They are "like mini self-contained Convex backends" that can be safely added to any Convex app.
 
 **Key Characteristics:**
+
 - **Data Isolation**: Components cannot read your app's tables or call your functions unless explicitly passed in
 - **Own Database Tables**: Each component maintains its own isolated database tables
 - **Own File Storage**: Separate file storage independent from the main application
@@ -2193,7 +2292,7 @@ export const handleWebhook = action({
 **Why Use Components Instead of npm Packages?**
 
 | Feature | npm Package | Convex Component |
-|---------|-------------|------------------|
+| --------- | ------------- | ------------------ |
 | State Persistence | In-memory (lost on restart) | Database-backed (persistent) |
 | Data Access | Direct database access | Explicit API boundaries |
 | Transactional Guarantees | None (distributed inconsistencies) | Atomic commits across boundaries |
@@ -2214,6 +2313,7 @@ npm install @convex-dev/component-name
 ```
 
 **Common Components:**
+
 ```bash
 npm install @convex-dev/agent      # AI agents with threads/messages
 npm install @convex-dev/rag        # RAG (Retrieval-Augmented Generation)
@@ -2243,6 +2343,7 @@ export default app;
 ```
 
 **Technical Explanation:**
+
 - `defineApp()` creates the app configuration
 - `use()` mounts components with unique names
 - Each component instance has separate tables/functions
@@ -2265,6 +2366,7 @@ This generates the `components` object in your API for accessing component funct
 Components are accessed through `components` object in generated API:
 
 **convex/myFunctions.ts:**
+
 ```typescript
 import { query, mutation, action } from "./_generated/server";
 import { components } from "./_generated/api";
@@ -2306,6 +2408,7 @@ export const processWithAI = action({
 ```
 
 **Important Rules:**
+
 - Queries can only call component **queries** (maintains reactivity)
 - Mutations can call component **mutations** (maintains transactions)
 - Actions can call component **actions**
@@ -2361,6 +2464,7 @@ export const createWithFallback = mutation({
 ```
 
 **Technical Explanation:**
+
 - All writes in a mutation commit together by default
 - If parent mutation throws, all writes (app + component) rollback
 - If component mutation throws but caller catches it, only component writes rollback
@@ -2377,6 +2481,7 @@ export const createWithFallback = mutation({
 3. Filter logs by component: `data.function.component_path`
 
 **Example Log Filtering:**
+
 ```bash
 # View logs from specific component
 npx convex logs --filter 'data.function.component_path == "agent"'
@@ -2409,7 +2514,7 @@ test("component integration", async () => {
 
 **Directory Structure:**
 
-```
+```text
 my-component/
 ├── convex.config.ts   # Component configuration
 ├── schema.ts          # Component-specific schema
@@ -2419,6 +2524,7 @@ my-component/
 ```
 
 **convex.config.ts:**
+
 ```typescript
 import { defineComponent } from "convex/server";
 
@@ -2426,6 +2532,7 @@ export default defineComponent("myComponent");
 ```
 
 **schema.ts:**
+
 ```typescript
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -2439,6 +2546,7 @@ export default defineSchema({
 ```
 
 **functions.ts (Public API):**
+
 ```typescript
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
@@ -2463,6 +2571,7 @@ export const listItems = query({
 ```
 
 **_internal/helpers.ts (Internal - Not Exposed):**
+
 ```typescript
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
@@ -2479,7 +2588,7 @@ export const cleanup = internalMutation({
 **Key Constraints for Component Authors:**
 
 | Constraint | Reason |
-|------------|--------|
+| ------------ | -------- |
 | No `ctx.auth` | Authentication happens in app, not component |
 | All `Id<"table">` become strings at boundary | ID types don't cross boundaries |
 | No `process.env` access | Components can't access environment variables |
@@ -2516,9 +2625,10 @@ npm publish
 
 ### Popular Components
 
-**Browse All Components:** https://convex.dev/components
+**Browse All Components:** <https://convex.dev/components>
 
 **Common Use Cases:**
+
 - `@convex-dev/agent` - AI agents with threads, messages, tool calls
 - `@convex-dev/rag` - RAG (Retrieval-Augmented Generation) for semantic search
 - `@convex-dev/rate-limiter` - API rate limiting and usage tracking
@@ -2533,6 +2643,7 @@ npm install @convex-dev/rate-limiter
 ```
 
 **convex/convex.config.ts:**
+
 ```typescript
 import { defineApp } from "convex/server";
 import rateLimiter from "@convex-dev/rate-limiter/convex.config";
@@ -2543,6 +2654,7 @@ export default app;
 ```
 
 **convex/rateLimit.ts:**
+
 ```typescript
 import { components } from "./_generated/api";
 import { RateLimiter } from "@convex-dev/rate-limiter";
@@ -2557,6 +2669,7 @@ export const consumeApiToken = rateLimiter.consume("apiRequests");
 ```
 
 **Usage in mutation:**
+
 ```typescript
 export const createPost = mutation({
   args: { content: v.string() },
@@ -2585,6 +2698,7 @@ npm install @convex-dev/sharded-counter
 ```
 
 **For high-frequency counters that would cause OCC conflicts:**
+
 ```typescript
 import { components } from "./_generated/api";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
@@ -2617,13 +2731,14 @@ Components enable composability for complex features without building from scrat
 
 ## AI & Agents
 
-**VERIFY at:** https://docs.convex.dev/agents
+**VERIFY at:** <https://docs.convex.dev/agents>
 
 ### Agent Component Overview
 
 The **Convex Agent component** is a core building block for constructing AI-powered applications with persistent conversation history, tool calls, and RAG integration.
 
 **Key Capabilities:**
+
 - Persistent conversation threads with automatic history management
 - Real-time updates across all connected clients (reactivity)
 - Tool calling for external function invocation
@@ -2633,6 +2748,7 @@ The **Convex Agent component** is a core building block for constructing AI-powe
 - Rate limiting and usage tracking
 
 **Use Cases:**
+
 - AI chatbots with memory
 - Multi-agent systems
 - Customer support agents
@@ -2652,6 +2768,7 @@ npm install @convex-dev/rag
 ```
 
 **Technical Explanation:**
+
 - Agent component is a Convex component (reusable pattern)
 - Manages threads, messages, and agent interactions
 - Integrates seamlessly with Convex actions and queries
@@ -2660,9 +2777,10 @@ npm install @convex-dev/rag
 
 ### Threads and Messages
 
-**VERIFY at:** https://docs.convex.dev/agents
+**VERIFY at:** <https://docs.convex.dev/agents>
 
 **convex/agents.ts:**
+
 ```typescript
 import { agent } from "@convex-dev/agent";
 import { OpenAI } from "openai";
@@ -2714,6 +2832,7 @@ export const getMessages = query({
 ```
 
 **Technical Explanation:**
+
 - **Threads**: Persistent conversation containers
 - **Messages**: Individual messages with role (user/assistant/system)
 - **Automatic context**: Previous messages automatically included in LLM calls
@@ -2724,11 +2843,12 @@ export const getMessages = query({
 
 ### Tool Calls
 
-**VERIFY at:** https://docs.convex.dev/agents
+**VERIFY at:** <https://docs.convex.dev/agents>
 
 Enable agents to call external functions as part of their reasoning process.
 
 **Example: Agent with Weather Tool**
+
 ```typescript
 import { agent, tool } from "@convex-dev/agent";
 import { OpenAI } from "openai";
@@ -2779,6 +2899,7 @@ export const askWeather = action({
 ```
 
 **Technical Explanation:**
+
 - **Tool definition**: Name, description, parameters, handler function
 - **Automatic invocation**: LLM decides when to use tools
 - **Multi-turn**: After tool call, LLM can generate final response
@@ -2788,13 +2909,14 @@ export const askWeather = action({
 
 ### RAG Integration
 
-**VERIFY at:** https://docs.convex.dev/agents/rag
+**VERIFY at:** <https://docs.convex.dev/agents/rag>
 
 Integrate Retrieval-Augmented Generation for context-aware responses.
 
 **Two Approaches:**
 
 **1. Upfront Context Injection** (search before LLM call)
+
 ```typescript
 import { rag } from "@convex-dev/rag";
 import { agent } from "@convex-dev/agent";
@@ -2830,6 +2952,7 @@ export const chatWithDocs = action({
 ```
 
 **2. RAG as Tool Calls** (LLM decides when to search)
+
 ```typescript
 // Define RAG as a tool
 const searchDocuments = tool({
@@ -2857,6 +2980,7 @@ const ragAgent = agent({
 ```
 
 **Technical Explanation:**
+
 - **Upfront approach**: Simpler, always includes context
 - **Tool approach**: More flexible, LLM decides when to search
 - **Hybrid vector/text search**: Combines semantic and keyword matching
@@ -2866,7 +2990,7 @@ const ragAgent = agent({
 
 ### Streaming Responses
 
-**VERIFY at:** https://docs.convex.dev/agents
+**VERIFY at:** <https://docs.convex.dev/agents>
 
 Stream agent responses for real-time UI updates.
 
@@ -2891,6 +3015,7 @@ export const streamChat = action({
 ```
 
 **Client Usage:**
+
 ```typescript
 const streamChat = useAction(api.agents.streamChat);
 
@@ -2905,6 +3030,7 @@ const handleSend = async (message: string) => {
 ```
 
 **Technical Explanation:**
+
 - **Streaming API**: Returns async iterable
 - **Real-time UI**: Update UI incrementally as text generates
 - **Better UX**: Users see immediate progress vs waiting for full response
@@ -2913,7 +3039,7 @@ const handleSend = async (message: string) => {
 
 ### Rate Limiting & Usage Tracking
 
-**VERIFY at:** https://docs.convex.dev/agents
+**VERIFY at:** <https://docs.convex.dev/agents>
 
 Track and limit agent usage per user or team.
 
@@ -2956,6 +3082,7 @@ export const chatWithLimit = action({
 ```
 
 **Technical Explanation:**
+
 - **Rate limiting**: Prevent abuse, comply with LLM provider limits
 - **Usage tracking**: Bill per user/team based on token consumption
 - **Cost control**: Monitor and cap spending per user
@@ -2964,7 +3091,7 @@ export const chatWithLimit = action({
 
 ### Multi-Agent Workflows
 
-**VERIFY at:** https://docs.convex.dev/agents/workflows
+**VERIFY at:** <https://docs.convex.dev/agents/workflows>
 
 Coordinate multiple agents for complex tasks.
 
@@ -3015,6 +3142,7 @@ export const createArticle = action({
 ```
 
 **Technical Explanation:**
+
 - **Agent specialization**: Different agents for different tasks
 - **Sequential workflows**: Output of one agent feeds into another
 - **Durable execution**: Workflows persist across interruptions
@@ -3026,9 +3154,10 @@ export const createArticle = action({
 
 ### Query Functions Must Be Deterministic
 
-**VERIFY at:** https://docs.convex.dev/functions/query-functions
+**VERIFY at:** <https://docs.convex.dev/functions/query-functions>
 
 **❌ DON'T DO THIS:**
+
 ```typescript
 export const getBad = query({
   handler: async (ctx) => {
@@ -3043,6 +3172,7 @@ export const getBad = query({
 ```
 
 **✅ DO THIS:**
+
 ```typescript
 // Queries: Only database reads
 export const getGood = query({
@@ -3063,6 +3193,7 @@ export const doNonDeterministic = action({
 ```
 
 **Why:**
+
 - Queries are cached and must return same result for same inputs
 - Enables real-time reactivity and performance optimizations
 
@@ -3070,9 +3201,10 @@ export const doNonDeterministic = action({
 
 ### Index Usage Requirements
 
-**VERIFY at:** https://docs.convex.dev/database/indexes#querying-indexes
+**VERIFY at:** <https://docs.convex.dev/database/indexes#querying-indexes>
 
 **❌ This will scan entire table (slow):**
+
 ```typescript
 // No index usage - scans all documents
 const tasks = await ctx.db
@@ -3082,6 +3214,7 @@ const tasks = await ctx.db
 ```
 
 **✅ Use indexes explicitly:**
+
 ```typescript
 // Efficiently uses "by_user" index
 const tasks = await ctx.db
@@ -3093,6 +3226,7 @@ const tasks = await ctx.db
 **Critical:** "You must explicitly use the withIndex() syntax to ensure your database uses the index"
 
 **Technical Explanation:**
+
 - Convex doesn't auto-select indexes like SQL databases
 - Performance impact: Without indexes, queries scan entire table
 - Define indexes in schema, use with `.withIndex()` in queries
@@ -3101,13 +3235,15 @@ const tasks = await ctx.db
 
 ### Local vs Production Environments
 
-**VERIFY at:** https://docs.convex.dev/production/hosting/hosting-and-running
+**VERIFY at:** <https://docs.convex.dev/production/hosting/hosting-and-running>
 
 **Separate Deployments:**
+
 - `npx convex dev` → Creates/uses **dev deployment**
 - `npx convex deploy --prod` → Deploys to **production**
 
 **Environment Variables:**
+
 ```bash
 # Dev environment
 npx convex env set STRIPE_SECRET_KEY sk_test_...
@@ -3117,6 +3253,7 @@ npx convex env set STRIPE_SECRET_KEY sk_live_... --prod
 ```
 
 **Frontend URLs:**
+
 ```bash
 # .env.local (development)
 NEXT_PUBLIC_CONVEX_URL=https://dev-deployment.convex.cloud
@@ -3126,6 +3263,7 @@ NEXT_PUBLIC_CONVEX_URL=https://prod-deployment.convex.cloud
 ```
 
 **Best Practice:**
+
 - Always develop against dev deployment
 - Only deploy to production after thorough testing
 
@@ -3133,7 +3271,7 @@ NEXT_PUBLIC_CONVEX_URL=https://prod-deployment.convex.cloud
 
 ### Optimistic Concurrency Control (OCC) & Write Conflicts
 
-**VERIFY at:** https://docs.convex.dev/database/advanced/occ
+**VERIFY at:** <https://docs.convex.dev/database/advanced/occ>
 
 **What is OCC?**
 
@@ -3154,6 +3292,7 @@ await ctx.db.patch(aliceId, { balance: alice.balance - 5 });
 ```
 
 **Technical Explanation:**
+
 - At commit time, Convex checks if all read records are still at their original versions
 - If any record changed, the mutation **fails and automatically retries**
 - Similar to Git: "Cannot push because HEAD is out of date → rebase and try again"
@@ -3163,7 +3302,7 @@ await ctx.db.patch(aliceId, { balance: alice.balance - 5 });
 
 When retries exceed threshold (high contention), you'll see:
 
-```
+```text
 OccRetryThresholdExceeded: Documents read from or written to the
 table 'counters' changed while this mutation was being run and on
 every subsequent retry.
@@ -3189,11 +3328,12 @@ export const incrementCounter = mutation({
 ```
 
 **✅ FIX: Use Sharded Counter component**
+
 ```bash
 npm install @convex-dev/sharded-counter
 ```
 
-2. **Broad data dependencies (reading entire tables):**
+1. **Broad data dependencies (reading entire tables):**
 
 ```typescript
 // ❌ CONFLICT PRONE: Reads ALL tasks
@@ -3209,6 +3349,7 @@ export const addTask = mutation({
 ```
 
 **✅ FIX: Read only necessary data with indexes**
+
 ```typescript
 export const addTask = mutation({
   args: { userId: v.id("users"), text: v.string() },
@@ -3231,7 +3372,7 @@ export const addTask = mutation({
 **Best Practices to Avoid Conflicts:**
 
 | Issue | Solution |
-|-------|----------|
+| ------- | ---------- |
 | Hot document (many writes to same record) | Shard data across multiple documents |
 | Reading entire tables | Use indexed queries with selective range expressions |
 | Unexpected repeated calls | Avoid mutations in loops, debounce client calls |
@@ -3242,6 +3383,7 @@ export const addTask = mutation({
 Write mutations "as if they will always succeed, and always be guaranteed to be atomic." Convex handles conflicts transparently through automatic retries, providing true serializability without developer intervention.
 
 **When to Use Components:**
+
 - **Sharded Counter**: Distribute high-frequency writes across multiple documents
 - **Workpool**: Prioritize critical tasks through separate queues
 
@@ -3249,13 +3391,14 @@ Write mutations "as if they will always succeed, and always be guaranteed to be 
 
 ## Performance & Monitoring
 
-**VERIFY at:** https://docs.convex.dev/production/monitoring
+**VERIFY at:** <https://docs.convex.dev/production/monitoring>
 
 ### Convex Dashboard Features
 
 Access at: `npx convex dashboard`
 
 **Monitoring Capabilities:**
+
 - **Real-time function logs**: View all query/mutation/action executions
 - **Query performance metrics**: Execution time, call frequency
 - **Database size and usage**: Track storage and document counts
@@ -3264,6 +3407,7 @@ Access at: `npx convex dashboard`
 ### Performance Best Practices
 
 **Index Optimization:**
+
 ```typescript
 // Define indexes for frequently queried fields
 export default defineSchema({
@@ -3279,6 +3423,7 @@ export default defineSchema({
 ```
 
 **Pagination for Large Datasets:**
+
 ```typescript
 // Don't fetch all documents at once
 const allTasks = await ctx.db.query("tasks").collect();  // ❌ Slow
@@ -3288,6 +3433,7 @@ const tasks = await ctx.db.query("tasks").take(100);  // ✅ Faster
 ```
 
 **Batch Operations:**
+
 ```typescript
 // Fetch related documents in parallel
 const tasks = await ctx.db.query("tasks").collect();
@@ -3300,16 +3446,18 @@ const users = await Promise.all(
 
 ### Log Streams & Exception Reporting
 
-**VERIFY at:** https://docs.convex.dev/production/integrations/log-streams
+**VERIFY at:** <https://docs.convex.dev/production/integrations/log-streams>
 
 Stream logs to external services for monitoring and alerting. Requires Convex Pro plan.
 
 **Available Destinations:**
+
 - **Axiom** - Log analytics with automatic dashboard creation
 - **Datadog** - APM and log management
 - **Webhook** - Custom HTTP endpoints (any service)
 
 **Setup via Dashboard:**
+
 1. Go to Convex Dashboard → Settings → Integrations
 2. Select destination (Axiom, Datadog, or Webhook)
 3. Configure credentials and options
@@ -3318,7 +3466,7 @@ Stream logs to external services for monitoring and alerting. Requires Convex Pr
 **Log Event Types:**
 
 | Event Type | Description |
-|------------|-------------|
+| ------------ | ------------- |
 | `console` | Function console.log/warn/error output |
 | `function_execution` | Execution metrics (duration, status, errors) |
 | `audit_log` | Deployment changes and admin actions |
@@ -3326,6 +3474,7 @@ Stream logs to external services for monitoring and alerting. Requires Convex Pr
 | `storage_usage` | Database and file storage metrics |
 
 **Webhook Security:**
+
 ```typescript
 // Verify webhook signature (HMAC-SHA256)
 const signature = request.headers.get("x-webhook-signature");
@@ -3336,6 +3485,7 @@ const timestamp = request.headers.get("x-webhook-timestamp");
 ```
 
 **Best Practices:**
+
 - Use Axiom for quick setup with pre-built dashboards
 - Datadog for existing APM infrastructure
 - Webhook for custom alerting or unsupported services
@@ -3345,17 +3495,18 @@ const timestamp = request.headers.get("x-webhook-timestamp");
 
 ## Production Guarantees & Limits
 
-**VERIFY at:** https://docs.convex.dev/production/state/
+**VERIFY at:** <https://docs.convex.dev/production/state/>
 
 ### Availability & Uptime
 
 **Availability Target:**
+
 - **99.99% availability** (four nines) for all Convex deployments
 - Maintenance downtime may occur without prior notice
 - Physical outages will not compromise data durability
 
 **Important Note:**
-Convex currently does not offer formal contractual SLAs beyond their standard Terms of Service. For enterprise requirements, contact support@convex.dev.
+Convex currently does not offer formal contractual SLAs beyond their standard Terms of Service. For enterprise requirements, contact <support@convex.dev>.
 
 **Technical Explanation:**
 Database state is replicated durably across multiple physical availability zones to ensure availability even during infrastructure failures.
@@ -3365,15 +3516,18 @@ Database state is replicated durably across multiple physical availability zones
 ### Data Protection & Security
 
 **Encryption:**
+
 - **All user data encrypted at rest** in Convex deployments
 - Encryption happens automatically, no configuration required
 
 **Data Replication:**
+
 - Database state replicated across **multiple physical availability zones**
 - Protects against data center failures
 - No manual failover required
 
 **Backup Durability:**
+
 - Regular periodic and incremental backups performed automatically
 - Backups stored with **99.999999999% durability** (eleven nines)
 - Comparable to Amazon S3 Standard storage class
@@ -3386,6 +3540,7 @@ Backup durability of 11 nines means the annual probability of losing a backup is
 ### Backward Compatibility Guarantee
 
 **Commitment:**
+
 - Code written for Convex 1.0+ will continue to work without modification
 - Breaking changes will have **substantial advance notice** to affected teams
 - Direct communication for any potential breaking changes
@@ -3397,18 +3552,19 @@ You can build production applications on Convex with confidence that future upda
 
 ### Platform Limits
 
-**VERIFY at:** https://docs.convex.dev/production/state/limits
+**VERIFY at:** <https://docs.convex.dev/production/state/limits>
 
 #### Function Execution Limits
 
 | Resource | Limit | Notes |
-|----------|-------|-------|
+| ---------- | ------- | ------- |
 | Query/Mutation execution | 1 second | User code only (excludes framework overhead) |
 | Action execution | 10 minutes | Long-running operations |
 | Concurrent Node actions (Free/Starter) | 64 | Parallel action executions |
 | Concurrent Node actions (Pro) | 1,000 | Professional plan benefit |
 
 **Technical Explanation:**
+
 - Queries/mutations have 1-second limit because they're transactional (must be fast)
 - Actions can run up to 10 minutes for external API calls, file processing, etc.
 - Exceeding limits throws error; design functions to complete within timeframes
@@ -3416,7 +3572,7 @@ You can build production applications on Convex with confidence that future upda
 #### Document & Database Limits
 
 | Resource | Limit | Notes |
-|----------|-------|-------|
+| ---------- | ------- | ------- |
 | Document size | 1 MiB | Per document maximum |
 | Fields per document | 1,024 | Total field count |
 | Object/array nesting depth | 16 levels | Nested structures |
@@ -3430,7 +3586,7 @@ If you hit the 1 MiB document limit, split data across multiple related document
 #### Transaction Limits
 
 | Resource | Limit | Notes |
-|----------|-------|-------|
+| ---------- | ------- | ------- |
 | Data read/written per transaction | 16 MiB | Total transaction size |
 | Documents written per transaction | 16,000 | Mutation write limit |
 | Documents scanned per transaction | 32,000 | Query/filter limit |
@@ -3442,12 +3598,13 @@ These limits ensure mutations remain fast and prevent runaway transactions. If y
 #### Storage & Bandwidth Limits
 
 | Plan | Database Storage | File Storage | Database Bandwidth | File Bandwidth | Function Calls |
-|------|------------------|--------------|-------------------|----------------|----------------|
+| ------ | ------------------ | -------------- | ------------------- | ---------------- | ---------------- |
 | Free | 0.5 GiB | 1 GiB | 1 GiB/month | 1 GiB/month | 1M calls/month |
 | Starter | 8 GiB | 10 GiB | 8 GiB/month | 10 GiB/month | 5M calls/month |
 | Professional | 50 GiB | 100 GiB | 50 GiB/month | 50 GiB/month | 25M calls/month |
 
 **Overage Pricing:**
+
 - Database storage: $1.00/GiB/month
 - File storage: $0.15/GiB/month
 - Additional bandwidth and calls: usage-based pricing
@@ -3455,7 +3612,7 @@ These limits ensure mutations remain fast and prevent runaway transactions. If y
 #### Search Limits
 
 | Feature | Limit | Notes |
-|---------|-------|-------|
+| --------- | ------- | ------- |
 | Full-text search indexes | 4 per table | Text search capability |
 | Full-text search results | 1,024 maximum | Per query |
 | Vector search indexes | 4 per table | Semantic/AI search |
@@ -3469,11 +3626,13 @@ Search indexes are separate from regular indexes and have their own limits. Desi
 ### Current Limitations (As of 2025)
 
 **No Built-In Authorization Framework:**
+
 - Only **authentication** exists (identity verification)
 - Authorization (permission checks) must be implemented manually in queries/mutations
 - Pattern: Check `ctx.auth.getUserIdentity()` and validate permissions in code
 
 **Example:**
+
 ```typescript
 export const deleteTask = mutation({
   args: { taskId: v.id("tasks") },
@@ -3495,11 +3654,13 @@ export const deleteTask = mutation({
 ```
 
 **Limited Observability:**
+
 - Basic dashboard metrics available (function execution time, call frequency)
 - Third-party integration for advanced monitoring still in development
 - Recommendation: Use Sentry, LogRocket, or custom logging for production
 
 **Not Optimized for Analytics (OLAP):**
+
 - Convex is designed for real-time transactional operations (OLTP)
 - Complex analytical queries (aggregations across large datasets) may hit limits
 - Recommendation: Use streaming export to dedicated analytics database (Snowflake, BigQuery)
@@ -3510,7 +3671,8 @@ export const deleteTask = mutation({
 
 The Convex team notes: "Many of these limits will become more permissive over time."
 
-If you encounter limits for your use case, contact support@convex.dev to discuss:
+If you encounter limits for your use case, contact <support@convex.dev> to discuss:
+
 - Plan-specific limit increases
 - Custom enterprise arrangements
 - Roadmap for future limit expansions
@@ -3520,12 +3682,14 @@ If you encounter limits for your use case, contact support@convex.dev to discuss
 ### Compliance & Enterprise
 
 **Current Status:**
-- **Terms of Service:** https://convex.dev/terms
-- **Privacy Policy:** https://convex.dev/privacy
+
+- **Terms of Service:** <https://convex.dev/terms>
+- **Privacy Policy:** <https://convex.dev/privacy>
 - **No formal GDPR/SOC2 certifications mentioned** in developer documentation
 
 **For Enterprise Requirements:**
-Contact support@convex.dev for:
+Contact <support@convex.dev> for:
+
 - Compliance documentation
 - Security audits
 - Custom agreements
@@ -3537,7 +3701,7 @@ Contact support@convex.dev for:
 
 ### Pre-Deployment Verification
 
-```
+```text
 Project Setup:
 - [ ] Detected project framework (Next.js App Router / Pages Router / React Vite)
 - [ ] Fetched and verified current Convex documentation
@@ -3550,7 +3714,7 @@ Project Setup:
 
 ### Cloudflare Pages Configuration
 
-```
+```text
 Pages Setup:
 - [ ] Created Cloudflare Pages project
 - [ ] Connected GitHub repository
@@ -3564,7 +3728,7 @@ Pages Setup:
 
 ### Convex Backend Configuration
 
-```
+```text
 Convex Production Deployment:
 - [ ] Deployed to production: npx convex deploy --prod
 - [ ] Verified production deployment URL
@@ -3580,7 +3744,7 @@ Convex Production Deployment:
 
 ### Security Checklist
 
-```
+```text
 Security Verification:
 - [ ] All secrets in environment variables (never in code)
 - [ ] API keys use production values (not test keys)
@@ -3594,7 +3758,7 @@ Security Verification:
 
 ### Testing & Monitoring
 
-```
+```text
 Production Verification:
 - [ ] Tested end-to-end user flows in production
 - [ ] Verified real-time updates working (WebSocket connection)
@@ -3610,7 +3774,7 @@ Production Verification:
 
 ### Environment Alignment
 
-```
+```text
 Environment Consistency:
 - [ ] Dev environment uses dev Convex deployment
 - [ ] Staging environment uses staging Convex deployment (if applicable)
@@ -3622,13 +3786,14 @@ Environment Consistency:
 
 ### Backup & Disaster Recovery
 
-**VERIFY at:** https://docs.convex.dev/database/backup-restore
+**VERIFY at:** <https://docs.convex.dev/database/backup-restore>
 
 #### Manual Backups (Dashboard)
 
 **Access:** Convex Dashboard → Backups → "Backup Now"
 
 **Characteristics:**
+
 - Creates consistent snapshot of all table data
 - Processing time: seconds to hours (depending on data size)
 - Retention: 7 days
@@ -3637,6 +3802,7 @@ Environment Consistency:
 - **Excludes:** Code, environment variables, scheduled functions, configuration
 
 **File Storage Inclusion:**
+
 ```bash
 # Dashboard option: "Include file storage"
 # Or via CLI export:
@@ -3648,6 +3814,7 @@ npx convex export --path ~/Downloads --include-file-storage
 **Configuration:** Convex Dashboard → Backups → "Backup automatically"
 
 **Options:**
+
 - **Daily backups**: Retained for 7 days, specify time of day
 - **Weekly backups**: Retained for 14 days, specify day/time
 - **File storage**: Optional inclusion checkbox
@@ -3660,6 +3827,7 @@ Scheduled backups require Convex Pro plan. Each backup is billed for database an
 **CRITICAL:** Restoration is **destructive** - wipes existing data before restore
 
 **Best Practice:**
+
 ```bash
 # Step 1: Create backup BEFORE restoring
 # Dashboard → Backup Now
@@ -3676,12 +3844,14 @@ npx convex env set VARIABLE_NAME value --prod
 ```
 
 **Cross-Deployment Restore:**
+
 ```bash
 # Use case: Populate dev deployment with prod data
 # Dashboard → Backups → Select backup → "Restore" → Choose target deployment
 ```
 
 **File Storage Behavior:**
+
 - Existing files in deployment are **NOT deleted**
 - Files from backup that don't exist in deployment are uploaded
 - Result: Merge of existing files + backup files
@@ -3693,7 +3863,8 @@ npx convex env set VARIABLE_NAME value --prod
 Dashboard: Backups → Select backup → Download → `snapshot_{timestamp}.zip`
 
 **ZIP Structure:**
-```
+
+```text
 snapshot_1234567890.zip
 ├── users/
 │   └── documents.jsonl          # One document per line
@@ -3705,6 +3876,7 @@ snapshot_1234567890.zip
 ```
 
 **Import ZIP:**
+
 ```bash
 # Import to dev deployment
 npx convex import snapshot_1234567890.zip
@@ -3714,6 +3886,7 @@ npx convex import snapshot_1234567890.zip --prod
 ```
 
 **Technical Explanation:**
+
 - ZIP imports preserve document `_id` and `_creationTime` fields
 - Maintains referential integrity across table references
 - Import is atomic (except with `--append` flag)
@@ -3748,6 +3921,7 @@ npx convex import --table users users.jsonl
 ```
 
 **Production Import:**
+
 ```bash
 # ALWAYS test in dev first!
 npx convex import --table users users.jsonl
@@ -3807,7 +3981,7 @@ Dashboard → Restore from backup (within 7 days)
 
 #### Streaming Export (Alternative Backup)
 
-**VERIFY at:** https://docs.convex.dev/production/integrations/streaming-import-export
+**VERIFY at:** <https://docs.convex.dev/production/integrations/streaming-import-export>
 
 For continuous data replication to external databases:
 
@@ -3821,6 +3995,7 @@ For continuous data replication to external databases:
 ```
 
 **Use Cases:**
+
 - Real-time analytics warehouse
 - Continuous backup to external system
 - Compliance/audit trail requirements
@@ -3831,12 +4006,14 @@ For continuous data replication to external databases:
 #### Backup Limitations & Requirements
 
 **What's Included:**
+
 - ✅ All table data with schemas
 - ✅ File storage (if option selected)
 - ✅ Document IDs and creation times
 - ✅ Advanced types (Int64, Bytes via generated_schema.jsonl)
 
 **What's Excluded:**
+
 - ❌ Deployment code (functions)
 - ❌ Configuration files
 - ❌ Environment variables
@@ -3844,6 +4021,7 @@ For continuous data replication to external databases:
 - ❌ Authentication provider config
 
 **After Restore, You Must:**
+
 1. Redeploy code: `npx convex deploy --prod`
 2. Restore environment variables: `npx convex env set ...`
 3. Reconfigure authentication providers (Clerk, etc.)
@@ -3856,25 +4034,28 @@ For continuous data replication to external databases:
 
 ### Streaming Import/Export
 
-**VERIFY at:** https://docs.convex.dev/database/import-export/streaming
+**VERIFY at:** <https://docs.convex.dev/database/import-export/streaming>
 
 For large-scale data operations, Convex supports streaming via Fivetran and Airbyte.
 
 **Streaming Export (Pro Plan Required):**
 
 Export data to external analytics platforms:
+
 - **Databricks** - Data lakehouse analytics
 - **Snowflake** - Cloud data warehouse
 - **BigQuery** - Google Cloud analytics
 - **ElasticSearch** - Advanced search and filtering
 
 **Use Cases:**
+
 - Heavy analytical queries not suited for Convex
 - Machine learning training on historical data
 - Complex reporting and BI dashboards
 - Full-text search with advanced features
 
 **Setup:**
+
 1. Dashboard → Settings → Integrations → Fivetran/Airbyte
 2. Configure destination credentials
 3. Select tables to export
@@ -3883,18 +4064,21 @@ Export data to external analytics platforms:
 **Streaming Import:**
 
 Import data from existing databases:
+
 - Enables gradual Convex adoption
 - Build new features on existing data
 - Create reactive UI layers over legacy systems
 - No custom migration tooling required
 
 **Important Considerations:**
+
 - Treat imported tables as **read-only** to prevent write conflicts
 - Streaming export is beta feature
 - Streaming import via Fivetran not currently supported
 - Both integrations use incremental sync for efficiency
 
 **CLI Export Alternative:**
+
 ```bash
 # For one-time exports (not streaming)
 npx convex export --path ./backup
@@ -3909,9 +4093,11 @@ npx convex import --table tasks ./data/tasks.jsonl
 ---
 
 ## Notes
+
 <!-- Project-specific notes, decisions, context -->
 
 **Convex vs Traditional Databases:**
+
 - No SQL/ORM - JavaScript/TypeScript functions
 - Automatic transactions in mutations
 - Real-time reactive queries via WebSockets
@@ -3919,6 +4105,7 @@ npx convex import --table tasks ./data/tasks.jsonl
 - Managed backend (zero server configuration)
 
 **When to Use Convex:**
+
 - JAMstack architecture (Cloudflare Pages + Convex backend)
 - Real-time collaborative applications
 - Type-safe full-stack development
@@ -3926,6 +4113,7 @@ npx convex import --table tasks ./data/tasks.jsonl
 - Projects needing automatic scaling without DevOps
 
 **Integration Architecture:**
+
 - **Frontend**: Cloudflare Pages (global edge, static assets)
 - **Backend**: Convex (managed functions, database, real-time)
 - **Benefits**: Geographic distribution, automatic scaling, zero infrastructure management
