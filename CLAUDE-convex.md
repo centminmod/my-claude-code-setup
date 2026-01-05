@@ -727,6 +727,209 @@ export default async function TasksPage() {
 
 ---
 
+### Advanced Server-Side Rendering (SSR)
+
+**VERIFY at:** https://docs.convex.dev/client/react/nextjs/server-rendering
+
+**Using fetchQuery for Server Components (Non-Reactive):**
+```typescript
+import { fetchQuery } from "convex/nextjs";
+import { api } from "@/convex/_generated/api";
+
+// Server Component - data fetched once at render time (not reactive)
+export default async function StaticTasksPage() {
+  const tasks = await fetchQuery(api.tasks.list, { list: "default" });
+
+  return (
+    <div>
+      <h1>Tasks (Static)</h1>
+      {tasks.map((task) => (
+        <div key={task._id}>{task.text}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+**Using fetchMutation in Server Actions:**
+```typescript
+import { fetchMutation } from "convex/nextjs";
+import { api } from "@/convex/_generated/api";
+
+async function createTaskAction(formData: FormData) {
+  "use server";
+  await fetchMutation(api.tasks.create, {
+    text: formData.get("text") as string,
+  });
+}
+
+export default function TaskForm() {
+  return (
+    <form action={createTaskAction}>
+      <input name="text" placeholder="New task" />
+      <button type="submit">Add</button>
+    </form>
+  );
+}
+```
+
+**SSR with Authentication:**
+```typescript
+import { preloadQuery } from "convex/nextjs";
+import { auth } from "@clerk/nextjs/server";
+import { api } from "@/convex/_generated/api";
+
+export default async function AuthenticatedPage() {
+  // Get Convex token from Clerk
+  const { getToken } = await auth();
+  const token = await getToken({ template: "convex" });
+
+  // Pass token to preloadQuery for authenticated data
+  const preloadedData = await preloadQuery(
+    api.tasks.getMyTasks,
+    {},
+    { token: token ?? undefined }
+  );
+
+  return <TaskList preloadedTasks={preloadedData} />;
+}
+```
+
+**Technical Notes:**
+- `preloadQuery`: Preloads data, client component becomes reactive
+- `fetchQuery`: One-time fetch, no reactivity (pure server component)
+- `fetchMutation`: Execute mutations from Server Actions or Route Handlers
+- Token passing required for authenticated queries in SSR
+
+---
+
+### React (Vite) Hooks
+
+**VERIFY at:** https://docs.convex.dev/quickstart/react
+
+**src/App.tsx:**
+```typescript
+import { useQuery, useMutation, useAction } from "convex/react";
+import { api } from "../convex/_generated/api";
+
+export function App() {
+  // Reactive query - automatically updates when data changes
+  const tasks = useQuery(api.tasks.list);
+
+  // Mutation hook - returns function to call
+  const createTask = useMutation(api.tasks.create);
+  const deleteTask = useMutation(api.tasks.remove);
+
+  // Action hook - for external API calls
+  const sendEmail = useAction(api.notifications.sendEmail);
+
+  // Loading state
+  if (tasks === undefined) {
+    return <div>Loading...</div>;
+  }
+
+  const handleCreate = async (text: string) => {
+    await createTask({ text, isCompleted: false });
+  };
+
+  const handleDelete = async (id: Id<"tasks">) => {
+    await deleteTask({ id });
+  };
+
+  return (
+    <div>
+      {tasks.map((task) => (
+        <div key={task._id}>
+          {task.text}
+          <button onClick={() => handleDelete(task._id)}>Delete</button>
+        </div>
+      ))}
+      <button onClick={() => handleCreate("New task")}>Add Task</button>
+    </div>
+  );
+}
+```
+
+**Conditional Queries:**
+```typescript
+// Skip query when condition not met
+const userId = useAuth()?.userId;
+const userTasks = useQuery(
+  api.tasks.getByUser,
+  userId ? { userId } : "skip"  // "skip" prevents query execution
+);
+```
+
+---
+
+### Optimistic Updates
+
+**VERIFY at:** https://docs.convex.dev/client/react/optimistic-updates
+
+Optimistic updates provide instant UI feedback before server confirmation.
+
+**Basic Example:**
+```typescript
+"use client";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+
+export function Counter() {
+  const count = useQuery(api.counter.get);
+
+  const increment = useMutation(api.counter.increment).withOptimisticUpdate(
+    (localStore, args) => {
+      const currentValue = localStore.getQuery(api.counter.get, {});
+      if (currentValue !== undefined) {
+        // Immediately update local state
+        localStore.setQuery(api.counter.get, {}, currentValue + args.amount);
+      }
+    }
+  );
+
+  return (
+    <div>
+      <p>Count: {count ?? 0}</p>
+      <button onClick={() => increment({ amount: 1 })}>+1</button>
+    </div>
+  );
+}
+```
+
+**Chat Message Example:**
+```typescript
+const sendMessage = useMutation(api.messages.send).withOptimisticUpdate(
+  (localStore, args) => {
+    const { channel, body } = args;
+    const existingMessages = localStore.getQuery(api.messages.list, { channel });
+
+    if (existingMessages !== undefined) {
+      // Add temporary message immediately
+      const optimisticMessage = {
+        _id: crypto.randomUUID() as Id<"messages">,
+        _creationTime: Date.now(),
+        channel,
+        body,
+        pending: true,  // Optional: mark as pending
+      };
+
+      localStore.setQuery(api.messages.list, { channel }, [
+        ...existingMessages,
+        optimisticMessage,
+      ]);
+    }
+  }
+);
+```
+
+**Best Practices:**
+- Always create new objects (don't mutate existing)
+- Check if query is loaded before updating
+- Optimistic data may differ from server response (automatically corrected)
+- Small mistakes are okay - UI will eventually show correct values
+
+---
+
 ## Cloudflare Pages Deployment
 
 ### Deployment Architecture
@@ -784,6 +987,58 @@ npx convex env set STRIPE_SECRET_KEY sk_live_... --prod
 - **Build-time variables**: `NEXT_PUBLIC_*` bundled during build on Cloudflare
 - **Runtime variables**: Cloudflare Pages Functions can access runtime environment
 - **Separate Convex deployments**: Use different Convex URLs for dev/staging/prod
+
+---
+
+### Cloudflare Troubleshooting
+
+**Common Issues and Solutions:**
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| "Convex URL not found" | Missing env var | Add `NEXT_PUBLIC_CONVEX_URL` in Pages dashboard |
+| Build fails on Cloudflare | Node version | Set `NODE_VERSION=18` in env vars |
+| Functions timeout | Edge runtime limits | Use Convex for heavy processing, not Pages Functions |
+| Preview deploy uses prod Convex | Same URL for all | Use separate Convex projects per environment |
+| WebSocket connection fails | Proxy/firewall | Ensure `*.convex.cloud` is allowed |
+
+**Environment-Specific Deployment:**
+```bash
+# Create separate Convex projects for each environment
+# Production
+npx convex deploy --prod --project my-app-prod
+
+# Staging (separate project)
+npx convex dev --project my-app-staging
+```
+
+**DNS & Custom Domains:**
+- Cloudflare Pages handles frontend domains automatically
+- Convex deployment URL remains `*.convex.cloud`
+- No custom domain needed for Convex (frontend proxies requests)
+
+**Build Optimization:**
+```bash
+# Cloudflare Pages Build Settings
+Build command: npm run build
+Build output directory: .next (Next.js) or dist (Vite)
+Root directory: / (or your app subdirectory)
+```
+
+**Debugging Production Issues:**
+```bash
+# Stream logs from production
+npx convex logs --prod
+
+# Check function execution in dashboard
+npx convex dashboard
+```
+
+**Important Notes:**
+- Cloudflare Pages has 100ms CPU time limit for edge functions
+- Use Convex actions for heavy computation (30s limit on paid plans)
+- Real-time features (WebSocket) work out-of-box with Convex
+- No cold starts for Convex functions
 
 ---
 
@@ -1042,6 +1297,254 @@ await createTask({
   userId: "user_123",  // Type error if wrong type
 });
 ```
+
+---
+
+## Testing
+
+**VERIFY at:** https://docs.convex.dev/testing
+
+### convex-test Setup
+
+The `convex-test` library provides a mocked Convex backend for unit testing with Vitest.
+
+**Installation:**
+```bash
+npm install --save-dev convex-test vitest @edge-runtime/vm
+```
+
+**vitest.config.ts:**
+```typescript
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "edge-runtime",
+    server: { deps: { inline: ["convex-test"] } },
+  },
+});
+```
+
+**package.json scripts:**
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:once": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  }
+}
+```
+
+### Writing Tests
+
+**convex/messages.test.ts:**
+```typescript
+import { convexTest } from "convex-test";
+import { expect, test } from "vitest";
+import { api } from "./_generated/api";
+import schema from "./schema";
+
+test("sending and listing messages", async () => {
+  const t = convexTest(schema);
+
+  // Test mutations
+  await t.mutation(api.messages.send, { body: "Hello!", author: "Alice" });
+  await t.mutation(api.messages.send, { body: "Hi there!", author: "Bob" });
+
+  // Test queries
+  const messages = await t.query(api.messages.list);
+  expect(messages).toMatchObject([
+    { body: "Hello!", author: "Alice" },
+    { body: "Hi there!", author: "Bob" },
+  ]);
+});
+
+test("direct database access", async () => {
+  const t = convexTest(schema);
+
+  // Directly manipulate database for test setup
+  const task = await t.run(async (ctx) => {
+    await ctx.db.insert("tasks", { text: "Test task", isCompleted: false });
+    return await ctx.db.query("tasks").first();
+  });
+
+  expect(task).toMatchObject({ text: "Test task" });
+});
+```
+
+### Testing with Authentication
+
+```typescript
+import { convexTest } from "convex-test";
+import { expect, test } from "vitest";
+import { api } from "./_generated/api";
+import schema from "./schema";
+
+test("authenticated user operations", async () => {
+  const t = convexTest(schema);
+
+  // Create test user with identity
+  const asAlice = t.withIdentity({ name: "Alice", email: "alice@example.com" });
+  const asBob = t.withIdentity({ name: "Bob", email: "bob@example.com" });
+
+  // Each user sees only their own data
+  await asAlice.mutation(api.tasks.create, { text: "Alice's task" });
+  await asBob.mutation(api.tasks.create, { text: "Bob's task" });
+
+  const aliceTasks = await asAlice.query(api.tasks.getMyTasks);
+  expect(aliceTasks).toHaveLength(1);
+  expect(aliceTasks[0].text).toBe("Alice's task");
+});
+```
+
+### Testing HTTP Actions
+
+```typescript
+test("http endpoint", async () => {
+  const t = convexTest(schema);
+
+  const response = await t.fetch("/api/health", { method: "GET" });
+  expect(response.status).toBe(200);
+
+  const data = await response.json();
+  expect(data).toMatchObject({ status: "ok" });
+});
+```
+
+### Mocking External APIs
+
+```typescript
+import { vi } from "vitest";
+
+test("action with external API", async () => {
+  // Mock fetch for external API calls
+  vi.stubGlobal("fetch", vi.fn(async () => ({
+    ok: true,
+    json: async () => ({ result: "mocked" }),
+  })));
+
+  const t = convexTest(schema);
+  const result = await t.action(api.external.callApi, { input: "test" });
+
+  expect(result).toBe("mocked");
+  vi.unstubAllGlobals();
+});
+```
+
+---
+
+## CI/CD & Deployment
+
+**VERIFY at:** https://docs.convex.dev/production/hosting
+
+### GitHub Actions Workflow
+
+**.github/workflows/test.yml:**
+```yaml
+name: Test and Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+      - run: npm run test:once
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      # Deploy Convex backend
+      - run: npx convex deploy --cmd "npm run build"
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+```
+
+### Preview Deployments
+
+**VERIFY at:** https://docs.convex.dev/production/hosting/preview-deployments
+
+Preview deployments create isolated Convex backends for each PR.
+
+**.github/workflows/preview.yml:**
+```yaml
+name: Preview Deployment
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm ci
+
+      # Create preview deployment
+      - run: |
+          npx convex deploy \
+            --preview-create ${{ github.head_ref }} \
+            --preview-run seedData
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+
+      # Comment preview URL on PR
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '🚀 Preview deployment ready!'
+            })
+```
+
+### Environment Setup
+
+**Getting CONVEX_DEPLOY_KEY:**
+```bash
+# Generate deploy key for CI/CD
+npx convex deploy-key create
+
+# Add to GitHub Secrets:
+# Settings → Secrets → Actions → New repository secret
+# Name: CONVEX_DEPLOY_KEY
+# Value: (paste the key)
+```
+
+**Preview Deployment Notes:**
+- Auto-deleted after 5 days (14 days on Professional)
+- Each PR gets isolated database
+- Use `--preview-run` to seed test data
+- Preview URL returned by deploy command
 
 ---
 
@@ -1361,6 +1864,313 @@ const handleUpload = async (file: File) => {
   await saveFile({ storageId, filename: file.name });
 };
 ```
+
+---
+
+## Full Text Search
+
+**VERIFY at:** https://docs.convex.dev/text-search
+
+### Defining Search Indexes
+
+Search indexes enable full-text search over string fields using BM25 scoring.
+
+**convex/schema.ts:**
+```typescript
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  messages: defineTable({
+    body: v.string(),
+    channel: v.string(),
+    author: v.string(),
+  }).searchIndex("search_body", {
+    searchField: "body",           // Field to search
+    filterFields: ["channel"],     // Up to 16 filter fields
+  }),
+
+  articles: defineTable({
+    title: v.string(),
+    content: v.string(),
+    category: v.string(),
+    published: v.boolean(),
+  }).searchIndex("search_content", {
+    searchField: "content",
+    filterFields: ["category", "published"],
+  }),
+});
+```
+
+### Running Search Queries
+
+**convex/messages.ts:**
+```typescript
+import { query } from "./_generated/server";
+import { v } from "convex/values";
+
+// Basic search
+export const search = query({
+  args: { searchTerm: v.string(), channel: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    let searchQuery = ctx.db
+      .query("messages")
+      .withSearchIndex("search_body", (q) => {
+        let search = q.search("body", args.searchTerm);
+        if (args.channel) {
+          search = search.eq("channel", args.channel);
+        }
+        return search;
+      });
+
+    // Results ordered by relevance (BM25 score)
+    return await searchQuery.take(10);
+  },
+});
+
+// Search with additional filtering
+export const searchRecent = query({
+  args: { searchTerm: v.string() },
+  handler: async (ctx, args) => {
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+
+    return await ctx.db
+      .query("messages")
+      .withSearchIndex("search_body", (q) => q.search("body", args.searchTerm))
+      .filter((q) => q.gt(q.field("_creationTime"), tenMinutesAgo))
+      .take(10);
+  },
+});
+```
+
+**Search Constraints:**
+- Up to 16 search terms per query
+- Up to 8 filter expressions
+- Maximum 1024 documents scanned per query
+- Terms limited to 32 characters (case-insensitive)
+- Results always returned in relevance order
+
+---
+
+## Vector Search
+
+**VERIFY at:** https://docs.convex.dev/vector-search
+
+### Defining Vector Indexes
+
+Vector indexes enable semantic similarity search using embeddings.
+
+**convex/schema.ts:**
+```typescript
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  documents: defineTable({
+    title: v.string(),
+    content: v.string(),
+    embedding: v.array(v.float64()),  // Vector field
+    category: v.optional(v.string()),
+  }).vectorIndex("by_embedding", {
+    vectorField: "embedding",
+    dimensions: 1536,               // Must match embedding model (OpenAI: 1536)
+    filterFields: ["category"],     // Optional filter fields
+  }),
+});
+```
+
+### Storing Embeddings
+
+**convex/documents.ts:**
+```typescript
+import { action, internalMutation } from "./_generated/server";
+import { v } from "convex/values";
+import { internal } from "./_generated/api";
+
+// Action to generate and store embedding
+export const addDocument = action({
+  args: { title: v.string(), content: v.string(), category: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    // Generate embedding via OpenAI
+    const response = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "text-embedding-3-small",
+        input: args.content,
+      }),
+    });
+
+    const { data } = await response.json();
+    const embedding = data[0].embedding;
+
+    // Store document with embedding
+    await ctx.runMutation(internal.documents.insertDocument, {
+      title: args.title,
+      content: args.content,
+      embedding,
+      category: args.category,
+    });
+  },
+});
+
+export const insertDocument = internalMutation({
+  args: {
+    title: v.string(),
+    content: v.string(),
+    embedding: v.array(v.float64()),
+    category: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("documents", args);
+  },
+});
+```
+
+### Running Vector Searches
+
+**convex/search.ts:**
+```typescript
+import { action, internalQuery } from "./_generated/server";
+import { v } from "convex/values";
+import { internal } from "./_generated/api";
+
+// Vector search action
+export const semanticSearch = action({
+  args: { query: v.string(), category: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    // Generate query embedding
+    const response = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "text-embedding-3-small",
+        input: args.query,
+      }),
+    });
+
+    const { data } = await response.json();
+    const queryEmbedding = data[0].embedding;
+
+    // Perform vector search
+    const results = await ctx.vectorSearch("documents", "by_embedding", {
+      vector: queryEmbedding,
+      limit: 10,
+      filter: args.category
+        ? (q) => q.eq("category", args.category)
+        : undefined,
+    });
+
+    // Load full documents
+    const documents = await ctx.runQuery(internal.documents.getByIds, {
+      ids: results.map((r) => r._id),
+    });
+
+    return documents;
+  },
+});
+
+export const getByIds = internalQuery({
+  args: { ids: v.array(v.id("documents")) },
+  handler: async (ctx, args) => {
+    const results = [];
+    for (const id of args.ids) {
+      const doc = await ctx.db.get(id);
+      if (doc) results.push(doc);
+    }
+    return results;
+  },
+});
+```
+
+**Vector Search Constraints:**
+- Up to 4 vector indexes per table
+- Maximum 256 results per query
+- Dimensions must match exactly (e.g., 1536 for OpenAI)
+- Uses approximate nearest neighbor with cosine similarity
+- Score ranges from -1 to 1 (higher = more similar)
+
+---
+
+## Internal Functions
+
+**VERIFY at:** https://docs.convex.dev/functions/internal-functions
+
+### What Are Internal Functions?
+
+Internal functions can only be called by other Convex functions (not from clients). They reduce your app's attack surface.
+
+**convex/internal.ts:**
+```typescript
+import { internalQuery, internalMutation, internalAction } from "./_generated/server";
+import { v } from "convex/values";
+
+// Internal query - not accessible from client
+export const getSecretData = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    // Sensitive data access
+    return await ctx.db
+      .query("sensitiveData")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+  },
+});
+
+// Internal mutation - for privileged operations
+export const upgradeUserPlan = internalMutation({
+  args: { userId: v.id("users"), plan: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, { plan: args.plan });
+  },
+});
+
+// Internal action - for background processing
+export const processPayment = internalAction({
+  args: { userId: v.id("users"), amount: v.number() },
+  handler: async (ctx, args) => {
+    // Call external payment API
+    // Then update user via internal mutation
+    await ctx.runMutation(internal.users.upgradeUserPlan, {
+      userId: args.userId,
+      plan: "premium",
+    });
+  },
+});
+```
+
+### Calling Internal Functions
+
+```typescript
+import { action, mutation } from "./_generated/server";
+import { internal } from "./_generated/api";
+
+// Public action that uses internal functions
+export const handleWebhook = action({
+  args: { event: v.string(), userId: v.id("users") },
+  handler: async (ctx, args) => {
+    if (args.event === "payment.success") {
+      // Call internal mutation - safe from direct client access
+      await ctx.runMutation(internal.users.upgradeUserPlan, {
+        userId: args.userId,
+        plan: "premium",
+      });
+    }
+  },
+});
+```
+
+**When to Use Internal Functions:**
+- Privileged operations (admin-only actions)
+- Operations called from scheduled functions/crons
+- Business logic that should bypass client validation
+- Actions called from HTTP endpoints/webhooks
 
 ---
 
@@ -1712,11 +2522,93 @@ npm publish
 - `@convex-dev/agent` - AI agents with threads, messages, tool calls
 - `@convex-dev/rag` - RAG (Retrieval-Augmented Generation) for semantic search
 - `@convex-dev/rate-limiter` - API rate limiting and usage tracking
-- Authentication components (Clerk, Auth0, etc.)
-- Workflow engines
-- Leaderboards & rankings
-- Feature flags
-- Document collaboration
+- `@convex-dev/sharded-counter` - High-throughput counters (avoids OCC conflicts)
+- `@convex-dev/crons` - Advanced cron scheduling
+- `@convex-dev/workflow` - Durable workflow execution
+
+#### Rate Limiter Example
+
+```bash
+npm install @convex-dev/rate-limiter
+```
+
+**convex/convex.config.ts:**
+```typescript
+import { defineApp } from "convex/server";
+import rateLimiter from "@convex-dev/rate-limiter/convex.config";
+
+const app = defineApp();
+app.use(rateLimiter, { name: "rateLimit" });
+export default app;
+```
+
+**convex/rateLimit.ts:**
+```typescript
+import { components } from "./_generated/api";
+import { RateLimiter } from "@convex-dev/rate-limiter";
+
+const rateLimiter = new RateLimiter(components.rateLimit, {
+  apiRequests: { kind: "token bucket", rate: 100, period: 60000, capacity: 100 },
+  signups: { kind: "fixed window", rate: 5, period: 3600000 },
+});
+
+export const checkApiLimit = rateLimiter.check("apiRequests");
+export const consumeApiToken = rateLimiter.consume("apiRequests");
+```
+
+**Usage in mutation:**
+```typescript
+export const createPost = mutation({
+  args: { content: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    // Check rate limit before proceeding
+    const { ok, retryAfter } = await rateLimiter.limit(ctx, "apiRequests", {
+      key: identity.subject,
+    });
+
+    if (!ok) {
+      throw new Error(`Rate limited. Retry after ${retryAfter}ms`);
+    }
+
+    return await ctx.db.insert("posts", { content: args.content });
+  },
+});
+```
+
+#### Sharded Counter Example
+
+```bash
+npm install @convex-dev/sharded-counter
+```
+
+**For high-frequency counters that would cause OCC conflicts:**
+```typescript
+import { components } from "./_generated/api";
+import { ShardedCounter } from "@convex-dev/sharded-counter";
+
+const counter = new ShardedCounter(components.shardedCounter, {
+  shards: 100,  // More shards = higher throughput
+});
+
+// Increment without conflicts
+export const incrementViews = mutation({
+  args: { postId: v.id("posts") },
+  handler: async (ctx, args) => {
+    await counter.inc(ctx, args.postId, 1);
+  },
+});
+
+// Read approximate count
+export const getViewCount = query({
+  args: { postId: v.id("posts") },
+  handler: async (ctx, args) => {
+    return await counter.count(ctx, args.postId);
+  },
+});
+```
 
 **Technical Explanation:**
 Components enable composability for complex features without building from scratch, while maintaining data isolation and transactional guarantees.
@@ -2406,6 +3298,51 @@ const users = await Promise.all(
 
 ---
 
+### Log Streams & Exception Reporting
+
+**VERIFY at:** https://docs.convex.dev/production/integrations/log-streams
+
+Stream logs to external services for monitoring and alerting. Requires Convex Pro plan.
+
+**Available Destinations:**
+- **Axiom** - Log analytics with automatic dashboard creation
+- **Datadog** - APM and log management
+- **Webhook** - Custom HTTP endpoints (any service)
+
+**Setup via Dashboard:**
+1. Go to Convex Dashboard → Settings → Integrations
+2. Select destination (Axiom, Datadog, or Webhook)
+3. Configure credentials and options
+4. Enable log stream
+
+**Log Event Types:**
+
+| Event Type | Description |
+|------------|-------------|
+| `console` | Function console.log/warn/error output |
+| `function_execution` | Execution metrics (duration, status, errors) |
+| `audit_log` | Deployment changes and admin actions |
+| `scheduler_stats` | Scheduled function queue metrics |
+| `storage_usage` | Database and file storage metrics |
+
+**Webhook Security:**
+```typescript
+// Verify webhook signature (HMAC-SHA256)
+const signature = request.headers.get("x-webhook-signature");
+const timestamp = request.headers.get("x-webhook-timestamp");
+
+// Validate using constant-time comparison
+// Check timestamp to prevent replay attacks
+```
+
+**Best Practices:**
+- Use Axiom for quick setup with pre-built dashboards
+- Datadog for existing APM infrastructure
+- Webhook for custom alerting or unsupported services
+- Log streams are "best-effort" - may drop events under high load
+
+---
+
 ## Production Guarantees & Limits
 
 **VERIFY at:** https://docs.convex.dev/production/state/
@@ -2914,6 +3851,60 @@ For continuous data replication to external databases:
 5. Verify scheduled functions are running
 
 **Beta Note:** ZIP imports not supported on deployments created before Convex v1.7. Contact support for workarounds.
+
+---
+
+### Streaming Import/Export
+
+**VERIFY at:** https://docs.convex.dev/database/import-export/streaming
+
+For large-scale data operations, Convex supports streaming via Fivetran and Airbyte.
+
+**Streaming Export (Pro Plan Required):**
+
+Export data to external analytics platforms:
+- **Databricks** - Data lakehouse analytics
+- **Snowflake** - Cloud data warehouse
+- **BigQuery** - Google Cloud analytics
+- **ElasticSearch** - Advanced search and filtering
+
+**Use Cases:**
+- Heavy analytical queries not suited for Convex
+- Machine learning training on historical data
+- Complex reporting and BI dashboards
+- Full-text search with advanced features
+
+**Setup:**
+1. Dashboard → Settings → Integrations → Fivetran/Airbyte
+2. Configure destination credentials
+3. Select tables to export
+4. Set sync frequency
+
+**Streaming Import:**
+
+Import data from existing databases:
+- Enables gradual Convex adoption
+- Build new features on existing data
+- Create reactive UI layers over legacy systems
+- No custom migration tooling required
+
+**Important Considerations:**
+- Treat imported tables as **read-only** to prevent write conflicts
+- Streaming export is beta feature
+- Streaming import via Fivetran not currently supported
+- Both integrations use incremental sync for efficiency
+
+**CLI Export Alternative:**
+```bash
+# For one-time exports (not streaming)
+npx convex export --path ./backup
+
+# Export with file storage
+npx convex export --include-file-storage --path ./backup
+
+# Import from JSONL
+npx convex import --table tasks ./data/tasks.jsonl
+```
 
 ---
 
