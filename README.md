@@ -73,6 +73,33 @@ I also install the following MCP servers ([install commands](#claude-code-mcp-se
 * [Notion MCP](https://github.com/makenotion/notion-mcp-server)
 * [Claude Code Usage Metrics MCP](https://github.com/centminmod/claude-code-opentelemetry-setup)
 
+## Claude Code Plugin Marketplace
+
+Browser and install Claude Code plugins from official marketplace https://code.claude.com/docs/en/discover-plugins.
+
+```bash
+/plugin install plugin-name@claude-plugins-official
+```
+
+Install [frontend design plugin](https://github.com/anthropics/claude-code/tree/main/plugins/frontend-design).
+
+> Create distinctive, production-grade frontend interfaces with high design quality. Generates creative, polished code that avoids generic AI aesthetics.
+
+```bash
+/plugin install frontend-design@claude-code-plugins
+```
+
+Install [Ralph Wiggum plugin](https://github.com/anthropics/claude-code/tree/main/plugins/ralph-wiggum). Details https://paddo.dev/blog/ralph-wiggum-autonomous-loops/. Update: currently seems broken on some systems.
+
+- https://github.com/anthropics/claude-code/issues/16398
+- https://github.com/anthropics/claude-code/issues/16389
+
+> Interactive self-referential AI loops for iterative development. Claude works on the same task repeatedly, seeing its previous work, until completion.
+
+```bash
+/plugin install ralph-wiggum@claude-code-plugins
+```
+
 ## Claude Code Statuslines
 
 `~/.claude/statuslines/statusline.sh` configured in `~/.claude/settings.json`.
