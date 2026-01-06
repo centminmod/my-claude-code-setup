@@ -18,7 +18,7 @@ My Claude Code project's starter settings and Claude Code hooks and slash comman
 9. If you use Cloudflare and ClerkOS platforms in your apps, you can keep either `CLAUDE-cloudflare.md` or `CLAUDE-cloudflare-mini.md` supplementary reference docs and update `CLAUDE.md` referencing either file to help AI understand Cloudflare and ClerkOS platforum documentation and products. Edit documentation templates as needed i.e. if you do not use ClerkOS platform, you can remove those sections.
 10. If you use Convex database in your apps, you can use `CLAUDE-convex.md` supplementary reference docs for building Next.js and React apps with Convex backend deployed on Cloudflare Pages.
 11. Useful read [Advent of Claude: 31 Days of Claude Code by Ado Kukic from Anthropic](https://adocomplete.com/advent-of-claude-2025/).
-12. Useful [Claude Code with Claude Opus 4.5 YouTube video](https://www.youtube.com/watch?v=UVJXh57MgI0).
+12. Useful [Claude Code with Claude Opus 4.5 YouTube video by Alex Finn](https://www.youtube.com/watch?v=UVJXh57MgI0) and [Claude Code YouTube video by Matt Maher](https://www.youtube.com/watch?v=Dekx_OzRwiI).
 
 ## CLAUDE.md Memory Bank system
 
@@ -99,6 +99,17 @@ Install [Ralph Wiggum plugin](https://github.com/anthropics/claude-code/tree/mai
 
 ```bash
 /plugin install ralph-wiggum@claude-code-plugins
+```
+
+## Claude Code 3rd Party Marketplaces
+
+Claude Code Safety Net plugin https://github.com/kenryu42/claude-code-safety-net to prevent destructive commands being run by Claude Code i.e. https://www.reddit.com/r/ClaudeAI/comments/1pgxckk/claude_cli_deleted_my_entire_home_directory_wiped/
+
+> A Claude Code plugin that acts as a safety net, catching destructive git and filesystem commands before they execute.
+
+```bash
+/plugin marketplace add kenryu42/cc-marketplace
+/plugin install safety-net@cc-marketplace
 ```
 
 ## Claude Code Statuslines
