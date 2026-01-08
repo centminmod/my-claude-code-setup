@@ -90,6 +90,14 @@ Install [frontend design plugin](https://github.com/anthropics/claude-code/tree/
 /plugin install frontend-design@claude-code-plugins
 ```
 
+Install [feature dev plugin](https://github.com/anthropics/claude-code/tree/main/plugins/feature-dev).
+
+> The Feature Development Plugin provides a systematic 7-phase approach to building new features. Instead of jumping straight into code, it guides you through understanding the codebase, asking clarifying questions, designing architecture, and ensuring quality—resulting in better-designed features that integrate seamlessly with your existing code.
+
+```bash
+/plugin install feature-dev@claude-code-plugins
+```
+
 Install [Ralph Wiggum plugin](https://github.com/anthropics/claude-code/tree/main/plugins/ralph-wiggum). Details https://paddo.dev/blog/ralph-wiggum-autonomous-loops/. Update: currently seems broken on some systems.
 
 - https://github.com/anthropics/claude-code/issues/16398
