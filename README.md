@@ -429,6 +429,8 @@ test-local.sh
 
 ## Using Z.AI with Claude Code
 
+* Get extra 10% discount with invite code [(https://z.ai/subscribe?ic=WWB8IFLROM)](https://z.ai/subscribe?ic=WWB8IFLROM)
+
 Z.AI's GLM Coding Plan is a cost-effective subscription service starting at just $3/month that provides access to GLM-4.7, a high-performance language model optimized for coding tasks. With over 55 tokens per second for real-time interaction, it offers state-of-the-art performance in reasoning, coding, and agent capabilities. The service includes multimodal features like Vision Understanding, Web Search, and Web Reader MCP servers. Below [shell function launchers](#shell-function-launchers) are easiest way to use Z.AI with Claude Code without messing up your existing Claude Code setup.
 
 **Usage Tiers:**
