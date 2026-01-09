@@ -464,9 +464,9 @@ See the [Privacy Policy](https://docs.z.ai/legal-agreement/privacy-policy) for f
 
 ### Setup Instructions
 
-#### Option 1: Automated Setup (Recommended)
+#### Option 1: Automated Setup (Recommended for First-Time Users)
 
-For macOS/Linux, run this one-liner to automatically configure Z.AI:
+Just run the following command in your terminal. Attention only macOS Linux environment is supported, this method does not support Windows
 
 ```bash
 curl -O "https://cdn.bigmodel.cn/install/claude_code_zai_env.sh" && bash ./claude_code_zai_env.sh
