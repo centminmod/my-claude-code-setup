@@ -5,7 +5,7 @@
 
 # My Claude Code Project's Starter Settings
 
-My Claude Code project's starter settings and Claude Code hooks and slash commands are provided in this repository for users to try out. The [CLAUDE.md](https://github.com/centminmod/my-claude-code-setup/blob/master/CLAUDE.md) is setup as set of memory bank files to better retain context over many chat sessions. Be sure to read the official Claude Code docs first at <https://docs.anthropic.com/en/docs/claude-code/overview> and sign up for a [paid Claude AI account](https://claude.ai/) to use Claude Code. You can pay for Claude Pro $20/month, Claude Max $100/month or Claude Max $200/month. The paid Claude tier plans will include varying quotas for usage and rate limits outlined [here](https://support.anthropic.com/en/articles/9797557-usage-limit-best-practices).
+My Claude Code project's starter settings and Claude Code hooks and slash commands are provided in this repository for users to try out. The [CLAUDE.md](https://github.com/centminmod/my-claude-code-setup/blob/master/CLAUDE.md) is setup as set of memory bank files to better retain context over many chat sessions. Be sure to read the official Claude Code docs first at <https://docs.anthropic.com/en/docs/claude-code/overview> and sign up for a [paid Claude AI account](https://claude.ai/) to use Claude Code. You can pay for Claude Pro $20/month, Claude Max $100/month or Claude Max $200/month. The paid Claude tier plans will include varying quotas for usage and rate limits outlined [here](https://support.anthropic.com/en/articles/9797557-usage-limit-best-practices). You can also use Claude Code with [Z.AI](#using-zai-with-claude-code) to get higher token usage quotas and get access to Z.AI GLM-4.7 LLM models within Claude Code.
 
 1. Copy the files in this Github repo to your project directory (where you intended codebase will be).
 2. Modify the template files and CLAUDE.md`to your liking. `.claude/settings.json` needs to install Terminal-Notifier for macOS https://github.com/centminmod/terminal-notifier-setup. If you're not using macOS, you can remove `.claude/settings.json`.
@@ -19,6 +19,7 @@ My Claude Code project's starter settings and Claude Code hooks and slash comman
 10. If you use Convex database in your apps, you can use `CLAUDE-convex.md` supplementary reference docs for building Next.js and React apps with Convex backend deployed on Cloudflare Pages.
 11. Useful read [Advent of Claude: 31 Days of Claude Code by Ado Kukic from Anthropic](https://adocomplete.com/advent-of-claude-2025/).
 12. Useful [Claude Code with Claude Opus 4.5 YouTube video by Alex Finn](https://www.youtube.com/watch?v=UVJXh57MgI0) and [Claude Code YouTube video by Matt Maher](https://www.youtube.com/watch?v=Dekx_OzRwiI).
+13. Configure Claude Code with [Z.AI](#using-zai-with-claude-code) to get higher token usage quotas and get access to Z.AI GLM-4.7 LLM models within Claude Code.
 
 ## CLAUDE.md Memory Bank system
 
