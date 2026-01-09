@@ -89,9 +89,9 @@ To update official Claude Code plugin marketplace:
 /plugin marketplace update claude-plugins-official
 ```
 
-Install [code simplifier plugin](#).
+Install [code simplifier plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-simplifier).
 
-> Simplifies code by removing unnecessary complexity while preserving functionality.
+> Agent that simplifies and refines code for clarity, consistency, and maintainability while preserving functionality. Focuses on recently modified code.
 
 ```bash
 /plugin install code-simplifier
