@@ -82,6 +82,20 @@ Browser and install Claude Code plugins from official marketplace https://code.c
 /plugin install plugin-name@claude-plugins-official
 ```
 
+To update official Claude Code plugin marketplace:
+
+```bash
+/plugin marketplace update claude-plugins-official
+```
+
+Install [code simplifier plugin](#).
+
+> Simplifies code by removing unnecessary complexity while preserving functionality.
+
+```bash
+/plugin install code-simplifier
+```
+
 Install [frontend design plugin](https://github.com/anthropics/claude-code/tree/main/plugins/frontend-design).
 
 > Create distinctive, production-grade frontend interfaces with high design quality. Generates creative, polished code that avoids generic AI aesthetics.
@@ -411,6 +425,277 @@ test-local.sh
 - Files you don't want to clutter the shared `.gitignore`
 
 **Note:** Files in `.git/info/exclude` work with `.worktreeinclude` the same way as `.gitignore` - patterns must appear in both files for copying to worktrees.
+
+## Using Z.AI with Claude Code
+
+Z.AI's GLM Coding Plan is a cost-effective subscription service starting at just $3/month that provides access to GLM-4.7, a high-performance language model optimized for coding tasks. With over 55 tokens per second for real-time interaction, it offers state-of-the-art performance in reasoning, coding, and agent capabilities. The service includes multimodal features like Vision Understanding, Web Search, and Web Reader MCP servers. Below [shell function launchers](#shell-function-launchers) are easiest way to use Z.AI with Claude Code without messing up your existing Claude Code setup.
+
+**Usage Tiers:**
+- **Lite Plan** (~$3/month): ~120 prompts per 5 hours (roughly 3× Claude Pro quota)
+- **Pro Plan**: ~600 prompts per 5 hours (3× Claude Max 5x quota)
+- **Max Plan**: ~2,400 prompts per 5 hours (3× Claude Max 20x quota)
+
+Each prompt typically allows 15–20 model calls, yielding tens of billions of tokens monthly at approximately 1% of standard API pricing.
+
+### Privacy & Data Handling
+
+**Data Location:** All Z.AI services are based in Singapore.
+
+**Privacy Guarantee:** Z.AI does not store any of the content you provide or generate while using their services. This includes any text prompts, images, or other data you input.
+
+See the [Privacy Policy](https://docs.z.ai/legal-agreement/privacy-policy) for further details.
+
+### Special Discount: Get 10% OFF!
+
+> 🚀 You've been invited to join the GLM Coding Plan! Enjoy full support for Claude Code, Cline, and 10+ top coding tools — starting at just $3/month. Subscribe now and grab the limited-time deal!
+>
+> **Invite Code:** `WWB8IFLROM` (10% additional discount)
+>
+> **Subscribe:** [https://z.ai/subscribe?ic=WWB8IFLROM](https://z.ai/subscribe?ic=WWB8IFLROM)
+
+### Prerequisites
+
+- Node.js 18 or newer
+- Z.AI API key (obtain from [Z.AI dashboard](https://z.ai))
+- Official documentation: [https://docs.z.ai/devpack/tool/claude](https://docs.z.ai/devpack/tool/claude)
+
+### Setup Instructions
+
+#### Option 1: Automated Setup (Recommended)
+
+For macOS/Linux, run this one-liner to automatically configure Z.AI:
+
+```bash
+curl -O "https://cdn.bigmodel.cn/install/claude_code_zai_env.sh" && bash ./claude_code_zai_env.sh
+```
+
+#### Option 2: Manual Configuration
+
+Edit your `~/.claude/settings.json` and add the environment variables:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "your-zai-api-key",
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "API_TIMEOUT_MS": "3000000"
+  }
+}
+```
+
+Replace `your-zai-api-key` with your actual Z.AI API key from the dashboard.
+
+### Shell Function Launchers
+
+#### macOS / Linux (Bash/Zsh)
+
+Add this function to `~/.bashrc`, `~/.zshrc`, or `~/.bash_aliases`:
+
+```bash
+# Z.AI + Claude Code launcher
+zai() {
+    export ANTHROPIC_AUTH_TOKEN="your-zai-api-key"
+    export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"
+    export API_TIMEOUT_MS="3000000"
+    claude "$@"
+}
+```
+
+After adding, reload your shell: `source ~/.bashrc` or `source ~/.zshrc`
+
+#### Windows (PowerShell)
+
+Add this function to your PowerShell profile. Open it with `notepad $PROFILE`:
+
+```powershell
+# Z.AI + Claude Code launcher
+function zai {
+    $env:ANTHROPIC_AUTH_TOKEN = "your-zai-api-key"
+    $env:ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic"
+    $env:API_TIMEOUT_MS = "3000000"
+    claude $args
+}
+```
+
+After adding, reload PowerShell or run: `. $PROFILE`
+
+#### Windows (CMD Batch Files)
+
+Create a batch file named `zai.bat` in a directory in your PATH (e.g., `C:\Users\YourName\bin\`):
+
+```batch
+@echo off
+set ANTHROPIC_AUTH_TOKEN=your-zai-api-key
+set ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+set API_TIMEOUT_MS=3000000
+claude %*
+```
+
+### Model Mapping
+
+The GLM Coding Plan uses intelligent model mapping where Claude model names are mapped to GLM models through environment variables:
+
+- `ANTHROPIC_DEFAULT_OPUS_MODEL`: GLM-4.7
+- `ANTHROPIC_DEFAULT_SONNET_MODEL`: GLM-4.7
+- `ANTHROPIC_DEFAULT_HAIKU_MODEL`: GLM-4.5-Air
+
+**Note:** While manual adjustment of these mappings is possible, it's not recommended as it may prevent automatic updates to newer model versions.
+
+#### Customizing Model Mappings
+
+If you need to switch to different models (e.g., GLM-4.5 or other models), you can customize the mappings in two ways:
+
+**Option 1: In `~/.claude/settings.json`**
+
+```json
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "your-zai-api-key",
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "API_TIMEOUT_MS": "3000000",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "GLM-4.7",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "GLM-4.5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "GLM-4.5-Air"
+  }
+}
+```
+
+**Option 2: In Shell Function/Alias**
+
+For macOS/Linux:
+
+```bash
+zai() {
+    export ANTHROPIC_AUTH_TOKEN="your-zai-api-key"
+    export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"
+    export API_TIMEOUT_MS="3000000"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="GLM-4.7"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="GLM-4.5"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="GLM-4.5-Air"
+    claude "$@"
+}
+```
+
+For Windows PowerShell:
+
+```powershell
+function zai {
+    $env:ANTHROPIC_AUTH_TOKEN = "your-zai-api-key"
+    $env:ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic"
+    $env:API_TIMEOUT_MS = "3000000"
+    $env:ANTHROPIC_DEFAULT_OPUS_MODEL = "GLM-4.7"
+    $env:ANTHROPIC_DEFAULT_SONNET_MODEL = "GLM-4.5"
+    $env:ANTHROPIC_DEFAULT_HAIKU_MODEL = "GLM-4.5-Air"
+    claude $args
+}
+```
+
+For Windows CMD:
+
+```batch
+@echo off
+set ANTHROPIC_AUTH_TOKEN=your-zai-api-key
+set ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+set API_TIMEOUT_MS=3000000
+set ANTHROPIC_DEFAULT_OPUS_MODEL=GLM-4.7
+set ANTHROPIC_DEFAULT_SONNET_MODEL=GLM-4.5
+set ANTHROPIC_DEFAULT_HAIKU_MODEL=GLM-4.5-Air
+claude %*
+```
+
+### Usage
+
+```bash
+# Launch with Z.AI configuration
+zai
+
+# Launch with specific model
+zai --model sonnet
+
+# Launch with permission mode
+zai --model opus --permission-mode plan
+```
+
+### Z.AI + Git Worktree Integration
+
+Combine Z.AI with git worktrees for isolated parallel sessions:
+
+#### macOS / Linux (Bash/Zsh)
+
+```bash
+# Z.AI + Claude Code worktree launcher
+zaix() {
+    local branch_name
+    if [ -z "$1" ]; then
+        branch_name="worktree-$(date +%Y%m%d-%H%M%S)"
+    else
+        branch_name="$1"
+    fi
+    git worktree add "../$branch_name" -b "$branch_name" && \
+    cd "../$branch_name" || return 1
+
+    export ANTHROPIC_AUTH_TOKEN="your-zai-api-key"
+    export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"
+    export API_TIMEOUT_MS="3000000"
+    claude --model sonnet --permission-mode plan
+}
+```
+
+#### Windows (PowerShell)
+
+```powershell
+# Z.AI + Claude Code worktree launcher
+function zaix {
+    param([string]$BranchName)
+    if (-not $BranchName) {
+        $BranchName = "worktree-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    }
+    git worktree add "../$BranchName" -b $BranchName
+    if ($LASTEXITCODE -eq 0) {
+        Set-Location "../$BranchName"
+        $env:ANTHROPIC_AUTH_TOKEN = "your-zai-api-key"
+        $env:ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic"
+        $env:API_TIMEOUT_MS = "3000000"
+        claude --model sonnet --permission-mode plan
+    }
+}
+```
+
+#### Windows (CMD Batch Files)
+
+Create `zaix.bat`:
+
+```batch
+@echo off
+setlocal enabledelayedexpansion
+if "%~1"=="" (
+    for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set datetime=%%I
+    set branch_name=worktree-!datetime:~0,8!-!datetime:~8,6!
+) else (
+    set branch_name=%~1
+)
+git worktree add "../%branch_name%" -b "%branch_name%"
+if %errorlevel% equ 0 (
+    cd "../%branch_name%"
+    set ANTHROPIC_AUTH_TOKEN=your-zai-api-key
+    set ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+    set API_TIMEOUT_MS=3000000
+    claude --model sonnet --permission-mode plan
+)
+endlocal
+```
+
+After adding, reload your shell configuration.
+
+**Usage:**
+
+```bash
+# Create worktree with custom name
+zaix feature-auth
+
+# Create worktree with auto-generated timestamp name
+zaix
+```
 
 ## Claude Code Skills
 
