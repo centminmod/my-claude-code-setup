@@ -135,6 +135,15 @@ Claude Code Safety Net plugin https://github.com/kenryu42/claude-code-safety-net
 /plugin install safety-net@cc-marketplace
 ```
 
+[Z.AI usage query plugin](https://docs.z.ai/devpack/extension/usage-query-plugin) for querying [Z.AI](#using-zai-with-claude-code) usage statistics.
+
+> Query your current quota and usage statistics for the GLM Coding Plan directly within Claude Code.
+
+```bash
+/plugin marketplace add zai/zai-coding-plugins
+/plugin install glm-plan-usage@zai-coding-plugins
+```
+
 ## Claude Code Statuslines
 
 `~/.claude/statuslines/statusline.sh` configured in `~/.claude/settings.json`.
