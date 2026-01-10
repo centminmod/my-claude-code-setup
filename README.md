@@ -124,6 +124,8 @@ Install [Ralph Wiggum plugin](https://github.com/anthropics/claude-code/tree/mai
 /plugin install ralph-wiggum@claude-code-plugins
 ```
 
+How to use Ralph Wiggum plugin YouTube by Greg Isenberg https://www.youtube.com/watch?v=RpvQH0r0ecM
+
 ## Claude Code 3rd Party Marketplaces
 
 Claude Code Safety Net plugin https://github.com/kenryu42/claude-code-safety-net to prevent destructive commands being run by Claude Code i.e. https://www.reddit.com/r/ClaudeAI/comments/1pgxckk/claude_cli_deleted_my_entire_home_directory_wiped/
