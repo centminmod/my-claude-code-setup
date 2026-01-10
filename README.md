@@ -124,7 +124,7 @@ Install [Ralph Wiggum plugin](https://github.com/anthropics/claude-code/tree/mai
 /plugin install ralph-wiggum@claude-code-plugins
 ```
 
-How to use Ralph Wiggum plugin YouTube by Greg Isenberg https://www.youtube.com/watch?v=RpvQH0r0ecM
+How to use Ralph Wiggum plugin YouTube by Greg Isenberg and Ryan Carson https://www.youtube.com/watch?v=RpvQH0r0ecM and GitHub repo https://github.com/snarktank/ralph.
 
 ## Claude Code 3rd Party Marketplaces
 
