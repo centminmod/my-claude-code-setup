@@ -793,32 +793,66 @@ Add to `~/.claude/settings.json`:
 Create `~/.claude/statuslines/statusline.sh`:
 ```bash
 #!/bin/bash
+# Read JSON input from stdin
 input=$(cat)
 
+# Extract model and workspace values
 MODEL_DISPLAY=$(echo "$input" | jq -r '.model.display_name')
 CURRENT_DIR=$(echo "$input" | jq -r '.workspace.current_dir')
+
+# Extract context window metrics
 INPUT_TOKENS=$(echo "$input" | jq -r '.context_window.total_input_tokens')
 OUTPUT_TOKENS=$(echo "$input" | jq -r '.context_window.total_output_tokens')
 CONTEXT_SIZE=$(echo "$input" | jq -r '.context_window.context_window_size')
+
+# Extract cost metrics
 COST_USD=$(echo "$input" | jq -r '.cost.total_cost_usd')
 LINES_ADDED=$(echo "$input" | jq -r '.cost.total_lines_added')
 LINES_REMOVED=$(echo "$input" | jq -r '.cost.total_lines_removed')
 
+# Extract percentage metrics
+USED_PERCENTAGE=$(echo "$input" | jq -r '.context_window.used_percentage')
+REMAINING_PERCENTAGE=$(echo "$input" | jq -r '.context_window.remaining_percentage')
+
+# Format tokens as Xk
 format_tokens() {
     local num="$1"
-    if [ "$num" -ge 1000 ]; then echo "$((num / 1000))k"; else echo "$num"; fi
+    if [ "$num" -ge 1000 ]; then
+        echo "$((num / 1000))k"
+    else
+        echo "$num"
+    fi
 }
 
+# Generate progress bar for context usage
+generate_progress_bar() {
+    local percentage=$1
+    local bar_width=20
+    local filled=$(awk "BEGIN {printf \"%.0f\", ($percentage / 100) * $bar_width}")
+    local empty=$((bar_width - filled))
+    local bar=""
+    for ((i=0; i<filled; i++)); do bar+="█"; done
+    for ((i=0; i<empty; i++)); do bar+="░"; done
+    echo "$bar"
+}
+
+# Calculate total
 TOTAL_TOKENS=$((INPUT_TOKENS + OUTPUT_TOKENS))
 
+# Generate progress bar
+PROGRESS_BAR=$(generate_progress_bar "$USED_PERCENTAGE")
+
+# Show git branch if in a git repo
 GIT_BRANCH=""
 if git rev-parse --git-dir > /dev/null 2>&1; then
     BRANCH=$(git branch --show-current 2>/dev/null)
-    [ -n "$BRANCH" ] && GIT_BRANCH=" | 🌿 $BRANCH"
+    if [ -n "$BRANCH" ]; then
+        GIT_BRANCH=" | 🌿 $BRANCH"
+    fi
 fi
 
 echo "[$MODEL_DISPLAY] 📁 ${CURRENT_DIR##*/}${GIT_BRANCH}
-Tokens: $(format_tokens "$TOTAL_TOKENS") (in:$(format_tokens "$INPUT_TOKENS")+out:$(format_tokens "$OUTPUT_TOKENS")) | Ctx:$(format_tokens "$CONTEXT_SIZE")
+Context: [$PROGRESS_BAR] ${USED_PERCENTAGE}%
 Cost: \$${COST_USD} | +${LINES_ADDED} -${LINES_REMOVED} lines"
 ```
 
