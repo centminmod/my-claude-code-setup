@@ -5,7 +5,9 @@
 
 # My Claude Code Setup
 
-A comprehensive starter kit for Claude Code projects featuring a memory bank system for context retention, pre-configured hooks, skills, subagents, and MCP server recommendations.
+A comprehensive starter kit for Claude Code projects featuring a memory bank system for context retention, pre-configured hooks, skills, subagents, and MCP server recommendations. 
+
+You can also use Claude Code with [Z.AI](#6-alternative-providers) to get higher token usage quotas and get access to Z.AI GLM-4.7 LLM models within Claude Code. Use [Z.AI invite code for additional 10% discount](https://z.ai/subscribe?ic=WWB8IFLROM) which can stack with current 50-60% yearly discounts.
 
 ## Table of Contents
 
