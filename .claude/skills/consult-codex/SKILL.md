@@ -53,12 +53,25 @@ Wrap the user's question with structured output requirements:
 - "Error handling in `lib/errors.ts:45, 67-72, 98`"
 ```
 
-### 2. Invoke BOTH Agents in Parallel
+### 2. Invoke Both Analyses in Parallel
 
-Launch both agents simultaneously in a single message with multiple tool calls:
+Launch both simultaneously in a single message with multiple tool calls:
 
-- Use Task tool: `subagent_type: "codex-cli"` with the enhanced prompt
-- Use Task tool: `subagent_type: "code-searcher"` with the SAME enhanced prompt
+- **For Codex GPT-5.2:** Use Bash tool directly (NOT Task with codex-cli agent - the agent intercepts queries):
+
+  **macOS:**
+  ```bash
+  zsh -i -c "codex -p readonly exec 'ENHANCED_PROMPT' --json"
+  ```
+
+  **Linux:**
+  ```bash
+  bash -i -c "codex -p readonly exec 'ENHANCED_PROMPT' --json"
+  ```
+
+  Replace `ENHANCED_PROMPT` with the actual prompt (escape single quotes as `'\''`).
+
+- **For Code-Searcher:** Use Task tool with `subagent_type: "code-searcher"` with the same enhanced prompt
 
 This parallel execution significantly improves response time.
 

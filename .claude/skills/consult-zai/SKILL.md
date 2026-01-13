@@ -53,12 +53,25 @@ Wrap the user's question with structured output requirements:
 - "Error handling in `lib/errors.ts:45, 67-72, 98`"
 ```
 
-### 2. Invoke BOTH Agents in Parallel
+### 2. Invoke Both Analyses in Parallel
 
-Launch both agents simultaneously in a single message with multiple tool calls:
+Launch both simultaneously in a single message with multiple tool calls:
 
-- Use Task tool: `subagent_type: "zai-cli"` with the enhanced prompt
-- Use Task tool: `subagent_type: "code-searcher"` with the SAME enhanced prompt
+- **For z.ai GLM 4.7:** Use Bash tool directly (NOT Task with zai-cli agent - the agent intercepts queries):
+
+  **macOS:**
+  ```bash
+  zsh -i -c "zai -p 'ENHANCED_PROMPT' --output-format json --append-system-prompt 'You are GLM 4.7 model accessed via z.ai API.'"
+  ```
+
+  **Linux:**
+  ```bash
+  bash -i -c "zai -p 'ENHANCED_PROMPT' --output-format json --append-system-prompt 'You are GLM 4.7 model accessed via z.ai API.'"
+  ```
+
+  Replace `ENHANCED_PROMPT` with the actual prompt (escape single quotes as `'\''`).
+
+- **For Code-Searcher:** Use Task tool with `subagent_type: "code-searcher"` with the same enhanced prompt
 
 This parallel execution significantly improves response time.
 
