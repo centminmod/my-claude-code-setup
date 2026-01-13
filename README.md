@@ -9,7 +9,7 @@
 
 The beauty of using AI is that I can get AI to generate alternate Read Me guides using different formats and styles to suit different readers and learners. So I asked Claude Code to generate alternate Read Me guides in different styles - pick one that suits you best.
 
-* [README.md](README.md) - Original written version below
+* [README.md](README.md) - Original written version I did myself below
 * [README-v2.md](README-v2.md) - Progressive Disclosure Guide (Beginner → Intermediate → Advanced sections)
 * [README-v3.md](README-v3.md) - Task-Based Guide ("I want to..." navigation for goal-oriented users)
 * [README-v4.md](README-v4.md) - Technical Reference Manual (Chapter-based, dense reference format) 
