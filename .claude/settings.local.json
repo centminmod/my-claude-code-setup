@@ -89,7 +89,9 @@
       "mcp__context7__query-docs",
       "WebFetch(domain:docs.z.ai)",
       "Bash(git show:*)",
-      "Skill(consult-zai)"
+      "Skill(consult-zai)",
+      "Bash(git cherry-pick:*)",
+      "Bash(zai:*)"
     ],
     "deny": [],
     "defaultMode": "plan"
