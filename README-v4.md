@@ -1719,13 +1719,19 @@ See official Claude Code documentation for current shortcuts.
 
 | Topic | Creator | URL |
 |-------|---------|-----|
-| 31 Days of Claude Code | Ado Kukic (Anthropic) | https://adocomplete.com/advent-of-claude-2025/ |
 | Claude Code with Opus 4.5 | Alex Finn | https://www.youtube.com/watch?v=UVJXh57MgI0 |
 | Claude Code Overview | Matt Maher | https://www.youtube.com/watch?v=Dekx_OzRwiI |
 | VS Code Beginner | - | https://www.youtube.com/watch?v=rPITZvwyoMc |
 | VS Code Advanced | - | https://www.youtube.com/watch?v=P-5bWpUbO60 |
 | Git for VS Code | - | https://www.youtube.com/watch?v=twsYxYaQikI |
 | Ralph Wiggum | Greg Isenberg | https://www.youtube.com/watch?v=RpvQH0r0ecM |
+
+### Other Guides
+
+| Topic | Creator | URL |
+|-------|---------|-----|
+| 31 Days of Claude Code | Ado Kukic (Anthropic) | <https://adocomplete.com/advent-of-claude-2025/> |
+| 40+ Claude Code Tips | ykdojo | <https://github.com/ykdojo/claude-code-tips> |
 
 ### Community Resources
 

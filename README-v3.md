@@ -944,10 +944,15 @@ claude config set -g <key> <value> # Global setting
 
 ### YouTube Guides
 
-- [Advent of Claude: 31 Days](https://adocomplete.com/advent-of-claude-2025/) - Ado Kukic
-- [Claude Code with Opus 4.5](https://www.youtube.com/watch?v=UVJXh57MgI0) - Alex Finn
-- [Claude Code Overview](https://www.youtube.com/watch?v=Dekx_OzRwiI) - Matt Maher
-- [Ralph Wiggum Tutorial](https://www.youtube.com/watch?v=RpvQH0r0ecM) - Greg Isenberg
+* [Claude Code with Opus 4.5](https://www.youtube.com/watch?v=UVJXh57MgI0) - Alex Finn
+* [Claude Code Overview](https://www.youtube.com/watch?v=Dekx_OzRwiI) - Matt Maher
+* [VS Code Beginner Guide](https://www.youtube.com/watch?v=rPITZvwyoMc)
+* [Ralph Wiggum Tutorial](https://www.youtube.com/watch?v=RpvQH0r0ecM) - Greg Isenberg & Ryan Carson
+
+### Other Resources
+
+* [Advent of Claude: 31 Days](https://adocomplete.com/advent-of-claude-2025/) - Ado Kukic
+* [40+ Claude Code Tips](https://github.com/ykdojo/claude-code-tips)
 
 ---
 
