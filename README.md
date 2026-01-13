@@ -5,6 +5,17 @@
 
 # My Claude Code Project's Starter Settings
 
+## Alternate Read Me Guides
+
+The beauty of using AI is that I can get AI to generate alternate Read Me guides using different formats and styles to suit different readers and learners. So I asked Claude Code to generate alternate Read Me guides in different styles - pick one that suits you best.
+
+* [README.md](README.md) - Original written version below
+* [README-v2.md](README-v2.md) - Progressive Disclosure Guide (Beginner → Intermediate → Advanced sections)
+* [README-v3.md](README-v3.md) - Task-Based Guide ("I want to..." navigation for goal-oriented users)
+* [README-v4.md](README-v4.md) - Technical Reference Manual (Chapter-based, dense reference format) 
+
+## Overview
+
 My Claude Code project's starter settings and Claude Code hooks and slash commands are provided in this repository for users to try out. The [CLAUDE.md](https://github.com/centminmod/my-claude-code-setup/blob/master/CLAUDE.md) is setup as set of memory bank files to better retain context over many chat sessions. Be sure to read the official Claude Code docs first at <https://docs.anthropic.com/en/docs/claude-code/overview> and sign up for a [paid Claude AI account](https://claude.ai/) to use Claude Code. You can pay for Claude Pro $20/month, Claude Max $100/month or Claude Max $200/month. The paid Claude tier plans will include varying quotas for usage and rate limits outlined [here](https://support.anthropic.com/en/articles/9797557-usage-limit-best-practices). You can also use Claude Code with [Z.AI](#using-zai-with-claude-code) to get higher token usage quotas and get access to Z.AI GLM-4.7 LLM models within Claude Code.
 
 1. Copy the files in this Github repo to your project directory (where you intended codebase will be).
