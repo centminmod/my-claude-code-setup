@@ -87,7 +87,9 @@
       "Skill(claude-docs-consultant)",
       "WebFetch(domain:docs.convex.dev)",
       "mcp__context7__query-docs",
-      "WebFetch(domain:docs.z.ai)"
+      "WebFetch(domain:docs.z.ai)",
+      "Bash(git show:*)",
+      "Skill(consult-zai)"
     ],
     "deny": [],
     "defaultMode": "plan"

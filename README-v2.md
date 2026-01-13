@@ -693,6 +693,8 @@ Subagents are specialized tools that handle complex, multi-step tasks autonomous
 | **code-searcher** | `.claude/agents/` | Efficient codebase navigation with optional Chain of Draft mode |
 | **get-current-datetime** | `.claude/agents/` | Accurate Brisbane timezone (GMT+10) values |
 | **ux-design-expert** | `.claude/agents/` | Comprehensive UX/UI design guidance with Tailwind CSS & Highcharts |
+| **zai-cli** | `.claude/agents/` | CLI wrapper for z.ai GLM 4.7 model (used by consult-zai skill) |
+| **codex-cli** | `.claude/agents/` | CLI wrapper for OpenAI Codex GPT-5.2 (used by consult-codex skill) |
 
 #### memory-bank-synchronizer
 
@@ -727,6 +729,20 @@ Comprehensive UX/UI guidance:
 - Data visualization with Highcharts
 - Accessibility compliance
 
+#### zai-cli
+
+CLI wrapper for z.ai GLM 4.7 model:
+- Executes z.ai CLI with JSON output
+- Used internally by consult-zai skill
+- Returns raw output for skill to process
+
+#### codex-cli
+
+CLI wrapper for OpenAI Codex GPT-5.2:
+- Executes Codex CLI in readonly mode
+- Used internally by consult-codex skill
+- Returns raw output for skill to process
+
 ### 5.2 Custom Skills
 
 Skills provide specialized capabilities. See [Agent Skills documentation](https://docs.claude.com/en/docs/claude-code/skills).
@@ -736,6 +752,8 @@ Skills provide specialized capabilities. See [Agent Skills documentation](https:
 | Skill | Purpose | Invocation |
 |-------|---------|------------|
 | **claude-docs-consultant** | Selectively fetches official Claude Code documentation from docs.claude.com | Automatic when working on Claude Code features |
+| **consult-zai** | Dual-AI consultation comparing z.ai GLM 4.7 and code-searcher | `/consult-zai "question"` or via Skill tool |
+| **consult-codex** | Dual-AI consultation comparing Codex GPT-5.2 and code-searcher | `/consult-codex "question"` or via Skill tool |
 
 ### 5.3 Custom Slash Commands
 

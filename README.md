@@ -749,6 +749,30 @@ Claude Code now supports [Agent Skills](https://docs.claude.com/en/docs/claude-c
 
 - **Purpose**: A specialized Claude skill which will selectively consult the official Claude Code documentation from docs.claude.com using selective fetching. This skill will invoke only when working on Claude Code hooks, skills, subagents, MCP servers, or any Claude Code feature that requires referencing official documentation for accurate implementation. Fetches only the specific documentation needed rather than loading all docs upfront
 
+### consult-zai
+
+* **Purpose**: Dual-AI consultation skill that compares z.ai GLM 4.7 and code-searcher responses for comprehensive code analysis
+* **Location**: `.claude/skills/consult-zai/`
+* **Key Features**:
+  * Invokes both zai-cli and code-searcher agents in parallel for faster response
+  * Enhanced prompts requesting structured output with `file:line` citations
+  * Comparison table showing file paths, line numbers, code snippets, and accuracy
+  * Agreement level indicator (High/Partial/Disagreement) for confidence assessment
+  * Synthesized summary combining best insights from both AI sources
+* **Usage**: `/consult-zai "your code analysis question"` or invoke via Skill tool
+
+### consult-codex
+
+* **Purpose**: Dual-AI consultation skill that compares OpenAI Codex GPT-5.2 and code-searcher responses for comprehensive code analysis
+* **Location**: `.claude/skills/consult-codex/`
+* **Key Features**:
+  * Invokes both codex-cli and code-searcher agents in parallel for faster response
+  * Enhanced prompts requesting structured output with `file:line` citations
+  * Comparison table showing file paths, line numbers, code snippets, and accuracy
+  * Agreement level indicator (High/Partial/Disagreement) for confidence assessment
+  * Synthesized summary combining best insights from both AI sources
+* **Usage**: `/consult-codex "your code analysis question"` or invoke via Skill tool
+
 ## Claude Code Hooks
 
 The Claude Code hook is for `STOP` which uses Terminal-Notifier to show macOS desktop notifications whenever Claude Code stops and finishes it's response https://github.com/centminmod/terminal-notifier-setup.
@@ -810,6 +834,26 @@ Claude Code subagents are specialized tools designed to handle complex, multi-st
   - Accessibility compliance and performance optimization
   - Component library design with atomic methodology
 - **Usage**: Use for dashboard UX improvements, premium component libraries, complex user flow optimization, design system creation, or any comprehensive UX/UI design guidance needs
+
+### zai-cli
+
+* **Purpose**: CLI wrapper agent for executing z.ai GLM 4.7 model queries
+* **Location**: `.claude/agents/zai-cli.md`
+* **Key Features**:
+  * Executes z.ai CLI with JSON output format
+  * Uses haiku model for minimal overhead
+  * Returns raw output for parent skill to process
+* **Usage**: Used internally by consult-zai skill; not typically invoked directly
+
+### codex-cli
+
+* **Purpose**: CLI wrapper agent for executing OpenAI Codex GPT-5.2 queries
+* **Location**: `.claude/agents/codex-cli.md`
+* **Key Features**:
+  * Executes Codex CLI in readonly mode with JSON output
+  * Uses haiku model for minimal overhead
+  * Returns raw output for parent skill to process
+* **Usage**: Used internally by consult-codex skill; not typically invoked directly
 
 ## Claude Code Slash Commands
 

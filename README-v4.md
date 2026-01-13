@@ -662,6 +662,8 @@ Subagents are defined in `.claude/agents/` as markdown files.
 | code-searcher | `.claude/agents/code-searcher.md` | Efficient codebase navigation | Standard mode + CoD mode (80% fewer tokens) |
 | get-current-datetime | `.claude/agents/get-current-datetime.md` | Brisbane timezone (GMT+10) values | Multiple formats, eliminates timezone confusion |
 | ux-design-expert | `.claude/agents/ux-design-expert.md` | UX/UI design guidance | Tailwind CSS, Highcharts, accessibility compliance |
+| zai-cli | `.claude/agents/zai-cli.md` | z.ai GLM 4.7 CLI wrapper | JSON output, used by consult-zai skill |
+| codex-cli | `.claude/agents/codex-cli.md` | Codex GPT-5.2 CLI wrapper | Readonly mode, used by consult-codex skill |
 
 #### memory-bank-synchronizer
 
@@ -720,6 +722,28 @@ Subagents are defined in `.claude/agents/` as markdown files.
 - Accessibility compliance
 - Component library design
 
+#### zai-cli
+
+**Purpose**: CLI wrapper for z.ai GLM 4.7 model queries.
+
+**Features**:
+- Executes z.ai CLI with JSON output format
+- Uses haiku model for minimal overhead
+- Returns raw output for parent skill to process
+
+**Usage**: Used internally by consult-zai skill; not typically invoked directly.
+
+#### codex-cli
+
+**Purpose**: CLI wrapper for OpenAI Codex GPT-5.2 queries.
+
+**Features**:
+- Executes Codex CLI in readonly mode with JSON output
+- Uses haiku model for minimal overhead
+- Returns raw output for parent skill to process
+
+**Usage**: Used internally by consult-codex skill; not typically invoked directly.
+
 ---
 
 ## Chapter 10: Skills
@@ -741,6 +765,8 @@ Skills are defined in `.claude/skills/` directories containing:
 | Skill | Purpose | Invocation | Location |
 |-------|---------|------------|----------|
 | claude-docs-consultant | Fetch official Claude Code documentation | Automatic when working on Claude Code features | `.claude/skills/claude-docs-consultant/` |
+| consult-zai | Dual-AI consultation: z.ai GLM 4.7 vs code-searcher | `/consult-zai "question"` or via Skill tool | `.claude/skills/consult-zai/` |
+| consult-codex | Dual-AI consultation: Codex GPT-5.2 vs code-searcher | `/consult-codex "question"` or via Skill tool | `.claude/skills/consult-codex/` |
 
 #### claude-docs-consultant
 
@@ -749,6 +775,32 @@ Skills are defined in `.claude/skills/` directories containing:
 **Triggers**: Working on hooks, skills, subagents, MCP servers, or any Claude Code feature requiring official documentation.
 
 **Behavior**: Fetches only specific documentation needed rather than loading all docs upfront.
+
+#### consult-zai
+
+**Purpose**: Dual-AI consultation comparing z.ai GLM 4.7 and code-searcher responses.
+
+**Features**:
+- Invokes both zai-cli and code-searcher agents in parallel
+- Enhanced prompts requesting structured output with `file:line` citations
+- Comparison table showing file paths, line numbers, code snippets, and accuracy
+- Agreement level indicator (High/Partial/Disagreement) for confidence assessment
+- Synthesized summary combining best insights from both AI sources
+
+**Usage**: `/consult-zai "your code analysis question"` or invoke via Skill tool.
+
+#### consult-codex
+
+**Purpose**: Dual-AI consultation comparing OpenAI Codex GPT-5.2 and code-searcher responses.
+
+**Features**:
+- Invokes both codex-cli and code-searcher agents in parallel
+- Enhanced prompts requesting structured output with `file:line` citations
+- Comparison table showing file paths, line numbers, code snippets, and accuracy
+- Agreement level indicator (High/Partial/Disagreement) for confidence assessment
+- Synthesized summary combining best insights from both AI sources
+
+**Usage**: `/consult-codex "your code analysis question"` or invoke via Skill tool.
 
 ---
 

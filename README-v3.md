@@ -513,6 +513,8 @@ Skills provide specialized capabilities. See [official docs](https://docs.claude
 | Skill | What it does |
 |-------|-------------|
 | **claude-docs-consultant** | Selectively fetches official Claude Code documentation |
+| **consult-zai** | Dual-AI consultation comparing z.ai GLM 4.7 and code-searcher responses |
+| **consult-codex** | Dual-AI consultation comparing Codex GPT-5.2 and code-searcher responses |
 
 ### Custom Subagents
 
@@ -524,6 +526,8 @@ Subagents handle complex tasks autonomously with their own context window. See [
 | **code-searcher** | Efficient codebase search with optional CoD mode (80% fewer tokens) |
 | **get-current-datetime** | Accurate Brisbane timezone (GMT+10) timestamps |
 | **ux-design-expert** | Comprehensive UX/UI guidance with Tailwind CSS & Highcharts |
+| **zai-cli** | CLI wrapper for z.ai GLM 4.7 (used by consult-zai skill) |
+| **codex-cli** | CLI wrapper for Codex GPT-5.2 (used by consult-codex skill) |
 
 ### Hooks
 
