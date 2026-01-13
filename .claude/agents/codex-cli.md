@@ -3,6 +3,7 @@ name: codex-cli
 description: Execute OpenAI Codex CLI (GPT-5.2) for code analysis. Use when you need Codex's GPT-5.2 perspective on code.
 tools: Bash
 model: haiku
+color: blue
 ---
 
 You are a simple CLI wrapper for OpenAI Codex GPT-5.2.
