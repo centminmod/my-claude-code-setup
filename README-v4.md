@@ -1179,6 +1179,92 @@ zaix feature-auth  # Named worktree
 zaix               # Auto-generated name
 ```
 
+### 13.8 GitHub Actions Integration
+
+Claude Code integrates with GitHub Actions to automate AI-powered workflows. With `@claude` mentions in PRs or issues, Claude can analyze code, implement features, fix bugs, and follow project standards defined in `CLAUDE.md`.
+
+**Key Capabilities**:
+| Capability | Description |
+|------------|-------------|
+| Issue response | Respond to `@claude` mentions in issues |
+| PR automation | Create and modify code through pull requests |
+| Standards compliance | Follow project guidelines from `CLAUDE.md` |
+| Slash commands | Execute commands like `/review` |
+
+**Official Documentation**: [Claude Code GitHub Actions](https://code.claude.com/docs/en/github-actions)
+
+#### Z.AI Workflow Configuration
+
+Create `.github/workflows/claude.yml`:
+
+<details>
+<summary>Click to expand workflow YAML</summary>
+
+```yaml
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+          API_TIMEOUT_MS: 3000000
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --model claude-opus
+            --max-turns 100
+```
+
+</details>
+
+#### Workflow Component Reference
+
+| Component | Purpose |
+|-----------|---------|
+| **Event Triggers** | Listens for `issue_comment`, `pull_request_review_comment`, `issues`, and `pull_request_review` events |
+| **Conditional (`if`)** | Only runs when `@claude` is mentioned in the comment/issue body or title |
+| **Permissions** | `contents: write` for code changes, `pull-requests: write` for PRs, `issues: write` for issue responses, `actions: read` for CI results |
+| **ANTHROPIC_BASE_URL** | Routes API calls through Z.AI endpoint for higher quotas |
+| **API_TIMEOUT_MS** | Extended timeout (50 minutes) for complex operations |
+| **claude_args** | Uses `claude-opus` model with up to 100 turns for complex tasks |
+
+#### Setup Steps
+
+1. **Add API key as secret**: Repository Settings → Secrets and variables → Actions → Add `ANTHROPIC_API_KEY` with your Z.AI API key
+2. **Create workflow file**: Save the YAML above to `.github/workflows/claude.yml`
+3. **Usage**: Mention `@claude` in any issue or PR comment to trigger the workflow
+
 ---
 
 # Part VI: Development Workflows

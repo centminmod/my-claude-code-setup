@@ -765,6 +765,78 @@ zaix               # Auto-generated name
 
 > **See also:** [Parallel Sessions](#i-want-to-run-parallel-ai-coding-sessions) for more worktree details
 
+### Claude Code GitHub Actions
+
+Automate AI-powered workflows in your repository with `@claude` mentions.
+
+**Key capabilities:**
+- Respond to `@claude` mentions in issues and pull requests
+- Create and modify code through pull requests
+- Follow project-specific guidelines from `CLAUDE.md`
+
+**Reference:** [Claude Code GitHub Actions Documentation](https://code.claude.com/docs/en/github-actions)
+
+<details>
+<summary>Z.AI Integration Example</summary>
+
+Create `.github/workflows/claude.yml`:
+
+```yaml
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+          API_TIMEOUT_MS: 3000000
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --model claude-opus
+            --max-turns 100
+```
+
+| Component | Purpose |
+|-----------|---------|
+| **ANTHROPIC_BASE_URL** | Routes API calls through Z.AI endpoint |
+| **API_TIMEOUT_MS** | Extended timeout (50 minutes) |
+| **claude_args** | Uses `claude-opus` with up to 100 turns |
+
+**Setup:** Add `ANTHROPIC_API_KEY` secret in repository settings, create workflow file, then mention `@claude` in issues/PRs.
+
+</details>
+
 ---
 
 ## I want to monitor costs and usage
