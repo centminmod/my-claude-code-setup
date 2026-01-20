@@ -1328,6 +1328,16 @@ Chrome Devtool MCP server takes up ~16,977 tokens across 26 MCP tools
      mcp__chrome-devtools__wait_for (chrome-devtools): 643 tokens
 ```
 
+## YouTube Guides
+
+* [How To Master Claude Code (Anthropic's Official 7-Hour Course)](https://www.youtube.com/watch?v=XuSFUvUdvQA) - Anthropic Official
+* [Claude Code with Claude Opus 4.5](https://www.youtube.com/watch?v=UVJXh57MgI0) - Alex Finn
+* [Claude Code YouTube video by Matt Maher](https://www.youtube.com/watch?v=Dekx_OzRwiI)
+* [VS Code Beginner Guide](https://www.youtube.com/watch?v=rPITZvwyoMc)
+* [VS Code Advanced Guide](https://www.youtube.com/watch?v=P-5bWpUbO60)
+* [Git for VS Code](https://www.youtube.com/watch?v=twsYxYaQikI)
+* [Ralph Wiggum Tutorial](https://www.youtube.com/watch?v=RpvQH0r0ecM) - Greg Isenberg & Ryan Carson
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=centminmod/my-claude-code-setup&type=Date)](https://www.star-history.com/#centminmod/my-claude-code-setup&Date)

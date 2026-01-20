@@ -1055,6 +1055,7 @@ claude config set -g <key> <value> # Global setting
 ### YouTube Guides
 
 * [Claude Code with Opus 4.5](https://www.youtube.com/watch?v=UVJXh57MgI0) - Alex Finn
+* [How To Master Claude Code (Anthropic's Official 7-Hour Course)](https://www.youtube.com/watch?v=XuSFUvUdvQA) - Anthropic Official
 * [Claude Code Overview](https://www.youtube.com/watch?v=Dekx_OzRwiI) - Matt Maher
 * [VS Code Beginner Guide](https://www.youtube.com/watch?v=rPITZvwyoMc)
 * [Ralph Wiggum Tutorial](https://www.youtube.com/watch?v=RpvQH0r0ecM) - Greg Isenberg & Ryan Carson

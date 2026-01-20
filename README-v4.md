@@ -1877,6 +1877,7 @@ See official Claude Code documentation for current shortcuts.
 | Topic | Creator | URL |
 |-------|---------|-----|
 | Claude Code with Opus 4.5 | Alex Finn | https://www.youtube.com/watch?v=UVJXh57MgI0 |
+| How To Master Claude Code (7-Hour Course) | Anthropic Official | https://www.youtube.com/watch?v=XuSFUvUdvQA |
 | Claude Code Overview | Matt Maher | https://www.youtube.com/watch?v=Dekx_OzRwiI |
 | VS Code Beginner | - | https://www.youtube.com/watch?v=rPITZvwyoMc |
 | VS Code Advanced | - | https://www.youtube.com/watch?v=P-5bWpUbO60 |
