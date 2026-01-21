@@ -920,10 +920,30 @@ PROGRESS_BAR=$(generate_progress_bar "$USED_PERCENTAGE")
 
 # Show git branch if in a git repo
 GIT_BRANCH=""
-if git rev-parse --git-dir > /dev/null 2>&1; then
-    BRANCH=$(git branch --show-current 2>/dev/null)
+if git -C "$CURRENT_DIR" rev-parse --git-dir > /dev/null 2>&1; then
+    BRANCH=$(git -C "$CURRENT_DIR" branch --show-current 2>/dev/null)
     if [ -n "$BRANCH" ]; then
-        GIT_BRANCH=" | 🌿 $BRANCH"
+        # Worktree detection
+        GIT_DIR=$(git -C "$CURRENT_DIR" rev-parse --git-dir 2>/dev/null)
+        WORKTREE=""
+        if [[ "$GIT_DIR" == *".git/worktrees/"* ]] || [[ -f "$GIT_DIR/gitdir" ]]; then
+            WORKTREE=" 🌳"
+        fi
+        # Ahead/behind detection
+        AHEAD_BEHIND=""
+        UPSTREAM=$(git -C "$CURRENT_DIR" rev-parse --abbrev-ref '@{u}' 2>/dev/null)
+        if [ -n "$UPSTREAM" ]; then
+            AHEAD=$(git -C "$CURRENT_DIR" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
+            BEHIND=$(git -C "$CURRENT_DIR" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)
+            if [ "$AHEAD" -gt 0 ] && [ "$BEHIND" -gt 0 ]; then
+                AHEAD_BEHIND=" ↕${AHEAD}/${BEHIND}"
+            elif [ "$AHEAD" -gt 0 ]; then
+                AHEAD_BEHIND=" ↑${AHEAD}"
+            elif [ "$BEHIND" -gt 0 ]; then
+                AHEAD_BEHIND=" ↓${BEHIND}"
+            fi
+        fi
+        GIT_BRANCH=" | 🌿 $BRANCH${WORKTREE}${AHEAD_BEHIND}"
     fi
 fi
 
