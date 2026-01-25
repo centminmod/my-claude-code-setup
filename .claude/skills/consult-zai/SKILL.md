@@ -57,19 +57,26 @@ Wrap the user's question with structured output requirements:
 
 Launch both simultaneously in a single message with multiple tool calls:
 
-- **For z.ai GLM 4.7:** Use Bash tool directly (NOT Task with zai-cli agent - the agent intercepts queries):
+- **For z.ai GLM 4.7:** Use a temp file to avoid shell quoting issues:
+
+  **Step 1:** Write the enhanced prompt to a temp file using the Write tool:
+  ```
+  Write to /tmp/zai-prompt.txt with the ENHANCED_PROMPT content
+  ```
+
+  **Step 2:** Execute z.ai with the temp file:
 
   **macOS:**
   ```bash
-  zsh -i -c "zai -p 'ENHANCED_PROMPT' --output-format json --append-system-prompt 'You are GLM 4.7 model accessed via z.ai API.'"
+  zsh -i -c 'zai -p "$(cat /tmp/zai-prompt.txt)" --output-format json --append-system-prompt "You are GLM 4.7 model accessed via z.ai API." 2>&1'
   ```
 
   **Linux:**
   ```bash
-  bash -i -c "zai -p 'ENHANCED_PROMPT' --output-format json --append-system-prompt 'You are GLM 4.7 model accessed via z.ai API.'"
+  bash -i -c 'zai -p "$(cat /tmp/zai-prompt.txt)" --output-format json --append-system-prompt "You are GLM 4.7 model accessed via z.ai API." 2>&1'
   ```
 
-  Replace `ENHANCED_PROMPT` with the actual prompt (escape single quotes as `'\''`).
+  This approach avoids all shell quoting issues regardless of prompt content.
 
 - **For Code-Searcher:** Use Task tool with `subagent_type: "code-searcher"` with the same enhanced prompt
 

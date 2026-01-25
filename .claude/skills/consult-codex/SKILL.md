@@ -57,19 +57,26 @@ Wrap the user's question with structured output requirements:
 
 Launch both simultaneously in a single message with multiple tool calls:
 
-- **For Codex GPT-5.2:** Use Bash tool directly (NOT Task with codex-cli agent - the agent intercepts queries):
+- **For Codex GPT-5.2:** Use a temp file to avoid shell quoting issues:
+
+  **Step 1:** Write the enhanced prompt to a temp file using the Write tool:
+  ```
+  Write to /tmp/codex-prompt.txt with the ENHANCED_PROMPT content
+  ```
+
+  **Step 2:** Execute Codex with the temp file:
 
   **macOS:**
   ```bash
-  zsh -i -c "codex -p readonly exec 'ENHANCED_PROMPT' --json"
+  zsh -i -c 'codex -p readonly exec "$(cat /tmp/codex-prompt.txt)" --json 2>&1'
   ```
 
   **Linux:**
   ```bash
-  bash -i -c "codex -p readonly exec 'ENHANCED_PROMPT' --json"
+  bash -i -c 'codex -p readonly exec "$(cat /tmp/codex-prompt.txt)" --json 2>&1'
   ```
 
-  Replace `ENHANCED_PROMPT` with the actual prompt (escape single quotes as `'\''`).
+  This approach avoids all shell quoting issues regardless of prompt content.
 
 - **For Code-Searcher:** Use Task tool with `subagent_type: "code-searcher"` with the same enhanced prompt
 
