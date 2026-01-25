@@ -82,13 +82,109 @@ Launch both simultaneously in a single message with multiple tool calls:
 
 This parallel execution significantly improves response time.
 
-### 3. Handle Errors
+### 2a. Parse Codex `--json` Output Files (jq Recipes)
+
+Codex CLI with `--json` typically emits **newline-delimited JSON events** (JSONL). Some environments may prefix lines with terminal escape sequences; these recipes strip everything before the first `{` and then `fromjson?` safely.
+
+Set a variable first:
+
+```bash
+FILE="/private/tmp/claude/.../tasks/<task_id>.output"   # or a symlinked *.output to agent-*.jsonl
+```
+
+**List event types (top-level `.type`)**
+
+```bash
+jq -Rr 'sub("^[^{]*";"") | fromjson? | .type // empty' "$FILE" | sort | uniq -c | sort -nr
+```
+
+**List item types (nested `.item.type` on `item.completed`)**
+
+```bash
+jq -Rr 'sub("^[^{]*";"") | fromjson? | select(.type=="item.completed") | .item.type? // empty' "$FILE" | sort | uniq -c | sort -nr
+```
+
+**Extract only “reasoning” and “agent_message” text (human-readable)**
+
+```bash
+jq -Rr '
+  sub("^[^{]*";"")
+  | fromjson?
+  | select(.type=="item.completed" and (.item.type? | IN("reasoning","agent_message")))
+  | "===== \(.item.type) \(.item.id) =====\n\(.item.text // "")\n"
+' "$FILE"
+```
+
+**Extract just the final `agent_message` (useful for summaries)**
+
+```bash
+jq -Rr '
+  sub("^[^{]*";"")
+  | fromjson?
+  | select(.type=="item.completed" and .item.type?=="agent_message")
+  | .item.text // empty
+' "$FILE" | tail -n 1
+```
+
+**Build a clean JSON array for downstream tools**
+
+```bash
+jq -Rn '
+  [inputs
+   | sub("^[^{]*";"")
+   | fromjson?
+   | select(.type=="item.completed" and (.item.type? | IN("reasoning","agent_message")))
+   | {type:.item.type, id:.item.id, text:(.item.text // "")}
+  ]
+' "$FILE"
+```
+
+**Extract command executions (command + exit code), avoiding huge stdout/stderr**
+
+Codex JSON schemas vary slightly; this tries multiple common field names.
+
+```bash
+jq -Rr '
+  sub("^[^{]*";"")
+  | fromjson?
+  | select(.type=="item.completed" and .item.type?=="command_execution")
+  | [
+      (.item.id // ""),
+      (.item.command // .item.cmd // .item.command_line // "<no command field>"),
+      (.item.exit_code // .item.exitCode // "<no exit>")
+    ]
+  | @tsv
+' "$FILE"
+```
+
+**Discover actual fields present in `command_execution` for your environment**
+
+```bash
+jq -Rr '
+  sub("^[^{]*";"")
+  | fromjson?
+  | select(.type=="item.completed" and .item.type?=="command_execution")
+  | (.item | keys | @json)
+' "$FILE" | head -n 5
+```
+
+### 3. Cleanup Temp Files
+
+After processing the Codex response (success or failure), clean up the temp prompt file:
+
+```bash
+rm -f /tmp/codex-prompt.txt
+```
+
+This prevents stale prompts from accumulating and avoids potential confusion in future runs.
+
+### 4. Handle Errors
 
 - If one agent fails or times out, still present the successful agent's response
 - Note the failure in the comparison: "Agent X failed to respond: [error message]"
 - Provide analysis based on the available response
 
-### 4. Create Comparison Analysis
+### 5. Create Comparison Analysis
 
 Use this exact format:
 

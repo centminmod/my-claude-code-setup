@@ -82,13 +82,23 @@ Launch both simultaneously in a single message with multiple tool calls:
 
 This parallel execution significantly improves response time.
 
-### 3. Handle Errors
+### 3. Cleanup Temp Files
+
+After processing the z.ai response (success or failure), clean up the temp prompt file:
+
+```bash
+rm -f /tmp/zai-prompt.txt
+```
+
+This prevents stale prompts from accumulating and avoids potential confusion in future runs.
+
+### 4. Handle Errors
 
 - If one agent fails or times out, still present the successful agent's response
 - Note the failure in the comparison: "Agent X failed to respond: [error message]"
 - Provide analysis based on the available response
 
-### 4. Create Comparison Analysis
+### 5. Create Comparison Analysis
 
 Use this exact format:
 
