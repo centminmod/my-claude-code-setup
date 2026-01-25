@@ -61,19 +61,19 @@ Launch both simultaneously in a single message with multiple tool calls:
 
   **Step 1:** Write the enhanced prompt to a temp file using the Write tool:
   ```
-  Write to /tmp/zai-prompt.txt with the ENHANCED_PROMPT content
+  Write to $CLAUDE_PROJECT_DIR/tmp/zai-prompt.txt with the ENHANCED_PROMPT content
   ```
 
   **Step 2:** Execute z.ai with the temp file:
 
   **macOS:**
   ```bash
-  zsh -i -c 'zai -p "$(cat /tmp/zai-prompt.txt)" --output-format json --append-system-prompt "You are GLM 4.7 model accessed via z.ai API." 2>&1'
+  zsh -i -c 'zai -p "$(cat $CLAUDE_PROJECT_DIR/tmp/zai-prompt.txt)" --output-format json --append-system-prompt "You are GLM 4.7 model accessed via z.ai API." 2>&1'
   ```
 
   **Linux:**
   ```bash
-  bash -i -c 'zai -p "$(cat /tmp/zai-prompt.txt)" --output-format json --append-system-prompt "You are GLM 4.7 model accessed via z.ai API." 2>&1'
+  bash -i -c 'zai -p "$(cat $CLAUDE_PROJECT_DIR/tmp/zai-prompt.txt)" --output-format json --append-system-prompt "You are GLM 4.7 model accessed via z.ai API." 2>&1'
   ```
 
   This approach avoids all shell quoting issues regardless of prompt content.
@@ -87,7 +87,7 @@ This parallel execution significantly improves response time.
 After processing the z.ai response (success or failure), clean up the temp prompt file:
 
 ```bash
-rm -f /tmp/zai-prompt.txt
+rm -f $CLAUDE_PROJECT_DIR/tmp/zai-prompt.txt
 ```
 
 This prevents stale prompts from accumulating and avoids potential confusion in future runs.

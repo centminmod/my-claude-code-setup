@@ -61,19 +61,19 @@ Launch both simultaneously in a single message with multiple tool calls:
 
   **Step 1:** Write the enhanced prompt to a temp file using the Write tool:
   ```
-  Write to /tmp/codex-prompt.txt with the ENHANCED_PROMPT content
+  Write to $CLAUDE_PROJECT_DIR/tmp/codex-prompt.txt with the ENHANCED_PROMPT content
   ```
 
-  **Step 2:** Execute Codex with the temp file:
+  **Step 2:** Execute Codex with the temp file and have at least 10 minute timeout as Codex can take a while to respond:
 
   **macOS:**
   ```bash
-  zsh -i -c 'codex -p readonly exec "$(cat /tmp/codex-prompt.txt)" --json 2>&1'
+  zsh -i -c 'codex -p readonly exec "$(cat $CLAUDE_PROJECT_DIR/tmp/codex-prompt.txt)" --json 2>&1'
   ```
 
   **Linux:**
   ```bash
-  bash -i -c 'codex -p readonly exec "$(cat /tmp/codex-prompt.txt)" --json 2>&1'
+  bash -i -c 'codex -p readonly exec "$(cat $CLAUDE_PROJECT_DIR/tmp/codex-prompt.txt)" --json 2>&1'
   ```
 
   This approach avoids all shell quoting issues regardless of prompt content.
@@ -173,7 +173,7 @@ jq -Rr '
 After processing the Codex response (success or failure), clean up the temp prompt file:
 
 ```bash
-rm -f /tmp/codex-prompt.txt
+rm -f $CLAUDE_PROJECT_DIR/tmp/codex-prompt.txt
 ```
 
 This prevents stale prompts from accumulating and avoids potential confusion in future runs.
