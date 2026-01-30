@@ -39,6 +39,9 @@ Fetch and read these URLs to verify current APIs:
 | Pages Functions | https://developers.cloudflare.com/pages/functions/ |
 | Pages Functions Config | https://developers.cloudflare.com/pages/functions/wrangler-configuration/ |
 | Wrangler Config | https://developers.cloudflare.com/workers/wrangler/configuration/ |
+| Sandbox SDK | https://developers.cloudflare.com/sandbox/ |
+| Sandbox Get Started | https://developers.cloudflare.com/sandbox/get-started/ |
+| Containers | https://developers.cloudflare.com/containers/ |
 
 **Clerk Authentication:**
 | Resource | URL |
@@ -190,6 +193,17 @@ npm install drizzle-kit --save-dev
 "assets": { "directory": "./public" }
 ```
 
+**Sandbox SDK (Containers):**
+```jsonc
+"containers": [
+  { "class_name": "Sandbox", "image": "./Dockerfile", "instance_type": "lite", "max_instances": 5 }
+],
+"durable_objects": {
+  "bindings": [{ "class_name": "Sandbox", "name": "Sandbox" }]
+},
+"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sandbox"] }]
+```
+
 ---
 
 ## Cloudflare Pages: Static HTML via GitHub
@@ -326,6 +340,234 @@ wrangler pages dev ./ --d1=DB
 1. Dashboard: **Pages project > Custom domains > Set up a custom domain**
 2. Add CNAME record pointing to `<project>.pages.dev`
 3. SSL provisioned automatically
+
+---
+
+## Sandbox SDK (Secure Code Execution)
+
+Run untrusted code in isolated Linux containers. Each sandbox = Durable Object + Container.
+
+### Documentation
+| Resource | URL |
+|----------|-----|
+| Overview | https://developers.cloudflare.com/sandbox/ |
+| Get Started | https://developers.cloudflare.com/sandbox/get-started/ |
+| API Reference | https://developers.cloudflare.com/sandbox/api/ |
+| GitHub | https://github.com/cloudflare/sandbox-sdk |
+
+### Use Cases
+- **AI Agents**: Execute LLM-generated code safely
+- **CI/CD**: Automated testing pipelines
+- **Cloud REPLs**: Interactive development environments
+- **Data Analysis**: Run scripts with rich outputs (charts, tables)
+
+### Instance Types
+| Type | vCPU | Memory |
+|------|------|--------|
+| lite | 0.5 | 256 MB |
+| standard | 1 | 512 MB |
+| heavy | 2 | 1 GB |
+
+### Project Setup
+```bash
+npm create cloudflare@latest -- my-sandbox --template=cloudflare/sandbox-sdk/examples/minimal
+```
+
+### Wrangler Configuration
+```jsonc
+{
+  "name": "my-sandbox-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "containers": [{
+    "class_name": "Sandbox",
+    "image": "./Dockerfile",
+    "instance_type": "lite",
+    "max_instances": 5
+  }],
+  "durable_objects": {
+    "bindings": [{ "class_name": "Sandbox", "name": "Sandbox" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sandbox"] }]
+}
+```
+
+### Dockerfile
+```dockerfile
+FROM docker.io/cloudflare/sandbox:latest
+RUN pip3 install --no-cache-dir pandas numpy matplotlib
+EXPOSE 8080 3000  # Required for wrangler dev
+```
+
+### CRITICAL: Basic Usage Pattern
+```typescript
+import { getSandbox, proxyToSandbox, type Sandbox } from '@cloudflare/sandbox';
+export { Sandbox } from '@cloudflare/sandbox';  // MUST re-export
+
+type Env = { Sandbox: DurableObjectNamespace<Sandbox>; };
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    // CRITICAL: proxyToSandbox MUST be called first for preview URLs
+    const proxyResponse = await proxyToSandbox(request, env);
+    if (proxyResponse) return proxyResponse;
+
+    const sandbox = getSandbox(env.Sandbox, 'my-sandbox', {
+      normalizeId: true,    // Required for preview URLs (lowercases ID)
+      sleepAfter: '10m',    // Auto-sleep after inactivity
+    });
+
+    // Execute commands
+    const result = await sandbox.exec('python3 -c "print(2 + 2)"');
+    // result: { stdout, stderr, exitCode, success, duration }
+
+    return Response.json({ output: result.stdout });
+  }
+};
+```
+
+### Command Execution API
+```typescript
+// Basic execution
+const result = await sandbox.exec('python3 script.py', {
+  cwd: '/workspace/project',
+  env: { API_KEY: 'secret' },
+  stream: true,
+  onOutput: (stream, data) => console.log(data)
+});
+
+// Background processes
+const process = await sandbox.startProcess('python3 -m http.server 8080', {
+  processId: 'web-server',
+  cwd: '/workspace/public'
+});
+await process.waitForPort(8080);  // Wait for readiness
+await process.waitForLog(/Server running/);  // Wait for log pattern
+const logs = await sandbox.getProcessLogs('web-server');
+await sandbox.stopProcess('web-server');
+```
+
+### File Operations API
+```typescript
+// Write/read (use /workspace for persistent files)
+await sandbox.writeFile('/workspace/file.txt', 'content');
+await sandbox.writeFile('/workspace/img.png', base64Data, { encoding: 'base64' });
+const { content } = await sandbox.readFile('/workspace/file.txt');
+
+// Directory operations
+await sandbox.mkdir('/workspace/dir', { recursive: true });
+const files = await sandbox.listFiles('/workspace');
+await sandbox.pathExists('/workspace/file.txt');
+
+// Delete
+await sandbox.deleteFile('/workspace/temp.txt');
+await sandbox.deleteFile('/workspace/dir', { recursive: true });
+```
+
+### Sessions (Isolated Contexts)
+```typescript
+// Each session has own shell state, env vars, cwd
+const session = await sandbox.createSession({
+  id: 'user-123',
+  cwd: '/workspace/user123',
+  env: { USER_ID: '123' }
+});
+
+await session.exec('echo $USER_ID');
+await session.writeFile('config.txt', 'data');
+await sandbox.deleteSession('user-123');
+```
+
+### Code Interpreter (Rich Outputs)
+```typescript
+// Create context with variables
+const ctx = await sandbox.createCodeContext({
+  language: 'python',
+  variables: { data: [1, 2, 3, 4, 5] }
+});
+
+// Execute code (state persists across runs)
+const result = await ctx.runCode(`
+import matplotlib.pyplot as plt
+plt.plot(data, [x**2 for x in data])
+plt.savefig('plot.png')
+`);
+// result.outputs: [{ type: 'text'|'image'|'html', content }]
+```
+
+### Port Exposure & WebSockets
+```typescript
+// Expose service (requires custom domain, not .workers.dev)
+const { url } = await sandbox.exposePort(8080, {
+  name: 'web-app',
+  hostname: request.hostname
+});
+
+// WebSocket proxy
+if (request.headers.get('Upgrade') === 'websocket') {
+  return await sandbox.wsConnect(request, 8080);
+}
+```
+
+### Bucket Mounting (Production Only)
+```typescript
+// Mount R2 bucket (NOT available in wrangler dev)
+await sandbox.mountBucket(env.DATA_BUCKET, '/data', { readOnly: false });
+await sandbox.exec('ls /data');
+await sandbox.unmountBucket('/data');
+```
+
+### Lifecycle Management
+```typescript
+// With keepAlive: true, MUST call destroy()
+const sandbox = getSandbox(env.Sandbox, 'temp', { keepAlive: true });
+try {
+  const result = await sandbox.exec('python script.py');
+  return result.stdout;
+} finally {
+  await sandbox.destroy();  // REQUIRED to free resources
+}
+```
+
+### Error Handling
+```typescript
+// Retry on CONTAINER_NOT_READY (cold start)
+async function execWithRetry(sandbox, cmd) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await sandbox.exec(cmd);
+    } catch (e) {
+      if (e.code === 'CONTAINER_NOT_READY') {
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+```
+
+### CLI Commands
+```bash
+wrangler dev                  # Local dev (requires Docker)
+wrangler deploy               # Deploy to production
+wrangler containers list      # Check container status
+wrangler tail                 # Monitor logs
+```
+
+### Gotchas
+1. **`proxyToSandbox()` MUST be called first** in fetch handler
+2. **Docker required** for local development (`docker info` to verify)
+3. **First deploy**: 2-3 minutes for container build
+4. **Cold start**: 2-3s when waking from sleep
+5. **Use `/workspace`** for persistent files (other paths are ephemeral)
+6. **Preview URLs require**:
+   - Custom domain (not `.workers.dev`)
+   - Wildcard DNS (`*.domain.com → worker.domain.com`)
+   - `normalizeId: true` in getSandbox
+7. **`keepAlive: true`** requires `destroy()` call
+8. **Bucket mounting** only works in production (FUSE not in dev)
+9. **Code contexts are ephemeral** - recreate after container sleep/wake
 
 ---
 
@@ -780,6 +1022,8 @@ wrangler logout
 | KV | 25MB per value | |
 | R2 | 5TB per object | S3-compatible API |
 | Durable Objects | Single-threaded per instance | Use for coordination, WebSockets |
+| Sandbox | lite: 0.5 vCPU, 256MB | standard: 1 vCPU, 512MB | heavy: 2 vCPU, 1GB |
+| Sandbox | Cold start: 2-3s | First deploy: 2-3 min |
 
 ### Common Gotchas
 1. **Clone Request** before reading body twice: `const clone = request.clone()`
@@ -789,6 +1033,11 @@ wrangler logout
 5. **D1 batch** for transactions: `await db.batch([stmt1, stmt2])`
 6. **authorizedParties** recommended for Clerk to prevent CSRF attacks
 7. **Clerk Bot Protection** uses Cloudflare Turnstile - blocks automated browser testing (disable in dev: Clerk Dashboard → Configure → Attack protection)
+8. **Sandbox SDK**: `proxyToSandbox()` MUST be called first in fetch handler
+9. **Sandbox SDK** requires Docker running locally for `wrangler dev`
+10. **Sandbox containers** take 2-3 min on first deploy; use `/workspace` for persistent files
+11. **Sandbox preview URLs** require custom domain (not .workers.dev), wildcard DNS, and `normalizeId: true`
+12. **Sandbox `keepAlive: true`** requires explicit `destroy()` call to free resources
 
 ---
 

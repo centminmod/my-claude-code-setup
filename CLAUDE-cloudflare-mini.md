@@ -29,6 +29,8 @@ Use MCP tools if available, otherwise web fetch these URLs:
 | Pages | https://developers.cloudflare.com/pages/ |
 | Pages Git Integration | https://developers.cloudflare.com/pages/get-started/git-integration/ |
 | Pages Functions | https://developers.cloudflare.com/pages/functions/ |
+| Sandbox SDK | https://developers.cloudflare.com/sandbox/ |
+| Containers | https://developers.cloudflare.com/containers/ |
 
 **Clerk:**
 | Resource | URL |
@@ -152,6 +154,70 @@ export default {
   }
 }
 ```
+
+---
+
+## Sandbox SDK (Code Execution)
+
+Run untrusted code in isolated containers. Docs: https://developers.cloudflare.com/sandbox/
+
+**Use cases:** AI agents, CI/CD, cloud REPLs, data analysis
+
+**Setup:**
+```bash
+npm create cloudflare@latest -- my-sandbox --template=cloudflare/sandbox-sdk/examples/minimal
+```
+
+**Wrangler config:**
+```jsonc
+"containers": [{ "class_name": "Sandbox", "image": "./Dockerfile", "instance_type": "lite", "max_instances": 5 }],
+"durable_objects": { "bindings": [{ "class_name": "Sandbox", "name": "Sandbox" }] },
+"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sandbox"] }]
+```
+
+**Dockerfile:**
+```dockerfile
+FROM docker.io/cloudflare/sandbox:latest
+RUN pip3 install --no-cache-dir pandas numpy
+EXPOSE 8080  # Required for wrangler dev
+```
+
+**Basic usage (CRITICAL: proxyToSandbox first!):**
+```typescript
+import { getSandbox, proxyToSandbox, type Sandbox } from '@cloudflare/sandbox';
+export { Sandbox } from '@cloudflare/sandbox';
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    // CRITICAL: Must call first for preview URLs
+    const proxyResponse = await proxyToSandbox(request, env);
+    if (proxyResponse) return proxyResponse;
+
+    const sandbox = getSandbox(env.Sandbox, 'my-sandbox', { normalizeId: true });
+    const result = await sandbox.exec('python3 -c "print(2+2)"');
+    // result.stdout, result.stderr, result.exitCode, result.success
+
+    await sandbox.writeFile('/workspace/file.txt', 'content');  // Use /workspace!
+    const file = await sandbox.readFile('/workspace/file.txt');
+    return Response.json({ output: result.stdout });
+  }
+};
+```
+
+**Instance types:**
+| Type | vCPU | Memory |
+|------|------|--------|
+| lite | 0.5 | 256MB |
+| standard | 1 | 512MB |
+| heavy | 2 | 1GB |
+
+**Sandbox Gotchas:**
+- `proxyToSandbox()` MUST be called first
+- Requires Docker locally for dev
+- First deploy: 2-3 min; cold start: 2-3s
+- Use `/workspace` for persistent files
+- Preview URLs need custom domain + wildcard DNS + `normalizeId: true`
+- `keepAlive: true` requires `destroy()` call
 
 ---
 
@@ -305,6 +371,9 @@ wrangler kv namespace create CACHE  # Output includes namespace id
 - Clerk `@clerk/backend` needs BOTH secretKey AND publishableKey
 - D1 transactions: `await db.batch([stmt1, stmt2])`
 - Set `authorizedParties` in Clerk to prevent CSRF
+- Sandbox: `proxyToSandbox()` MUST be called first
+- Sandbox requires Docker locally; first deploy takes 2-3 min
+- Use `/workspace` for persistent files in Sandbox
 
 ---
 
