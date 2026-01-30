@@ -204,6 +204,11 @@ Browse plugins at the [official marketplace](https://code.claude.com/docs/en/dis
 /plugin install glm-plan-usage@zai-coding-plugins
 ```
 
+**Cloudflare Skills** - Cloudflare platform development (Workers, Agents SDK):
+```bash
+/plugin marketplace add cloudflare/skills
+```
+
 > **See also:** [MCP Servers](#i-want-to-connect-external-tools-mcp) for connecting external tools
 
 ---

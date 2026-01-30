@@ -490,10 +490,13 @@ Claude Code plugins extend functionality through the official marketplace system
 |--------|--------|---------|----------|
 | safety-net | cc-marketplace | Catches destructive git/filesystem commands | `/plugin marketplace add kenryu42/cc-marketplace`<br>`/plugin install safety-net@cc-marketplace` |
 | glm-plan-usage | zai-coding-plugins | Query Z.AI usage statistics | `/plugin marketplace add zai/zai-coding-plugins`<br>`/plugin install glm-plan-usage@zai-coding-plugins` |
+| Cloudflare Skills | cloudflare/skills | Development skills for Cloudflare platform (Workers, Pages, Agents SDK) | `/plugin marketplace add cloudflare/skills` |
 
 **Safety Net**: [GitHub](https://github.com/kenryu42/claude-code-safety-net) - Prevents destructive commands like [this incident](https://www.reddit.com/r/ClaudeAI/comments/1pgxckk/claude_cli_deleted_my_entire_home_directory_wiped/).
 
 **Z.AI Usage**: [Docs](https://docs.z.ai/devpack/extension/usage-query-plugin)
+
+**Cloudflare Skills**: [GitHub](https://github.com/cloudflare/skills) - Development skills for Workers, Pages, AI services, and the Agents SDK. Commands: `/cloudflare:build-agent`, `/cloudflare:build-mcp`.
 
 ---
 

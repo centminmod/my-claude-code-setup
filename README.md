@@ -157,6 +157,16 @@ Claude Code Safety Net plugin https://github.com/kenryu42/claude-code-safety-net
 /plugin install glm-plan-usage@zai-coding-plugins
 ```
 
+[Cloudflare Skills marketplace](https://github.com/cloudflare/skills) for building applications on Cloudflare's platform, Workers, and the Agents SDK.
+
+> Collection of Agent Skills providing accurate, up-to-date guidance for Cloudflare development tasks including Workers, Pages, AI services, and infrastructure.
+
+```bash
+/plugin marketplace add cloudflare/skills
+```
+
+**User commands**: `/cloudflare:build-agent`, `/cloudflare:build-mcp`
+
 ## Claude Code Statuslines
 
 `~/.claude/statuslines/statusline.sh` configured in `~/.claude/settings.json`.

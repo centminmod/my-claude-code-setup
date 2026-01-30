@@ -280,6 +280,7 @@ Browse and install plugins from the [official marketplace](https://code.claude.c
 |--------|--------|-------------|------------------|
 | [safety-net](https://github.com/kenryu42/claude-code-safety-net) | cc-marketplace | Catches destructive git/filesystem commands before execution | `/plugin marketplace add kenryu42/cc-marketplace`<br>`/plugin install safety-net@cc-marketplace` |
 | [glm-plan-usage](https://docs.z.ai/devpack/extension/usage-query-plugin) | zai-coding-plugins | Query Z.AI usage statistics | `/plugin marketplace add zai/zai-coding-plugins`<br>`/plugin install glm-plan-usage@zai-coding-plugins` |
+| [Cloudflare Skills](https://github.com/cloudflare/skills) | cloudflare/skills | Development skills for Cloudflare platform (Workers, Agents SDK) | `/plugin marketplace add cloudflare/skills` |
 
 ### 3.2 MCP Servers
 
