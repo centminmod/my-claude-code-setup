@@ -91,7 +91,8 @@
       "Bash(git show:*)",
       "Skill(consult-zai)",
       "Bash(git cherry-pick:*)",
-      "Bash(zai:*)"
+      "Bash(zai:*)",
+      "WebFetch(domain:developers.cloudflare.com)"
     ],
     "deny": [],
     "defaultMode": "plan"

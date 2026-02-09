@@ -31,6 +31,7 @@ My Claude Code project's starter settings and Claude Code hooks and slash comman
 11. Useful read [Advent of Claude: 31 Days of Claude Code by Ado Kukic from Anthropic](https://adocomplete.com/advent-of-claude-2025/).
 12. Useful [Claude Code with Claude Opus 4.5 YouTube video by Alex Finn](https://www.youtube.com/watch?v=UVJXh57MgI0) and [Claude Code YouTube video by Matt Maher](https://www.youtube.com/watch?v=Dekx_OzRwiI).
 13. Configure Claude Code with [Z.AI](#using-zai-with-claude-code) to get higher token usage quotas and get access to Z.AI GLM-4.7 LLM models within Claude Code.
+14. For folks intending to use Claude LLM models with OpenClaw, read this first for security, deployment and cost optimizations https://github.com/centminmod/explain-openclaw.
 
 ## CLAUDE.md Memory Bank system
 

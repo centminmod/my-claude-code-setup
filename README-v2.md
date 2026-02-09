@@ -1390,6 +1390,7 @@ claude config set -g <key> <value>
 
 * [Advent of Claude: 31 Days](https://adocomplete.com/advent-of-claude-2025/) - Ado Kukic
 * [40+ Claude Code Tips](https://github.com/ykdojo/claude-code-tips)
+* [OpenClaw: Security, Deployment & Cost Guide](https://github.com/centminmod/explain-openclaw) - For using Claude LLM models with OpenClaw
 
 ---
 

@@ -1913,6 +1913,7 @@ See official Claude Code documentation for current shortcuts.
 |-------|---------|-----|
 | 31 Days of Claude Code | Ado Kukic (Anthropic) | <https://adocomplete.com/advent-of-claude-2025/> |
 | 40+ Claude Code Tips | ykdojo | <https://github.com/ykdojo/claude-code-tips> |
+| OpenClaw: Security, Deployment & Cost Guide | centminmod | <https://github.com/centminmod/explain-openclaw> |
 
 ### Community Resources
 

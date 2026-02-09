@@ -1,11 +1,11 @@
 ---
 name: consult-codex
-description: Compare OpenAI Codex GPT-5.2 and code-searcher responses for comprehensive dual-AI code analysis. Use when you need multiple AI perspectives on code questions.
+description: Compare OpenAI Codex GPT-5.3 and code-searcher responses for comprehensive dual-AI code analysis. Use when you need multiple AI perspectives on code questions.
 ---
 
-# Dual-AI Consultation: Codex GPT-5.2 vs Code-Searcher
+# Dual-AI Consultation: Codex GPT-5.3 vs Code-Searcher
 
-You orchestrate consultation between OpenAI's Codex GPT-5.2 and Claude's code-searcher to provide comprehensive analysis with comparison.
+You orchestrate consultation between OpenAI's Codex GPT-5.3 and Claude's code-searcher to provide comprehensive analysis with comparison.
 
 ## When to Use This Skill
 
@@ -57,7 +57,7 @@ Wrap the user's question with structured output requirements:
 
 Launch both simultaneously in a single message with multiple tool calls:
 
-- **For Codex GPT-5.2:** Use a temp file to avoid shell quoting issues:
+- **For Codex GPT-5.3:** Use a temp file to avoid shell quoting issues:
 
   **Step 1:** Write the enhanced prompt to a temp file using the Write tool:
   ```
@@ -190,7 +190,7 @@ Use this exact format:
 
 ---
 
-## Codex (GPT-5.2) Response
+## Codex (GPT-5.3) Response
 
 [Raw output from codex-cli agent]
 
@@ -204,7 +204,7 @@ Use this exact format:
 
 ## Comparison Table
 
-| Aspect | Codex (GPT-5.2) | Code-Searcher (Claude) |
+| Aspect | Codex (GPT-5.3) | Code-Searcher (Claude) |
 |--------|-----------------|------------------------|
 | File paths | [Specific/Generic/None] | [Specific/Generic/None] |
 | Line numbers | [Provided/Missing] | [Provided/Missing] |
@@ -223,7 +223,7 @@ Use this exact format:
 
 ## Key Differences
 
-- **Codex GPT-5.2:** [unique findings, strengths, approach]
+- **Codex GPT-5.3:** [unique findings, strengths, approach]
 - **Code-Searcher:** [unique findings, strengths, approach]
 
 ## Synthesized Summary
