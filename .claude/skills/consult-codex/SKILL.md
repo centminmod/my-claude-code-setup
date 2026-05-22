@@ -1,11 +1,11 @@
 ---
 name: consult-codex
-description: Compare OpenAI Codex GPT-5.3 and code-searcher responses for comprehensive dual-AI code analysis. Use when you need multiple AI perspectives on code questions.
+description: Compare OpenAI Codex GPT-5.5 and code-searcher responses for comprehensive dual-AI code analysis. Use when you need multiple AI perspectives on code questions.
 ---
 
-# Dual-AI Consultation: Codex GPT-5.3 vs Code-Searcher
+# Dual-AI Consultation: Codex GPT-5.5 vs Code-Searcher
 
-You orchestrate consultation between OpenAI's Codex GPT-5.3 and Claude's code-searcher to provide comprehensive analysis with comparison.
+You orchestrate consultation between OpenAI's Codex GPT-5.5 and Claude's code-searcher to provide comprehensive analysis with comparison.
 
 ## When to Use This Skill
 
@@ -55,28 +55,53 @@ Wrap the user's question with structured output requirements:
 
 ### 2. Invoke Both Analyses in Parallel
 
+**Setup (run first).** `$CLAUDE_PROJECT_DIR` is not always exported into the Bash
+tool shell, so resolve it with a `$PWD` fallback and ensure the tmp dir exists.
+Substitute the resolved literal path for `$PROJECT_DIR` in every command below.
+```bash
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"; mkdir -p "$PROJECT_DIR/tmp"
+[ -d "$PROJECT_DIR" ] || echo "ERROR: PROJECT_DIR '$PROJECT_DIR' is not a directory"
+```
+
 Launch both simultaneously in a single message with multiple tool calls:
 
-- **For Codex GPT-5.3:** Use a temp file to avoid shell quoting issues:
+- **For Codex GPT-5.5:**
 
   **Step 1:** Write the enhanced prompt to a temp file using the Write tool:
   ```
-  Write to $CLAUDE_PROJECT_DIR/tmp/codex-prompt.txt with the ENHANCED_PROMPT content
+  Write to $PROJECT_DIR/tmp/codex-prompt.txt with the ENHANCED_PROMPT content
   ```
 
-  **Step 2:** Execute Codex with the temp file and have at least 10 minute timeout as Codex can take a while to respond:
+  **Step 2:** Execute Codex (allow ~10 min; Codex can be slow). Pipe the prompt
+  via stdin and capture the JSONL event stream to a file:
 
   **macOS:**
   ```bash
-  zsh -i -c 'codex -p readonly exec "$(cat $CLAUDE_PROJECT_DIR/tmp/codex-prompt.txt)" --json 2>&1'
+  cat "$PROJECT_DIR/tmp/codex-prompt.txt" \
+    | zsh -i -c "codex exec -s read-only --json -C '$PROJECT_DIR' 2>&1" \
+    > "$PROJECT_DIR/tmp/codex-output.jsonl"
   ```
 
   **Linux:**
   ```bash
-  bash -i -c 'codex -p readonly exec "$(cat $CLAUDE_PROJECT_DIR/tmp/codex-prompt.txt)" --json 2>&1'
+  cat "$PROJECT_DIR/tmp/codex-prompt.txt" \
+    | bash -i -c "codex exec -s read-only --json -C '$PROJECT_DIR' 2>&1" \
+    > "$PROJECT_DIR/tmp/codex-output.jsonl"
   ```
 
-  This approach avoids all shell quoting issues regardless of prompt content.
+  Why this exact form (each piece prevents a failure seen in practice):
+  - **`-s read-only`** is the portable Codex sandbox flag — it needs no
+    `~/.codex/config.toml` `[profiles.readonly]` entry, unlike `-p readonly`
+    (which silently misbehaves when that profile is absent).
+  - **stdin pipe** (`cat … | …`) instead of `"$(cat …)"` avoids the
+    `Reading additional input from stdin...` hang (Codex waits on stdin when the
+    prompt is passed as a positional) and ARG_MAX limits on large prompts.
+  - **`-C '$PROJECT_DIR'`** — outer-shell single-quote expansion of an absolute
+    path — gives Codex project context. Do NOT pass the dir via an inner-shell
+    positional (`-C "$0"`/literal placeholders): that produces a cryptic
+    `Error: No such file or directory (os error 2)` when it goes wrong.
+
+  Parse `$PROJECT_DIR/tmp/codex-output.jsonl` with the §2a recipes.
 
 - **For Code-Searcher:** Use Task tool with `subagent_type: "code-searcher"` with the same enhanced prompt
 
@@ -89,7 +114,7 @@ Codex CLI with `--json` typically emits **newline-delimited JSON events** (JSONL
 Set a variable first:
 
 ```bash
-FILE="/private/tmp/claude/.../tasks/<task_id>.output"   # or a symlinked *.output to agent-*.jsonl
+FILE="$PROJECT_DIR/tmp/codex-output.jsonl"   # the file the §2 dispatch redirected to
 ```
 
 **List event types (top-level `.type`)**
@@ -115,15 +140,17 @@ jq -Rr '
 ' "$FILE"
 ```
 
-**Extract just the final `agent_message` (useful for summaries)**
+**Extract ALL `agent_message` events** (Codex frequently emits multiple; extracting only the last would truncate the answer)
 
 ```bash
-jq -Rr '
+out=$(jq -Rr '
   sub("^[^{]*";"")
   | fromjson?
   | select(.type=="item.completed" and .item.type?=="agent_message")
   | .item.text // empty
-' "$FILE" | tail -n 1
+' "$FILE")
+[ -z "$out" ] && echo "ERROR: Codex produced no agent_message events — check the raw output for errors" >&2
+printf '%s\n' "$out"
 ```
 
 **Build a clean JSON array for downstream tools**
@@ -170,10 +197,10 @@ jq -Rr '
 
 ### 3. Cleanup Temp Files
 
-After processing the Codex response (success or failure), clean up the temp prompt file:
+After processing the Codex response (success or failure), clean up the temp files:
 
 ```bash
-rm -f $CLAUDE_PROJECT_DIR/tmp/codex-prompt.txt
+rm -f "$PROJECT_DIR/tmp/codex-prompt.txt" "$PROJECT_DIR/tmp/codex-output.jsonl"
 ```
 
 This prevents stale prompts from accumulating and avoids potential confusion in future runs.
@@ -190,7 +217,7 @@ Use this exact format:
 
 ---
 
-## Codex (GPT-5.3) Response
+## Codex (GPT-5.5) Response
 
 [Raw output from codex-cli agent]
 
@@ -204,7 +231,7 @@ Use this exact format:
 
 ## Comparison Table
 
-| Aspect | Codex (GPT-5.3) | Code-Searcher (Claude) |
+| Aspect | Codex (GPT-5.5) | Code-Searcher (Claude) |
 |--------|-----------------|------------------------|
 | File paths | [Specific/Generic/None] | [Specific/Generic/None] |
 | Line numbers | [Provided/Missing] | [Provided/Missing] |
@@ -223,7 +250,7 @@ Use this exact format:
 
 ## Key Differences
 
-- **Codex GPT-5.3:** [unique findings, strengths, approach]
+- **Codex GPT-5.5:** [unique findings, strengths, approach]
 - **Code-Searcher:** [unique findings, strengths, approach]
 
 ## Synthesized Summary
