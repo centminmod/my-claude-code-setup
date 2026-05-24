@@ -63,6 +63,25 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"; mkdir -p "$PROJECT_DIR/tmp"
 [ -d "$PROJECT_DIR" ] || echo "ERROR: PROJECT_DIR '$PROJECT_DIR' is not a directory"
 ```
 
+**Codex binary resilience (run once, before dispatch).** An nvm-managed `codex`
+can be a symlink whose `@openai/codex` install is broken (deleted vendor binary →
+`spawn ... ENOENT`), and a broken version can sit EARLIER on `PATH` than a working
+one. `command -v` / `zsh -i` return the broken path, so detect by RUNNING the
+binary. If the PATH-resolved codex fails, hunt all nvm node installs for one whose
+`--version` succeeds and emit its absolute path. Emit `CODEX_BIN=SKIP` if none work.
+```bash
+CODEX_BIN=""
+if zsh -i -c 'codex --version' >/dev/null 2>&1; then
+  CODEX_BIN="codex"   # PATH-resolved codex works; use the default dispatch
+else
+  for p in $(find "$HOME/.nvm/versions/node" -maxdepth 5 -name codex \( -type f -o -type l \) 2>/dev/null); do
+    if "$p" --version >/dev/null 2>&1; then CODEX_BIN="$p"; break; fi
+  done
+  [ -z "$CODEX_BIN" ] && CODEX_BIN="SKIP"
+fi
+echo "CODEX_BIN=$CODEX_BIN"   # MUST echo: shell vars don't persist across Bash tool calls
+```
+
 Launch both simultaneously in a single message with multiple tool calls:
 
 - **For Codex GPT-5.5:**
@@ -73,19 +92,34 @@ Launch both simultaneously in a single message with multiple tool calls:
   ```
 
   **Step 2:** Execute Codex (allow ~10 min; Codex can be slow). Pipe the prompt
-  via stdin and capture the JSONL event stream to a file:
+  via stdin and capture the JSONL event stream to a file.
 
-  **macOS:**
+  **Pick the form based on `CODEX_BIN` from Setup:**
+  - `CODEX_BIN=codex` → use the **macOS** / **Linux** interactive-shell form below.
+  - `CODEX_BIN` is an absolute path → use the **absolute-path** form (calls the
+    binary directly so PATH ordering can't shadow it again).
+  - `CODEX_BIN=SKIP` → no working codex; skip this dispatch, present only the
+    Code-Searcher response, and note the failure in §4/§5.
+
+  **macOS (`CODEX_BIN=codex`):**
   ```bash
   cat "$PROJECT_DIR/tmp/codex-prompt.txt" \
     | zsh -i -c "codex exec -s read-only --json -C '$PROJECT_DIR' 2>&1" \
     > "$PROJECT_DIR/tmp/codex-output.jsonl"
   ```
 
-  **Linux:**
+  **Linux (`CODEX_BIN=codex`):**
   ```bash
   cat "$PROJECT_DIR/tmp/codex-prompt.txt" \
     | bash -i -c "codex exec -s read-only --json -C '$PROJECT_DIR' 2>&1" \
+    > "$PROJECT_DIR/tmp/codex-output.jsonl"
+  ```
+
+  **Absolute-path (`CODEX_BIN` resolved to a path — macOS & Linux):** substitute
+  the literal absolute path for `CODEX_BIN_LITERAL`; no shell wrapper needed.
+  ```bash
+  cat "$PROJECT_DIR/tmp/codex-prompt.txt" \
+    | CODEX_BIN_LITERAL exec -s read-only --json -C "$PROJECT_DIR" 2>&1 \
     > "$PROJECT_DIR/tmp/codex-output.jsonl"
   ```
 
