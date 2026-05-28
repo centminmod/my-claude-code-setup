@@ -50,6 +50,7 @@ from typing import Any
 # audit-extract now prices them at $5. Audit impact estimates are
 # approximate by design; the under-direction is the safer drift mode.
 _INPUT_RATE_PER_M_BY_MODEL: tuple[tuple[str, float], ...] = (
+    ("claude-opus-4-8", 5.00),
     ("claude-opus-4-7", 5.00),
     ("claude-opus-4-6", 5.00),
     ("claude-opus-4-5", 5.00),

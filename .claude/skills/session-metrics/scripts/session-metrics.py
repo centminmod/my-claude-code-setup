@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.42.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.43.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -60,6 +60,7 @@ _SKILL_VERSION  = "1.42.0"  # embedded in every export; bump when plugin version
 # order matters for prefix fallback — more-specific entries must appear first.
 _PRICING: dict[str, dict[str, float]] = {
     # --- Opus 4.5-generation (new tier: $5 input / $25 output) ---
+    "claude-opus-4-8":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-7":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-6":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-5":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
@@ -67,12 +68,13 @@ _PRICING: dict[str, dict[str, float]] = {
     "claude-opus-4-1":           {"input": 15.00, "output": 75.00, "cache_read": 1.50,  "cache_write": 18.75, "cache_write_1h": 30.00},
     # NOTE (v1.41.2): the bare "claude-opus-4" key is intentionally NOT in
     # this dict. It used to live here, but the prefix-sweep in `_pricing_for`
-    # would silently catch any future `claude-opus-4-N` (e.g. `claude-opus-4-8`)
+    # would silently catch any future `claude-opus-4-N` (e.g. `claude-opus-4-9`)
     # and over-charge by 3x at OLD-tier rates. The Opus 4.0 ID and its
     # date-suffixed forms are now matched by an anchored regex in
-    # `_PRICING_PATTERNS` below; future Opus 4 minors (4-5+) are routed to
-    # the NEW $5/$25 tier via `_PRICING_FAMILY_FALLBACKS` with an unknown-
-    # model warning. See the bug analysis in the v1.41.2 changelog entry.
+    # `_PRICING_PATTERNS` below; future Opus 4 minors without an explicit key
+    # (4-9+) are routed to the NEW $5/$25 tier via `_PRICING_FAMILY_FALLBACKS`
+    # with an unknown-model warning. See the bug analysis in the v1.41.2
+    # changelog entry.
     # --- Sonnet 4.x + 3.7 (shared rates) ---
     "claude-sonnet-4-7":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-sonnet-4-6":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
@@ -186,12 +188,13 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
 # at Sonnet rates — Sonnet 4.x has held one rate tier across all minors,
 # so the silent prefix-sweep behavior is correct for Sonnet.
 _PRICING_FAMILY_FALLBACKS: list[tuple[re.Pattern[str], dict[str, float]]] = [
-    # Future Opus 4 minors (4-5+). Anthropic minor versions are single-digit;
-    # `claude-opus-4-5/4-6/4-7` are explicit keys (caught by exact match
-    # before this fires). The trailing `(?:-|$)` lets it match
-    # date-suffixed forms like `claude-opus-4-8-20260601` while rejecting
-    # 2-digit accidents (`claude-opus-4-99` would fall through and warn,
-    # but `claude-opus-4-5x` would not match here).
+    # Future Opus 4 minors without an explicit key. Anthropic minor versions
+    # are single-digit; `claude-opus-4-5/4-6/4-7/4-8` are explicit keys (caught
+    # by exact match before this fires), so this now back-stops a hypothetical
+    # `claude-opus-4-9`. The trailing `(?:-|$)` lets it match date-suffixed
+    # forms like `claude-opus-4-9-20260601` while rejecting 2-digit accidents
+    # (`claude-opus-4-99` would fall through and warn, but `claude-opus-4-5x`
+    # would not match here).
     (re.compile(r"^claude-opus-4-[5-9](?:-|$)",            re.I), _PRICING["claude-opus-4-7"]),
     # Future Opus majors (5+). New tier is the conservative bet — under-
     # counting by ~10% if Anthropic raises Opus 5 prices is much better

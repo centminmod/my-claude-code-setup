@@ -3,6 +3,20 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.43.0 — 2026-05-29
+
+### Recognise Claude Opus 4.8 + its 1M-context variant as a first-class model
+
+**Added — explicit `claude-opus-4-8` pricing key.** Opus 4.8 ships at the same new tier as 4.7 ($5 input / $25 output / $0.50 cache read / $6.25 5m-write / $10 1h-write). It is now a first-class entry in `_PRICING` (above `claude-opus-4-7`), so the exact-match path prices it silently and the prefix sweep covers date-suffixed forms (`claude-opus-4-8-YYYYMMDD`).
+
+**Fixed — 1M-context variant mispricing.** Before this release, `claude-opus-4-8[1m]` (the 1M-context tag Claude Code writes into `message.model`) evaded the family-fallback regex — its `(?:-|$)` boundary doesn't match the trailing `[` — and fell through to `_DEFAULT_PRICING` (Sonnet $3/$15), a ~40% under-count. The explicit key catches it via the prefix sweep at the correct $5/$25 tier. Mirrors how `claude-opus-4-7[1m]` already resolves.
+
+**Fixed — spurious unknown-model warning for 4.8.** `claude-opus-4-8` previously routed through the family fallback: correct rate, but flagged into `_UNKNOWN_MODELS_SEEN`, emitting the at-exit `[warn] Unknown model(s)…` advisory on every run. The explicit key silences it.
+
+**Parity — `audit-extract.py`.** Added an explicit `("claude-opus-4-8", 5.00)` row to the sibling skill's `_INPUT_RATE_PER_M_BY_MODEL` for lockstep with `_PRICING` (it was already correct via the bare `claude-opus` substring needle; this is traceability, not a behaviour change).
+
+**Note — >200K-context premium still not modelled.** Consistent with the existing 4-7[1m] treatment; out of scope.
+
 ## v1.42.0 — 2026-05-04
 
 ### Partial-hit rate + /clear detection + sparkline event markers

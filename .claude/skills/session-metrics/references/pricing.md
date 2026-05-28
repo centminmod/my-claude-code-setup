@@ -21,6 +21,7 @@ of TTL.
 
 | Model ID                    | Alias      | Input | Output | Cache read | 5m Cache write | 1h Cache write |
 |-----------------------------|------------|-------|--------|------------|----------------|----------------|
+| `claude-opus-4-8`           | opus-4-8   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
 | `claude-opus-4-7`           | opus-4-7   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
 | `claude-opus-4-6`           | opus-4-6   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
 | `claude-opus-4-5`           | opus-4-5   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
@@ -30,10 +31,16 @@ of TTL.
 | `claude-haiku-4-5-20251001` | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
 | `claude-haiku-4-5`          | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
 
-> **Important — pricing tier change at Opus 4.5**: Opus 4.5 / 4.6 / 4.7 moved
-> to a new cheaper tier ($5 input / $25 output). Opus 4 and 4.1 retain the
+> **Important — pricing tier change at Opus 4.5**: Opus 4.5 / 4.6 / 4.7 / 4.8
+> moved to a new cheaper tier ($5 input / $25 output). Opus 4 and 4.1 retain the
 > original $15 / $75 tier. Earlier snapshots of this table had Opus 4.6/4.7
 > at the old rates — corrected 2026-04-17.
+>
+> **1M-context variant**: when a session runs an Opus model at the 1M-context
+> tier, Claude Code tags `message.model` with a `[1m]` suffix (e.g.
+> `claude-opus-4-8[1m]`, `claude-opus-4-7[1m]`). These resolve to the same base
+> rates as the bare model id via the prefix sweep — the >200K-context premium is
+> not modelled (consistent across all Opus minors, not just 4.8).
 
 ## Legacy / prefix-fallback entries
 
