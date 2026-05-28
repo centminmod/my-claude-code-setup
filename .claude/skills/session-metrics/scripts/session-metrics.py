@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.43.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.44.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -55,11 +55,17 @@ _SKILL_VERSION  = "1.43.0"  # embedded in every export; bump when plugin version
 # when present; legacy transcripts without the nested object fall back to the
 # 5-minute rate via `_cost`.
 #
-# IMPORTANT: Opus 4.5 / 4.6 / 4.7 use the NEW cheaper tier ($5/$25) introduced
-# with the 4.5 generation. Opus 4 / 4.1 retain the OLD tier ($15/$75). Dict
-# order matters for prefix fallback — more-specific entries must appear first.
+# IMPORTANT: Opus 4.5-and-later (4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 5) use the NEW
+# cheaper tier ($5/$25) introduced with the 4.5 generation. Opus 4 / 4.1 retain
+# the OLD tier ($15/$75). Dict order matters for prefix fallback — more-specific
+# entries must appear first.
 _PRICING: dict[str, dict[str, float]] = {
     # --- Opus 4.5-generation (new tier: $5 input / $25 output) ---
+    # `claude-opus-5` is a bare-major key (pre-provisioned, v1.44.0): assumed
+    # same new tier, and as a prefix it catches every 5.x minor + `[1m]` + date
+    # suffix in one entry. Review the rate if Anthropic re-tiers at Opus 5.0.
+    "claude-opus-5":             {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
+    "claude-opus-4-9":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-8":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-7":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-6":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
@@ -76,6 +82,12 @@ _PRICING: dict[str, dict[str, float]] = {
     # with an unknown-model warning. See the bug analysis in the v1.41.2
     # changelog entry.
     # --- Sonnet 4.x + 3.7 (shared rates) ---
+    # `claude-sonnet-5` bare-major key (pre-provisioned, v1.44.0): Sonnet has
+    # held one rate tier across all minors, so a bare major catching every 5.x
+    # variant is safe (same reasoning as the bare `claude-sonnet-4` below).
+    "claude-sonnet-5":           {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
+    "claude-sonnet-4-9":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
+    "claude-sonnet-4-8":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-sonnet-4-7":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-sonnet-4-6":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-sonnet-4-5":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
@@ -83,6 +95,13 @@ _PRICING: dict[str, dict[str, float]] = {
     "claude-3-7-sonnet":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-3-5-sonnet":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     # --- Haiku 4.5 (own tier: $1 input / $5 output) ---
+    # `claude-haiku-5` bare-major key (pre-provisioned, v1.44.0): assumed same
+    # Haiku tier; as a prefix it catches every 5.x minor + `[1m]` + date suffix.
+    "claude-haiku-5":            {"input":  1.00, "output":  5.00, "cache_read": 0.10,  "cache_write":  1.25, "cache_write_1h":  2.00},
+    "claude-haiku-4-9":          {"input":  1.00, "output":  5.00, "cache_read": 0.10,  "cache_write":  1.25, "cache_write_1h":  2.00},
+    "claude-haiku-4-8":          {"input":  1.00, "output":  5.00, "cache_read": 0.10,  "cache_write":  1.25, "cache_write_1h":  2.00},
+    "claude-haiku-4-7":          {"input":  1.00, "output":  5.00, "cache_read": 0.10,  "cache_write":  1.25, "cache_write_1h":  2.00},
+    "claude-haiku-4-6":          {"input":  1.00, "output":  5.00, "cache_read": 0.10,  "cache_write":  1.25, "cache_write_1h":  2.00},
     "claude-haiku-4-5-20251001": {"input":  1.00, "output":  5.00, "cache_read": 0.10,  "cache_write":  1.25, "cache_write_1h":  2.00},
     "claude-haiku-4-5":          {"input":  1.00, "output":  5.00, "cache_read": 0.10,  "cache_write":  1.25, "cache_write_1h":  2.00},
     # --- Haiku 3.5 (older, cheaper input) ---
@@ -187,24 +206,33 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
 # in _PRICING) already correctly catches every `claude-sonnet-4-N` variant
 # at Sonnet rates — Sonnet 4.x has held one rate tier across all minors,
 # so the silent prefix-sweep behavior is correct for Sonnet.
+#
+# Boundary `(?:-|\[|$)` (v1.44.0): the trailing alternation accepts a `-`
+# (date suffix), the literal `[` of a `[1m]` context tag, or end-of-string.
+# The `\[` was added so an un-keyed future `[1m]` variant (e.g. a hypothetical
+# `claude-opus-6[1m]`) still resolves to the family tier instead of falling to
+# `_DEFAULT_PRICING` (Sonnet $3) — the same `[1m]` evasion that mispriced
+# `claude-opus-4-8[1m]` before its explicit key landed in v1.43.0. The
+# 2-digit-accident guard is unaffected: `[5-9]` followed by another digit
+# still won't satisfy the boundary (`claude-opus-4-99` falls through and warns).
 _PRICING_FAMILY_FALLBACKS: list[tuple[re.Pattern[str], dict[str, float]]] = [
-    # Future Opus 4 minors without an explicit key. Anthropic minor versions
-    # are single-digit; `claude-opus-4-5/4-6/4-7/4-8` are explicit keys (caught
-    # by exact match before this fires), so this now back-stops a hypothetical
-    # `claude-opus-4-9`. The trailing `(?:-|$)` lets it match date-suffixed
-    # forms like `claude-opus-4-9-20260601` while rejecting 2-digit accidents
-    # (`claude-opus-4-99` would fall through and warn, but `claude-opus-4-5x`
-    # would not match here).
-    (re.compile(r"^claude-opus-4-[5-9](?:-|$)",            re.I), _PRICING["claude-opus-4-7"]),
-    # Future Opus majors (5+). New tier is the conservative bet — under-
-    # counting by ~10% if Anthropic raises Opus 5 prices is much better
-    # than the previous 3x silent overcharge from the OLD-tier prefix.
-    (re.compile(r"^claude-opus-(?:[5-9]|\d{2,})(?:-|$)",   re.I), _PRICING["claude-opus-4-7"]),
-    # Future Haiku 4 minors (4-6+). `claude-haiku-4-5*` are explicit
-    # exact keys and short-circuit before reaching here.
-    (re.compile(r"^claude-haiku-4-[6-9](?:-|$)",           re.I), _PRICING["claude-haiku-4-5"]),
-    # Future Haiku majors (5+). Same conservative-bet reasoning as Opus.
-    (re.compile(r"^claude-haiku-(?:[5-9]|\d{2,})(?:-|$)",  re.I), _PRICING["claude-haiku-4-5"]),
+    # Opus 4 minors 5-9 are now ALL explicit keys (v1.44.0), caught by exact
+    # match / prefix sweep before this fires, so this regex is fully shadowed
+    # and kept only as a defensive back-stop (e.g. if an explicit key is ever
+    # removed). Date-suffixed and `[1m]` forms of those minors also resolve via
+    # the prefix sweep on the explicit key.
+    (re.compile(r"^claude-opus-4-[5-9](?:-|\[|$)",         re.I), _PRICING["claude-opus-4-7"]),
+    # Future Opus majors (6+). `claude-opus-5` is an explicit bare-major key
+    # (catches all 5.x), so this back-stops 6+. New tier is the conservative
+    # bet — under-counting by ~10% if Anthropic raises prices beats the prior
+    # 3x silent overcharge from the OLD-tier prefix.
+    (re.compile(r"^claude-opus-(?:[5-9]|\d{2,})(?:-|\[|$)", re.I), _PRICING["claude-opus-4-7"]),
+    # Haiku 4 minors 6-9 are now ALL explicit keys (v1.44.0); like the Opus 4
+    # minor regex above, this is now a fully-shadowed defensive back-stop.
+    (re.compile(r"^claude-haiku-4-[6-9](?:-|\[|$)",         re.I), _PRICING["claude-haiku-4-5"]),
+    # Future Haiku majors (6+). `claude-haiku-5` is an explicit bare-major key,
+    # so this back-stops 6+. Same conservative-bet reasoning as Opus.
+    (re.compile(r"^claude-haiku-(?:[5-9]|\d{2,})(?:-|\[|$)", re.I), _PRICING["claude-haiku-4-5"]),
 ]
 
 # Module-level advisory state — populated during parsing, printed via atexit.

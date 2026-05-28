@@ -3,6 +3,20 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.44.0 — 2026-05-29
+
+### Pre-provision the next wave of Opus / Sonnet / Haiku models + harden `[1m]` fallback
+
+**Added — 10 first-class pricing keys ahead of release.** So the next models are recognised the moment they ship (no spurious unknown-model warning, no `[1m]` mispricing), `_PRICING` now carries explicit keys at each family's current rate: Opus `claude-opus-4-9` and bare-major `claude-opus-5` ($5/$25 new tier); Sonnet `claude-sonnet-4-8`, `claude-sonnet-4-9`, bare-major `claude-sonnet-5` ($3/$15); Haiku `claude-haiku-4-6/4-7/4-8/4-9` and bare-major `claude-haiku-5` ($1/$5). `claude-sonnet-4-7` was already explicit. The rates are **assumptions** at family-current pricing — review each when the model actually ships.
+
+**Why bare-major keys for the 5.0 generation.** A single `claude-opus-5` / `claude-sonnet-5` / `claude-haiku-5` key catches every `5.x` minor plus its `[1m]` and date-suffixed forms through the exact-match / prefix-sweep path. They live only in `_PRICING`; the sibling audit-extract table keeps them out (its bare `claude-opus`/`claude-sonnet`/`claude-haiku` needles already resolve them, and a major-only needle there would trip the drift guard).
+
+**Fixed — family-fallback `[1m]` evasion, generalised.** The fallback boundary changed `(?:-|$)` → `(?:-|\[|$)` so the `[` of a `[1m]` tag satisfies it. An un-keyed future variant (e.g. a hypothetical `claude-opus-6[1m]`) now prices at its family tier instead of defaulting to Sonnet $3 — the same evasion fixed for `claude-opus-4-8[1m]` via its explicit key in v1.43.0, here extended to any un-keyed major. The unknown-model warning is preserved; only the rate is corrected. The 2-digit-accident guard is unaffected.
+
+**Parity — `audit-extract.py`.** Added minor-versioned rows (`claude-opus-4-9`, `claude-sonnet-4-8/4-9`, `claude-haiku-4-6/4-7/4-8/4-9`) for lockstep with `_PRICING`. Forward/reverse parity tests already passed via the bare needles; these are traceability, not a behaviour change.
+
+**Tests**: flipped three now-explicit keys to known/silent (`claude-opus-4-9`, `claude-opus-5`, `claude-haiku-4-6`); re-targeted the surviving major-fallback tests at `claude-opus-6` / `claude-haiku-9`; added explicit/silent + `[1m]` coverage for the remaining pre-provisioned keys and two `[1m]`-hardening regression guards.
+
 ## v1.43.0 — 2026-05-29
 
 ### Recognise Claude Opus 4.8 + its 1M-context variant as a first-class model

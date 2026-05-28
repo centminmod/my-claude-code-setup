@@ -50,19 +50,30 @@ from typing import Any
 # audit-extract now prices them at $5. Audit impact estimates are
 # approximate by design; the under-direction is the safer drift mode.
 _INPUT_RATE_PER_M_BY_MODEL: tuple[tuple[str, float], ...] = (
+    ("claude-opus-4-9", 5.00),
     ("claude-opus-4-8", 5.00),
     ("claude-opus-4-7", 5.00),
     ("claude-opus-4-6", 5.00),
     ("claude-opus-4-5", 5.00),
     ("claude-opus-4-1", 15.00),
     ("claude-3-opus", 15.00),
+    ("claude-haiku-4-9", 1.00),
+    ("claude-haiku-4-8", 1.00),
+    ("claude-haiku-4-7", 1.00),
+    ("claude-haiku-4-6", 1.00),
     ("claude-haiku-4-5", 1.00),
     ("claude-3-5-haiku", 0.80),
     ("claude-3-7-sonnet", 3.00),
     ("claude-3-5-sonnet", 3.00),
+    ("claude-sonnet-4-9", 3.00),
+    ("claude-sonnet-4-8", 3.00),
     ("claude-sonnet", 3.00),
     ("claude-haiku", 1.00),
     ("claude-opus", 5.00),
+    # Bare-major future keys (claude-opus-5 / claude-sonnet-5 / claude-haiku-5)
+    # are intentionally NOT listed: the bare family needles above already resolve
+    # them to the correct tier, and a major-only needle here would trip the
+    # `test_audit_extract_no_undocumented_loose_prefixes` drift guard.
 )
 _DEFAULT_INPUT_RATE_PER_M = 3.00
 

@@ -40,7 +40,37 @@ of TTL.
 > tier, Claude Code tags `message.model` with a `[1m]` suffix (e.g.
 > `claude-opus-4-8[1m]`, `claude-opus-4-7[1m]`). These resolve to the same base
 > rates as the bare model id via the prefix sweep — the >200K-context premium is
-> not modelled (consistent across all Opus minors, not just 4.8).
+> not modelled (consistent across all Opus minors, not just 4.8). The
+> bare-major future keys (`claude-opus-5` / `claude-sonnet-5` / `claude-haiku-5`,
+> see below) likewise catch every `5.x` minor plus its `[1m]` and date-suffixed
+> forms through the same prefix sweep.
+
+## Future / pre-provisioned models
+
+These keys were added **proactively** (v1.44.0) so the next wave of Anthropic
+models is recognised the moment it ships — no spurious unknown-model warning and
+no `[1m]` mispricing. Each uses its **family-current** rate (the tiers above).
+**The rates are assumptions** — review each when the model actually ships, in
+case Anthropic re-tiers a generation.
+
+| Model ID         | Family rate | Notes |
+|------------------|-------------|-------|
+| `claude-opus-4-9`  | Opus new $5/$25   | exact + `[1m]`/date via prefix sweep |
+| `claude-opus-5`    | Opus new $5/$25   | **bare-major** — catches all `5.x` minors + `[1m]` |
+| `claude-sonnet-4-8`| Sonnet $3/$15     | (`claude-sonnet-4-7` already shipped) |
+| `claude-sonnet-4-9`| Sonnet $3/$15     | |
+| `claude-sonnet-5`  | Sonnet $3/$15     | **bare-major** — Sonnet is single-tier across minors |
+| `claude-haiku-4-6` | Haiku $1/$5       | |
+| `claude-haiku-4-7` | Haiku $1/$5       | |
+| `claude-haiku-4-8` | Haiku $1/$5       | |
+| `claude-haiku-4-9` | Haiku $1/$5       | |
+| `claude-haiku-5`   | Haiku $1/$5       | **bare-major** — catches all `5.x` minors + `[1m]` |
+
+Anything *beyond* these keys (e.g. a hypothetical `claude-opus-6`) still falls to
+the family-fallback regex: priced at the family tier **and** flagged in the
+at-exit unknown-model advisory as a nudge to add an explicit key. As of v1.44.0
+the fallback boundary also accepts the `[1m]` tag, so an un-keyed future
+`[1m]` variant prices at its family tier instead of defaulting to Sonnet.
 
 ## Legacy / prefix-fallback entries
 
