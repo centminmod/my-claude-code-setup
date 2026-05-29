@@ -3,6 +3,20 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.45.0 — 2026-05-29
+
+### Switch the main skill to `model: haiku` + fix `glm-5.1` suffix mispricing
+
+**Changed — `session-metrics` now runs on Haiku.** The main skill's frontmatter flips `model: sonnet` → `model: haiku`. The run-model only does mechanical dispatch: literal-equality `$ARGUMENTS[0]` routing, ordered first-match-wins export-shortcut scanning, and JSON-filename scope detection for the audit suggestion — all string-matching, no interpretive analysis (the interpretive work lives in the already-Haiku `audit-session-metrics` companion). The compare-mode auto-dispatch gate and the literal-only routing instructions are model-agnostic and already explicit in the frontmatter + dispatch section, so they carry over unchanged. Net effect: the report run is ~10× cheaper with identical output, since every number comes from the deterministic Python script.
+
+**Fixed — stale rationale in the audit-invocation guard.** The "do not invoke `audit-session-metrics` programmatically" note previously justified itself with a "keeps the parent's *Sonnet* model and erases the cost win" argument. With the parent now on Haiku that cost delta no longer exists; the note is rewritten to rest on turn-isolation + the entry-point model-override mechanic, which remain valid.
+
+**Fixed — `glm-5.1` suffixed variants undercharged.** `glm-5` is a strict prefix of `glm-5.1` and precedes it in `_PRICING`, so the prefix sweep in `_pricing_for` returned the cheaper `glm-5` rate ($0.60/$2.08) for any suffixed `glm-5.1` ID (`glm-5.1-air`, `glm-5.1:1m`, `glm-5.1-20260101`) — a silent ~43% input / ~41% output undercharge with no unknown-model warning. Added a `glm-5\.1(?!\d)` regex to `_PRICING_PATTERNS` (mirrors the existing `glm-5-turbo\b` guard) so suffixed variants resolve correctly before the prefix sweep. `references/pricing.md` already documented `glm-5\.1` as the intended matcher — this brings the code in line with the reference. `(?!\d)` keeps a hypothetical `glm-5.10`+ from gluing on.
+
+**Fixed — `_add_totals` docstring overclaim.** The fold helper's docstring claimed byte-equivalence to a single `_totals_from_turns` pass; corrected to note integer fields are exact while derived float fields may differ by at most a rounding ULP (pairwise sum vs. one accumulator).
+
+**Tests**: added 6 `glm-5` / `glm-5.1` cases to the pricing-boundary parametrize (exact keys, date/`:1m`/`-air` suffixes, the `glm-5.10` boundary). Full suite 727 passed, 1 skipped.
+
 ## v1.44.0 — 2026-05-29
 
 ### Pre-provision the next wave of Opus / Sonnet / Haiku models + harden `[1m]` fallback

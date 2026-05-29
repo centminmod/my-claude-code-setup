@@ -1,6 +1,6 @@
 ---
 name: session-metrics
-model: sonnet
+model: haiku
 description: >
   Tally Claude Code session token usage and cost estimates from the raw JSONL
   conversation log. Trigger when the user asks about session cost, token usage,
@@ -440,11 +440,10 @@ Substitute `<json-path>` with the actual path printed by the
 `[export] JSON` line.
 
 **Do not invoke `audit-session-metrics` programmatically from this
-turn.** Its frontmatter pins `model: haiku` and the model override
-only takes effect when the audit skill is the entry point of its own
-turn — invoking via the Skill tool inside a session-metrics turn
-keeps the parent's Sonnet model and erases the cost win. The user
-runs the slash command at their own discretion.
+turn.** It is a separate, user-initiated audit: running it as its own
+slash command keeps the turn focused and lets its `model: haiku`
+frontmatter apply as the entry point. The user runs the slash command
+at their own discretion.
 
 ## Self-cost meta-metric
 

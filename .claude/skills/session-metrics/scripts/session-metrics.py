@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.44.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.45.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -174,6 +174,11 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     (re.compile(r"minimax[-_/.]m2\.7(?!\d)",         re.I), _PRICING["minimax/minimax-m2.7"]),
     # GLM-5-Turbo before the bare glm-5 prefix entry
     (re.compile(r"glm-5-turbo\b",                    re.I), _PRICING["z-ai/glm-5-turbo"]),
+    # GLM-5.1 before the bare glm-5 prefix entry. `glm-5` is a strict prefix of
+    # `glm-5.1`, so without this guard a suffixed variant (`glm-5.1-air`,
+    # `glm-5.1:1m`, `glm-5.1-20260101`) prefix-matches the cheaper `glm-5` entry
+    # and undercharges. `(?!\d)` keeps a hypothetical `glm-5.10`+ from gluing on.
+    (re.compile(r"glm-5\.1(?!\d)",                   re.I), _PRICING["glm-5.1"]),
     # ----- Opus 4.0 (anchored regex; replaces the prefix-fallback `claude-opus-4`
     # entry that was removed in v1.41.2). Without this anchored form, the bare
     # `claude-opus-4` prefix in `_PRICING` would silently catch any future

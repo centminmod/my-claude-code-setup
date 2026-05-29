@@ -571,8 +571,10 @@ def _add_totals(a: dict, b: dict) -> dict:
     Re-derives the computed fields (`total`, `total_input`, `cache_savings`,
     `cache_hit_pct`, `thinking_turn_pct`, `tool_call_total`,
     `tool_call_avg_per_turn`, `tool_names_top3`) from the merged additive
-    state so the output is byte-equivalent to running `_totals_from_turns`
-    over the concatenation of the two source turn lists.
+    state so the output matches running `_totals_from_turns` over the
+    concatenation of the two source turn lists. Integer token/count fields
+    are exact; derived float fields may differ from a single linear pass by
+    at most a floating-point rounding ULP (pairwise sum vs. one accumulator).
     """
     out: dict = {
         "input":               a["input"]               + b["input"],
