@@ -3,6 +3,22 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.45.1 — 2026-05-29
+
+### Null-safety + prefix-shadow bug fixes (post-audit verified)
+
+**Fixed — a null `message` or `usage` aborted the entire report (P3).** In `_extract_turns`, the assistant branch read `entry.get("message", {})`, whose default fires only on a *missing* key: a present `"message": null` yielded `None` and raised `TypeError` at the `"usage" in msg` test, killing the whole run instead of skipping the line. Separately, a present `"usage": null` passed the `"usage" not in msg` guard (key present) and crashed downstream in `_build_turn_record` (`u.get(...)` on `None`). No dispatch path caught `TypeError`. Both now skip cleanly via `entry.get("message") or {}` plus `isinstance(msg.get("usage"), dict)` — the null-safe idiom the sibling user branch already used.
+
+**Fixed — two-digit Opus-4 minors silently 3×-overcharged (P4).** The plain `claude-opus-4-1` ($15 OLD tier) key was a string prefix of `claude-opus-4-10`..`-19`, so the `_pricing_for` prefix sweep priced a future Opus 4.10+ at OLD $15/$75 — a silent 3× overcharge with no unknown-model warning. `claude-opus-4-1` is now an anchored regex `^claude-opus-4-1(?:-|\[|$)` in `_PRICING_PATTERNS` (mirroring the `claude-opus-4` 4.0 treatment), and the Opus-4 minor family fallback gained a `\d{2,}` alternation so two-digit minors route to the NEW $5/$25 tier *with* a warning. Real `claude-opus-4-1` (+ its date / `[1m]` forms) still price OLD-tier silently.
+
+**Fixed — same prefix-shadow in `audit-extract.py`.** The sibling audit skill's substring matcher (`needle in model`) let the `claude-opus-4-1` needle swallow `claude-opus-4-10`..`-19` → $15. Added a `(?!\d)` boundary to `_input_rate_for_model` (mirrors the main script's lookahead), so two-digit minors resolve NEW $5 while real `claude-opus-4-1` stays $15 — preserving the forward/reverse parity guards.
+
+**Fixed — stale comment + reference doc (P5).** Corrected the `session-metrics.py` comment that wrongly claimed `claude-opus-4-99` "falls through and warns" (it resolves to $5 *silently* via the `claude-opus-4-9` prefix). Dropped the stale `claude-opus-4` / `claude-opus-4-1` rows from `references/pricing.md`'s prefix-match table — both are anchored regexes now, not prefix entries.
+
+**Verified not-a-bug — 1M-context premium.** A quad-AI second-opinion review (+ Anthropic pricing docs) confirmed current Opus 4.6–4.8 and Sonnet 4.6 bill the full 1M window at standard rates, so `pricing.md`'s choice not to model a >200K premium is correct. No change.
+
+**Tests**: +5 — two-digit-minor NEW+warn, `claude-opus-4-1` OLD silent, `claude-opus-4-99` silent, audit-extract two-digit parity, and null-`message`/null-`usage` skip. Full suite **732 passed, 1 skipped**. No behaviour change for any currently-shipping model.
+
 ## v1.45.0 — 2026-05-29
 
 ### Switch the main skill to `model: haiku` + fix `glm-5.1` suffix mispricing

@@ -79,14 +79,21 @@ and for prefix-matching fallback when a model ID isn't explicitly listed.
 
 | Model ID (prefix match) | Input | Output | Cache read | 5m Cache write | 1h Cache write |
 |-------------------------|-------|--------|------------|----------------|----------------|
-| `claude-opus-4-1`       | 15.00 |  75.00 |       1.50 |          18.75 |          30.00 |
-| `claude-opus-4`         | 15.00 |  75.00 |       1.50 |          18.75 |          30.00 |
 | `claude-sonnet-4`       |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
 | `claude-3-7-sonnet`     |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
 | `claude-3-5-sonnet`     |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
 | `claude-3-5-haiku`      |  0.80 |   4.00 |       0.08 |           1.00 |           1.60 |
 | `claude-3-opus`         | 15.00 |  75.00 |       1.50 |          18.75 |          30.00 |
 | (default fallback)      |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
+
+> **Opus 4.0 / 4.1 (OLD $15/$75 tier) are NOT prefix entries** — they were
+> removed from the prefix table (`claude-opus-4` in v1.41.2, `claude-opus-4-1`
+> in v1.45.1) and are matched by **anchored regexes** in `_PRICING_PATTERNS`:
+> `^claude-opus-4(?:-\d{8})?$` and `^claude-opus-4-1(?:-|\[|$)`. As plain prefix
+> keys they silently caught their two-digit extensions (`claude-opus-4-N`,
+> `claude-opus-4-10`..`-19`) and over-charged 3×. The anchored forms price only
+> the exact IDs plus their date / `[1m]` suffixes at OLD-tier, leaving un-keyed
+> future minors to the NEW-tier family fallback (with an unknown-model warning).
 
 ## Non-Anthropic models
 

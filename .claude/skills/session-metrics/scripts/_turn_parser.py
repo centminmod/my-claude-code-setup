@@ -201,8 +201,15 @@ def _extract_turns(entries: list[dict]) -> list[dict]:
             continue
         if t != "assistant":
             continue
-        msg = entry.get("message", {})
-        if "usage" not in msg:
+        # Null-safe on BOTH levels. `entry.get("message", {})` only defaults on a
+        # MISSING key, so a present `"message": null` would yield None and crash
+        # the membership test below; `or {}` collapses null to {} (matches the
+        # user branch at :141). The `isinstance` guard then subsumes missing /
+        # null / non-dict `usage` in one check — a present `"usage": null` would
+        # otherwise pass a bare `"usage" not in msg` (key present) and crash
+        # downstream at `_build_turn_record` (`u.get(...)` on None).
+        msg = entry.get("message") or {}
+        if not isinstance(msg.get("usage"), dict):
             continue
         msg_id = msg.get("id")
         if not msg_id:

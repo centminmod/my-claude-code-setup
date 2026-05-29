@@ -44,7 +44,11 @@ from typing import Any
 # removal in session-metrics.py:_PRICING done in v1.41.2). Without that entry,
 # any future Opus 4 minor (e.g. claude-opus-4-2) substring-falls through to
 # the bare "claude-opus" needle below at the NEW $5/M tier — conservative
-# undercharge rather than the prior 3x overcharge ($15/M OLD tier). Real
+# undercharge rather than the prior 3x overcharge ($15/M OLD tier). The
+# `(?!\d)` boundary added to `_input_rate_for_model` in v1.45.1 ensures the
+# TWO-digit minors (claude-opus-4-10..19) ALSO fall through to $5 instead of
+# substring-hitting the `claude-opus-4-1` needle (which would 3x-overcharge
+# them). Real
 # Opus 4.0 IDs (claude-opus-4 / claude-opus-4-YYYYMMDD) are an inherent
 # audit-vs-main asymmetry: main script's anchored regex prices them at $15;
 # audit-extract now prices them at $5. Audit impact estimates are
@@ -81,11 +85,20 @@ _DEFAULT_INPUT_RATE_PER_M = 3.00
 def _input_rate_for_model(model: str | None) -> float:
     """Look up $/M input rate for a model id. Substring-matched against the
     table above, falling back to Sonnet rate for unknown / missing model.
-    Synthetic markers like ``<synthetic>`` also fall through to the default."""
+    Synthetic markers like ``<synthetic>`` also fall through to the default.
+
+    The ``(?!\\d)`` boundary (v1.45.1) stops a needle from matching when it is
+    immediately followed by another digit, so the ``claude-opus-4-1`` ($15 OLD
+    tier) needle no longer substring-swallows the two-digit minors
+    ``claude-opus-4-10``..``-19`` (NEW $5 tier) and over-charge them 3x. It
+    mirrors the ``(?!\\d)`` negative-lookahead session-metrics.py uses in its
+    ``_PRICING_PATTERNS``. Real Anthropic ids always carry a non-digit (`-`,
+    `[`, or end-of-string) after a needle, so the bare family needles
+    (``claude-opus`` etc.) keep matching their versioned ids unchanged."""
     if not model:
         return _DEFAULT_INPUT_RATE_PER_M
     for needle, rate in _INPUT_RATE_PER_M_BY_MODEL:
-        if needle in model:
+        if re.search(re.escape(needle) + r"(?!\d)", model):
             return rate
     return _DEFAULT_INPUT_RATE_PER_M
 

@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.45.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.45.1"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -70,17 +70,18 @@ _PRICING: dict[str, dict[str, float]] = {
     "claude-opus-4-7":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-6":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-5":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
-    # --- Opus 4 / 4.1 (old tier, retained for historical sessions) ---
-    "claude-opus-4-1":           {"input": 15.00, "output": 75.00, "cache_read": 1.50,  "cache_write": 18.75, "cache_write_1h": 30.00},
-    # NOTE (v1.41.2): the bare "claude-opus-4" key is intentionally NOT in
-    # this dict. It used to live here, but the prefix-sweep in `_pricing_for`
-    # would silently catch any future `claude-opus-4-N` (e.g. `claude-opus-4-9`)
-    # and over-charge by 3x at OLD-tier rates. The Opus 4.0 ID and its
-    # date-suffixed forms are now matched by an anchored regex in
-    # `_PRICING_PATTERNS` below; future Opus 4 minors without an explicit key
-    # (4-9+) are routed to the NEW $5/$25 tier via `_PRICING_FAMILY_FALLBACKS`
-    # with an unknown-model warning. See the bug analysis in the v1.41.2
-    # changelog entry.
+    # --- Opus 4 / 4.1 (old tier) — no plain string keys live here ---
+    # NOTE: neither the bare "claude-opus-4" (removed v1.41.2) nor
+    # "claude-opus-4-1" (removed v1.45.1) are plain keys in this dict. As prefix
+    # keys they silently caught their two-digit extensions in the `_pricing_for`
+    # prefix sweep and over-charged by 3x at OLD-tier $15/$75: "claude-opus-4"
+    # caught any `claude-opus-4-N`, and "claude-opus-4-1" caught
+    # `claude-opus-4-10`..`-19`. Both are now anchored regexes in
+    # `_PRICING_PATTERNS` below, so only the exact IDs (+ their date / `[1m]`
+    # forms) price OLD-tier; un-keyed future Opus 4 minors — two-digit
+    # `4-10`+ included — route to the NEW $5/$25 tier via
+    # `_PRICING_FAMILY_FALLBACKS` with an unknown-model warning. See the v1.41.2
+    # and v1.45.1 changelog entries.
     # --- Sonnet 4.x + 3.7 (shared rates) ---
     # `claude-sonnet-5` bare-major key (pre-provisioned, v1.44.0): Sonnet has
     # held one rate tier across all minors, so a bare major catching every 5.x
@@ -185,9 +186,19 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # `claude-opus-4-N` (N >= 8 — see _PRICING_FAMILY_FALLBACKS below) and
     # over-charge by 3x at OLD-tier $15/$75. Match policy: the bare ID
     # `claude-opus-4` OR a single date-suffixed form `claude-opus-4-YYYYMMDD`
-    # (8 digits). Anything else (e.g. `claude-opus-4-1-...`, `claude-opus-4-8`)
-    # is left to fall through to a more-specific entry or the family fallback.
+    # (8 digits). A `claude-opus-4-1` minor is handled by the anchored 4.1 regex
+    # just below; `claude-opus-4-8` and other minors fall through to a
+    # more-specific entry or the family fallback.
     (re.compile(r"^claude-opus-4(?:-\d{8})?$",       re.I),
+        {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75, "cache_write_1h": 30.00}),
+    # ----- Opus 4.1 (anchored regex; v1.45.1). Moved out of `_PRICING`, where
+    # the plain `claude-opus-4-1` key prefix-matched the two-digit minors
+    # `claude-opus-4-10`..`-19` and silently priced them at OLD $15/$75 (a 3x
+    # overcharge once Anthropic ships a 4.10+). The `(?:-|\[|$)` boundary matches
+    # `claude-opus-4-1` itself plus its date-suffix and `[1m]` forms, but NOT a
+    # trailing digit — so `claude-opus-4-10`+ no longer matches here and instead
+    # routes to the NEW-tier family fallback (with a warning).
+    (re.compile(r"^claude-opus-4-1(?:-|\[|$)",       re.I),
         {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75, "cache_write_1h": 30.00}),
 ]
 
@@ -217,16 +228,20 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
 # The `\[` was added so an un-keyed future `[1m]` variant (e.g. a hypothetical
 # `claude-opus-6[1m]`) still resolves to the family tier instead of falling to
 # `_DEFAULT_PRICING` (Sonnet $3) — the same `[1m]` evasion that mispriced
-# `claude-opus-4-8[1m]` before its explicit key landed in v1.43.0. The
-# 2-digit-accident guard is unaffected: `[5-9]` followed by another digit
-# still won't satisfy the boundary (`claude-opus-4-99` falls through and warns).
+# `claude-opus-4-8[1m]` before its explicit key landed in v1.43.0.
+# Two-digit minors (v1.45.1): `claude-opus-4-10`..`-19` are caught by the Opus-4
+# minor fallback's `\d{2,}` alternation → NEW $5/$25 tier WITH a warning. (An
+# earlier comment here claimed `claude-opus-4-99` "falls through and warns" —
+# that was wrong: `4-90`..`-99` prefix-match the explicit `claude-opus-4-9` key
+# at step 3 and resolve to $5 SILENTLY — correct tier, no warning, acceptable.)
 _PRICING_FAMILY_FALLBACKS: list[tuple[re.Pattern[str], dict[str, float]]] = [
-    # Opus 4 minors 5-9 are now ALL explicit keys (v1.44.0), caught by exact
-    # match / prefix sweep before this fires, so this regex is fully shadowed
-    # and kept only as a defensive back-stop (e.g. if an explicit key is ever
-    # removed). Date-suffixed and `[1m]` forms of those minors also resolve via
-    # the prefix sweep on the explicit key.
-    (re.compile(r"^claude-opus-4-[5-9](?:-|\[|$)",         re.I), _PRICING["claude-opus-4-7"]),
+    # Opus 4 minors 5-9 are ALL explicit keys (v1.44.0), caught by exact match /
+    # prefix sweep before this fires. The `\d{2,}` alternation (v1.45.1) ALSO
+    # catches un-keyed TWO-digit minors (e.g. `claude-opus-4-10`..`-19`): they no
+    # longer prefix-match the old `claude-opus-4-1` key (now an anchored regex),
+    # so they land here and get the conservative NEW $5/$25 tier + a warning
+    # rather than silently defaulting to Sonnet $3.
+    (re.compile(r"^claude-opus-4-(?:[5-9]|\d{2,})(?:-|\[|$)", re.I), _PRICING["claude-opus-4-7"]),
     # Future Opus majors (6+). `claude-opus-5` is an explicit bare-major key
     # (catches all 5.x), so this back-stops 6+. New tier is the conservative
     # bet — under-counting by ~10% if Anthropic raises prices beats the prior
