@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.54.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.55.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -508,6 +508,7 @@ _resolve_subagent_type          = _di_m._resolve_subagent_type
 _load_session                   = _di_m._load_session
 _run_single_session             = _di_m._run_single_session
 _run_render_tasks               = _di_m._run_render_tasks
+_run_prepare_tasks              = _di_m._run_prepare_tasks
 _run_project_cost               = _di_m._run_project_cost
 _run_all_projects               = _di_m._run_all_projects
 _instance_export_root           = _di_m._instance_export_root
@@ -617,6 +618,11 @@ _build_by_skill             = _da_m._build_by_skill
 _build_request_units        = _da_m._build_request_units
 _detect_multi_intent        = _da_m._detect_multi_intent
 _assemble_tasks             = _da_m._assemble_tasks
+_build_tasks_skeleton       = _da_m._build_tasks_skeleton
+_render_tasks_worksheet     = _da_m._render_tasks_worksheet
+_cluster_request_units      = _da_m._cluster_request_units
+_suggest_verdict            = _da_m._suggest_verdict
+_seed_title                 = _da_m._seed_title
 _TASKS_GROUPING_SCHEMA_VERSION = _da_m._TASKS_GROUPING_SCHEMA_VERSION
 _SELF_COST_SKILL_NAMES      = _da_m._SELF_COST_SKILL_NAMES
 _summarize_self_cost        = _da_m._summarize_self_cost

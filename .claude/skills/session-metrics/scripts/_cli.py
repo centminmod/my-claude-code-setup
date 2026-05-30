@@ -569,6 +569,15 @@ def _build_parser() -> argparse.ArgumentParser:
                         "the grouping only assigns requests to tasks. Used by "
                         "the task-breakdown skill; writes next to the export "
                         "(or --export-dir).")
+    _mode.add_argument("--prepare-tasks", nargs=1, metavar="EXPORT_JSON",
+                   help="Print a compact per-request worksheet and write a "
+                        "renderable candidate <stem>_grouping.json skeleton "
+                        "next to the export (deterministic clustering + seeded "
+                        "titles + suggested verdicts). The Tasks-companion "
+                        "model EDITS the skeleton instead of authoring a "
+                        "grouping from scratch; a zero-edit skeleton still "
+                        "renders a correct, non-collapsed Tasks page. Pairs "
+                        "with --render-tasks.")
     # --- Phase 10 — Automated headless capture ---------------------------
     _mode.add_argument("--compare-run", nargs="*", metavar="MODEL",
                    default=None,
@@ -831,6 +840,10 @@ def main() -> None:
         _task_fmts = [f for f in formats if f in ("html", "md")] or ["html", "md"]
         rc = _sm()._run_render_tasks(export_json, grouping_json,
                                      formats=_task_fmts)
+        sys.exit(rc)
+
+    if args.prepare_tasks is not None:
+        rc = _sm()._run_prepare_tasks(args.prepare_tasks[0])
         sys.exit(rc)
 
     if args.compare_prep is not None:

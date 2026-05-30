@@ -3,6 +3,19 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.55.0 — 2026-05-30
+
+### `--prepare-tasks`: shift the Tasks companion from author to editor
+
+Token/time-efficiency follow-up to v1.54.0. The auto Tasks companion made the model probe `request_units` and then **author** `grouping.json` from scratch (titles + verdicts + rationales + id assignments) — deterministic data-shaping the script can do itself. New `--prepare-tasks <export.json>` mode does that work and hands the model an editor's job instead.
+
+- **Worksheet** — prints one compact line per request unit to stdout (candidate cluster, turns, cost, tokens, `risk/reread/cbreak`, idle gap, snippet, top tools), replacing the per-unit probing with a single read and never loading full `prompt_text`.
+- **Renderable skeleton** — writes a candidate `<stem>_grouping.json` with deterministic, conservative clustering (each real user prompt seeds a task; `↳` agent-completion continuations, blank-snippet no-prompt units, and same-slash repeats attach to the preceding cluster), seeded non-blank titles, and suggested verdicts. A **zero-edit skeleton already renders a correct, non-collapsed Tasks page** (graceful degradation against the "model bails to one blob" failure). The model edits titles/merges/rationales/disputed verdicts instead of authoring from scratch.
+- **No `likely_waste` pre-fill.** The suggested verdict is only `worth_it`/`mixed`; above the high-waste threshold it is left blank for the model — pre-filling `likely_waste` would anchor it into rubber-stamping a noisy-signal label.
+- **Auto-title collapse guard.** Seeded titles are marked `_auto_title`; a task that still carries its auto-generated title while covering >60% of requests now warns (the v1.54.0 blank-title guard couldn't catch a non-blank seeded title). The model drops `_auto_title` when it names a task, so a real grouping never trips it.
+- Both SKILL.md procedures (the session-metrics auto-companion and the standalone `/task-breakdown` skill) are rewritten to the prepare→edit→render flow.
+- No change to the grouping `schema_version` (the skeleton's underscore `_hint`/`_auto_title` fields are ignored by the resolver for cost/coverage math). No change to any existing export file's contents.
+
 ## v1.54.0 — 2026-05-30
 
 ### Task grouping: scope-gate the auto-companion + collapse guardrail

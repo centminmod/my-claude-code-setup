@@ -52,10 +52,32 @@ If `$ARGUMENTS[0]` is missing, first generate a session export by invoking the
      - dev repo: `.claude/skills/session-metrics/scripts/session-metrics.py`
      Use whichever exists (glob if unsure).
 
-2. **Read the request units.** Load the export JSON and read `request_units`.
-   Each unit has: `unit_id` (`"<session_id>:<anchor_index>"`), `prompt_snippet`,
-   `prompt_text`, `turn_count`, `combined_cost_usd`, `total_tokens`,
-   `tool_histogram`, `risk_turn_count`, `reread_path_count`, `cache_break_count`,
+2. **Prepare the worksheet + skeleton (preferred — you are an editor, not an
+   author).** Run `--prepare-tasks` on the export: it prints a compact
+   one-line-per-request worksheet to stdout and writes a *renderable* candidate
+   `<stem>_grouping.json` next to the export, with deterministic clustering,
+   seeded titles, and suggested verdicts already filled in.
+
+   ```
+   python3 <renderer> --prepare-tasks <export.json>
+   ```
+
+   The worksheet is your single source of grouping signals — **do not re-probe
+   the JSON with `jq`/`Read`.** Each row shows the unit's candidate cluster
+   (`cl`), turns, cost, tokens, `risk/reread/cbreak`, idle gap, snippet, and top
+   tools; `[cont]` marks an agent-completion continuation and `[blank]` a
+   no-prompt unit (both pre-attached to the preceding cluster). Then **edit**
+   the skeleton per steps 3–5 below rather than writing it from scratch:
+   rename each seeded title (and drop its `_auto_title` field once named),
+   merge/split clusters where the worksheet warrants, write one-line rationales,
+   and fill any blank verdict the skeleton left for your judgment. Skip to
+   step 6 (render) when done.
+
+   *(Fallback — manual authoring.)* If you are not using `--prepare-tasks`, load
+   the export JSON and read `request_units` directly. Each unit has: `unit_id`
+   (`"<session_id>:<anchor_index>"`), `prompt_snippet`, `prompt_text`,
+   `turn_count`, `combined_cost_usd`, `total_tokens`, `tool_histogram`,
+   `risk_turn_count`, `reread_path_count`, `cache_break_count`,
    `wall_clock_seconds`, `idle_gap_before_seconds`, `slash_command`,
    `spawned_subagents`, `workflow_run_ids`, `multi_intent_possible`.
    **If `request_units` is absent**, tell the user to re-run session-metrics to

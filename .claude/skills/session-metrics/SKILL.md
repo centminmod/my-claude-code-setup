@@ -476,34 +476,63 @@ when you are skipping the companion — it would render a button pointing at a
 
 **Then, after the `[export]` lines, if this is a single-session export and the
 JSON export's `request_units` array has between 2 and 40 entries**, generate
-the companion automatically by following the **task-breakdown** skill's
-procedure inline. Skip when there is only one unit (a single-prompt session
-needs no grouping) or when there are more than ~40 units (an unusually large
-session — tell the user it is too large for a clean auto-grouping and that
-`/task-breakdown` remains available manually):
+the companion automatically. Skip when there is only one unit (a single-prompt
+session needs no grouping) or when there are more than ~40 units (an unusually
+large session — tell the user it is too large for a clean auto-grouping and
+that `/task-breakdown` remains available manually).
 
-1. Read `request_units` from the JSON export just written.
-2. Group the units into a handful of semantic tasks (topical/lexical continuity
-   is the primary signal; shared tools/files; slash/skill starts; idle gaps are
-   a weak confirming-only hint). Label each task `worth_it` / `mixed` /
-   `likely_waste` using the deterministic waste signals (`risk_turn_count`,
-   `reread_path_count`, `cache_break_count`) as evidence — **bias toward
-   `mixed`/`worth_it` when unsure**; never invent or re-sum numbers.
-3. Write `grouping.json` next to the export (`{schema_version:"1", scope_label,
-   tasks:[{title, verdict, rationale, request_unit_ids:[…]}]}`), covering every
-   `unit_id` once.
-4. Run the renderer (it recomputes all totals from the export and validates the
-   grouping):
+You are an **editor, not an author**: `--prepare-tasks` does the deterministic
+work (clustering, seeded titles, suggested verdicts) and writes a *renderable*
+skeleton; you only refine the semantic parts. This is far cheaper than
+authoring `grouping.json` from scratch.
+
+1. Run `--prepare-tasks` — it prints a compact per-request worksheet to stdout
+   and writes a candidate `<stem>_grouping.json` next to the export:
+
+   ```bash
+   uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --prepare-tasks \
+     <export.json>
+   ```
+
+   The worksheet is your single source of grouping signals — **do not re-probe
+   the JSON with `jq`/`Read`.** Each row carries the unit's candidate cluster
+   (`cl`), turns, cost, tokens, `risk/reread/cbreak`, idle gap, snippet, and
+   tools. `[cont]` = an agent-completion continuation, `[blank]` = a no-prompt
+   unit; both are pre-attached to the preceding cluster.
+
+2. **Edit** the skeleton `grouping.json` (do not rewrite it from scratch):
+   - **Titles** — replace each seeded title with a real task name, and **remove
+     that task's `_auto_title` field** (or set it `false`) once you've named it.
+     A leftover `_auto_title` on a task covering >60% of requests trips a
+     collapse warning at render time — that is the safety net for an unedited
+     skeleton, not a target.
+   - **Merge / split** — combine clusters that are one semantic task (rewrite
+     the affected tasks' `request_unit_ids`); split a cluster only when the
+     worksheet clearly shows two distinct goals (e.g. a real prompt that the
+     heuristic over-attached). Keep every `unit_id` covered exactly once.
+   - **Rationales** — write a one-line `rationale` per task.
+   - **Verdicts** — the skeleton pre-fills `worth_it`/`mixed`; a blank `verdict`
+     means the waste signals were high enough that *you* must judge it (use the
+     `_hint.suggested_verdict` and the worksheet's `risk/reread/cbreak` as
+     evidence — **bias toward `mixed`/`worth_it` when unsure**, never re-sum
+     numbers). Override a pre-filled verdict only when you actively disagree.
+
+   The `_auto_title` / `_hint` underscore fields are advisory — the renderer
+   ignores them for all cost/coverage math.
+
+3. Run the renderer (it recomputes all totals from the export and validates the
+   grouping). Make sure the edited JSON still parses first:
 
    ```bash
    uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --render-tasks \
      <export.json> <grouping.json>
    ```
 
-5. Tell the user the task list (verdicts + turns + cost, read back from the
-   script's stdout / the rendered `*_tasks.md` — do not recompute) and the
+4. Tell the user the task list (verdicts + turns + cost, read back from the
+   renderer's stdout / the rendered `*_tasks.md` — do not recompute) and the
    `*_tasks.html` / `*_tasks.md` paths. The dashboard `Tasks` nav button now
-   resolves to that page.
+   resolves to that page. If the renderer printed a collapse warning, fix the
+   grouping and re-render rather than shipping it.
 
 This is automatic for HTML exports. The standalone `/task-breakdown
 <json-path>` skill remains for re-grouping a saved JSON export later without

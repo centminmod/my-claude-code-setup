@@ -1522,6 +1522,191 @@ _TASKS_GROUPING_SCHEMA_VERSION = "1"
 
 _TASK_VERDICTS = ("worth_it", "mixed", "likely_waste")
 
+# --- Prepare-tasks skeleton (v1.55.0) --------------------------------------
+# ``--prepare-tasks`` emits a compact worksheet + a *renderable* candidate
+# grouping skeleton so the Tasks-companion model EDITS a pre-clustered file
+# instead of authoring grouping.json from scratch (author -> editor). The
+# heuristics below are deliberately conservative — a multi-AI design review
+# (v1.55.0) confirmed three failure modes the naive version hit:
+#   * blank-snippet units (tool-result-only turns) must NOT each seed a task;
+#   * skill-preamble boilerplate ("Base directory for this skill: …") makes a
+#     terrible seeded title;
+#   * pre-filling ``likely_waste`` anchors the model into rubber-stamping it.
+
+# Snippet prefixes that read as injected boilerplate rather than a user's
+# intent — a slash-command dispatch injects the skill's SKILL.md preamble as
+# the prompt, so the unit snippet starts with this. Unusable as a seed title.
+_SKILL_PREAMBLE_PREFIXES = ("Base directory for this skill:",)
+
+# Waste-ratio thresholds for the deterministic verdict SUGGESTION. Biased to
+# worth_it/mixed (matching the SKILL.md grouping rule). The script NEVER
+# pre-fills ``likely_waste``: above the high threshold it returns "" so the
+# model must make that call itself, avoiding a noisy-signal rubber-stamp.
+_VERDICT_MIXED_RATIO = 0.15
+_VERDICT_FORCE_MODEL_RATIO = 0.5
+
+
+def _is_continuation_snippet(snippet: str) -> bool:
+    """True when a unit's prompt is a collapsed background-agent completion
+    (``↳ …``) — a continuation of the work that spawned it, not a new user
+    goal (see ``_summarise_task_notification``)."""
+    return snippet.lstrip().startswith("↳")
+
+
+def _is_seedable_title_snippet(snippet: str) -> bool:
+    """True when a snippet reads as a user-authored task title (usable as a
+    seeded skeleton title). Excludes blank, ``↳`` continuation, and
+    skill-preamble boilerplate snippets."""
+    s = snippet.strip()
+    if not s or s.startswith("↳"):
+        return False
+    return not any(s.startswith(p) for p in _SKILL_PREAMBLE_PREFIXES)
+
+
+def _suggest_verdict(members: list[dict]) -> str:
+    """Deterministic verdict suggestion for a skeleton cluster.
+
+    Aggregates per-unit waste signals (risk turns, path re-reads, cache
+    breaks) over ``members`` and maps the ratio against total turns. Returns
+    only ``"worth_it"`` or ``"mixed"``; returns ``""`` (let the model decide)
+    when the waste ratio is high enough that ``likely_waste`` is plausible —
+    pre-filling that label biases the model into rubber-stamping it.
+    """
+    turns = sum(int(u.get("turn_count", 0)) for u in members) or 1
+    waste = sum(int(u.get("risk_turn_count", 0))
+                + int(u.get("reread_path_count", 0))
+                + int(u.get("cache_break_count", 0)) for u in members)
+    ratio = waste / turns
+    if ratio >= _VERDICT_FORCE_MODEL_RATIO:
+        return ""
+    if ratio >= _VERDICT_MIXED_RATIO:
+        return "mixed"
+    return "worth_it"
+
+
+def _cluster_request_units(units: list[dict]) -> list[list[dict]]:
+    """Conservative deterministic clustering of request units into candidate
+    task groups. High-confidence attachment only:
+
+      * a blank-snippet unit (tool-result-only turn, no user prompt) attaches
+        to the current cluster — never seeds its own task;
+      * a ``↳ …`` continuation unit attaches to the current cluster;
+      * a unit repeating the current cluster's slash command attaches;
+      * any other unit (a real, distinct user prompt) starts a NEW cluster.
+
+    The model refines (merge/split) from here — this only removes the
+    mechanical, high-error work and prevents spurious one-unit tasks from
+    blank / continuation units. Input order is preserved.
+    """
+    clusters: list[list[dict]] = []
+    cur_slash = ""
+    for u in units:
+        snippet = u.get("prompt_snippet") or ""
+        slash = (u.get("slash_command") or "").strip()
+        attach = bool(clusters) and (
+            not snippet.strip()
+            or _is_continuation_snippet(snippet)
+            or (bool(slash) and slash == cur_slash)
+        )
+        if attach:
+            clusters[-1].append(u)
+        else:
+            clusters.append([u])
+            cur_slash = slash
+    return clusters
+
+
+def _seed_title(cluster: list[dict]) -> str:
+    """Seeded title for a candidate cluster: the first member snippet that
+    reads as a user-authored title (non-blank, non-continuation,
+    non-preamble), truncated. Falls back to a neutral anchor-range label so a
+    cluster of only blank/continuation/preamble units never gets a blank title
+    (which would collide with the collapse guardrail)."""
+    for u in cluster:
+        snip = (u.get("prompt_snippet") or "").strip()
+        if _is_seedable_title_snippet(snip):
+            return snip[:60]
+    first = cluster[0].get("anchor_index", "?")
+    last = cluster[-1].get("anchor_index", "?")
+    return f"Requests {first}–{last}" if first != last else f"Request {first}"
+
+
+def _build_tasks_skeleton(report: dict) -> dict:
+    """Build a renderable candidate grouping from an export's request_units.
+
+    Deterministic: clusters units (``_cluster_request_units``), seeds a
+    non-blank title per cluster, and pre-fills a conservative verdict
+    suggestion. Each task is marked ``_auto_title: true`` and carries a
+    ``_hint`` with the verdict math; ``_assemble_tasks`` ignores the
+    underscore fields for cost/coverage but reads ``_auto_title`` for the
+    auto-title collapse guard. A zero-edit skeleton renders a correct,
+    non-collapsed Tasks page (graceful degradation).
+    """
+    units = report.get("request_units") or []
+    tasks: list[dict] = []
+    for cluster in _cluster_request_units(units):
+        verdict = _suggest_verdict(cluster)
+        turns = sum(int(u.get("turn_count", 0)) for u in cluster) or 1
+        waste = sum(int(u.get("risk_turn_count", 0))
+                    + int(u.get("reread_path_count", 0))
+                    + int(u.get("cache_break_count", 0)) for u in cluster)
+        tasks.append({
+            "title":            _seed_title(cluster),
+            "verdict":          verdict,
+            "rationale":        "",
+            "request_unit_ids": [u.get("unit_id") for u in cluster],
+            "_auto_title":      True,
+            "_hint": {
+                "waste_ratio":       round(waste / turns, 2),
+                "suggested_verdict": verdict or "likely_waste?",
+                "members":           len(cluster),
+            },
+        })
+    sessions = report.get("sessions") or []
+    scope = (f"session_{(sessions[0].get('session_id') or '')[:8]}"
+             if len(sessions) == 1 else (report.get("mode") or ""))
+    return {
+        "schema_version": _TASKS_GROUPING_SCHEMA_VERSION,
+        "scope_label":    scope,
+        "tasks":          tasks,
+    }
+
+
+def _render_tasks_worksheet(report: dict) -> str:
+    """Compact one-line-per-request-unit worksheet for ``--prepare-tasks``
+    stdout — gives the editing model every grouping signal without loading
+    full ``prompt_text`` (the jq-probe replacement). Each row shows its
+    candidate-cluster number so the model sees the proposed grouping inline.
+    """
+    units = report.get("request_units") or []
+    clusters = _cluster_request_units(units)
+    cl_of: dict = {}
+    for i, cl in enumerate(clusters, 1):
+        for u in cl:
+            cl_of[u.get("unit_id")] = i
+    lines = [f"{len(units)} request units -> {len(clusters)} candidate clusters",
+             "(cl = candidate cluster; r/rr/cb = risk/reread/cache-break; "
+             "[cont]=agent-continuation [blank]=no-prompt unit)", "",
+             f"{'unit':>6} {'cl':>3} {'turns':>5} {'cost$':>9} {'tokens':>9} "
+             f"{'r/rr/cb':>9} {'idle_s':>7}  snippet  [tools]"]
+    for u in units:
+        uid = u.get("unit_id") or ""
+        short = uid.split(":")[-1]
+        snip = (u.get("prompt_snippet") or "").replace("\n", " ")
+        tag = (" [cont]" if _is_continuation_snippet(snip)
+               else " [blank]" if not snip.strip() else "")
+        tools = ",".join(list((u.get("tool_histogram") or {}).keys())[:3])
+        risk = (f'{u.get("risk_turn_count", 0)}/'
+                f'{u.get("reread_path_count", 0)}/'
+                f'{u.get("cache_break_count", 0)}')
+        lines.append(
+            f"{short:>6} {cl_of.get(uid, '?'):>3} {u.get('turn_count', 0):>5} "
+            f"{u.get('combined_cost_usd', 0.0):>9.4f} "
+            f"{u.get('total_tokens', 0):>9} {risk:>9} "
+            f"{int(u.get('idle_gap_before_seconds', 0)):>7}  "
+            f"{snip[:70]}{tag}  [{tools}]")
+    return "\n".join(lines)
+
 
 def _assemble_tasks(report: dict, grouping: dict) -> dict:
     """Validate a Claude-authored ``grouping`` and resolve it against the
@@ -1576,7 +1761,8 @@ def _assemble_tasks(report: dict, grouping: dict) -> dict:
                             f"verdict {verdict!r}")
         tasks_out.append(_summarise_task(
             raw.get("title") or "Untitled task", verdict,
-            raw.get("rationale") or "", members))
+            raw.get("rationale") or "", members,
+            auto_title=bool(raw.get("_auto_title"))))
 
     uncovered = [units_by_id[uid] for uid in all_ids if uid not in seen]
     if uncovered:
@@ -1597,13 +1783,25 @@ def _assemble_tasks(report: dict, grouping: dict) -> dict:
         for t in tasks_out:
             if t["title"] == "Ungrouped requests":
                 continue
+            cov = 100.0 * t["member_count"] / len(all_ids)
             if t["title"] in ("", "Untitled task"):
-                cov = 100.0 * t["member_count"] / len(all_ids)
                 if cov > 60.0:
                     warnings.append(
                         f"task covers {cov:.0f}% of all requests but has no "
                         f"title — looks like an un-grouped collapse, not a "
                         f"semantic grouping; re-run with one titled task per goal")
+            # Auto-title collapse guard (v1.55.0): a prepare-tasks skeleton
+            # marks its seeded titles ``_auto_title``. A non-blank seeded title
+            # bypasses the blank-title guard above, so an unedited mega-cluster
+            # would render silently. Warn when an auto-title task still swallows
+            # the bulk of the requests — the model rubber-stamped the skeleton
+            # instead of naming (or splitting) the cluster.
+            elif t.get("auto_title") and cov > 60.0:
+                warnings.append(
+                    f"task {t['title']!r} still has its auto-generated "
+                    f"skeleton title and covers {cov:.0f}% of all requests — "
+                    f"rename it to a real goal or split it; an unedited "
+                    f"mega-cluster is not a semantic grouping")
 
     return {
         "schema_version":     _TASKS_GROUPING_SCHEMA_VERSION,
@@ -1619,8 +1817,13 @@ def _assemble_tasks(report: dict, grouping: dict) -> dict:
 
 
 def _summarise_task(title: str, verdict: str, rationale: str,
-                    members: list[dict]) -> dict:
-    """Roll a task's member request units into deterministic totals."""
+                    members: list[dict], auto_title: bool = False) -> dict:
+    """Roll a task's member request units into deterministic totals.
+
+    ``auto_title`` carries the grouping's ``_auto_title`` flag through to the
+    assembled task so the auto-title collapse guard in ``_assemble_tasks`` can
+    distinguish a model-named task from an unedited skeleton seed.
+    """
     from collections import Counter
     hist: Counter = Counter()
     for u in members:
@@ -1629,6 +1832,7 @@ def _summarise_task(title: str, verdict: str, rationale: str,
         "title":             title,
         "verdict":           verdict,
         "rationale":         rationale,
+        "auto_title":        auto_title,
         "member_count":      len(members),
         "turn_count":        sum(int(u.get("turn_count", 0)) for u in members),
         "cost_usd":          round(sum(float(u.get("combined_cost_usd", 0.0))

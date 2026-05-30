@@ -132,6 +132,43 @@ def _run_render_tasks(export_json: str, grouping_json: str,
     return 0
 
 
+def _run_prepare_tasks(export_json: str) -> int:
+    """``--prepare-tasks`` entry point. Loads a session-metrics JSON export,
+    prints a compact per-request worksheet to stdout, and writes a renderable
+    candidate ``<stem>_grouping.json`` skeleton next to the export for the
+    Tasks-companion model to refine. The skeleton already renders a correct,
+    non-collapsed Tasks page with zero edits (graceful degradation), so the
+    model shifts from authoring grouping.json to editing it. Returns a process
+    exit code (0 ok, non-zero on hard error).
+    """
+    exp_path = Path(export_json).expanduser()
+    try:
+        report = json.loads(exp_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"error: cannot read export JSON {exp_path}: {e}", file=sys.stderr)
+        return 2
+    if not isinstance(report, dict) or "request_units" not in report:
+        print("error: export JSON has no 'request_units' — re-run "
+              "session-metrics to regenerate the export (the per-request "
+              "breakdown was added in a newer version).", file=sys.stderr)
+        return 2
+
+    units = report.get("request_units") or []
+    print(_sm()._render_tasks_worksheet(report))
+    skeleton = _sm()._build_tasks_skeleton(report)
+    grp_path = exp_path.with_name(f"{exp_path.stem}_grouping.json")
+    grp_path.write_text(json.dumps(skeleton, indent=2) + "\n", encoding="utf-8")
+
+    print(f"\n[prepare-tasks] {len(units)} request units → "
+          f"{len(skeleton['tasks'])} candidate task(s)", file=sys.stderr)
+    print(f"[prepare-tasks] skeleton → {grp_path}", file=sys.stderr)
+    if len(units) > 40:
+        print("[prepare-tasks] note: >40 units — large session; the candidate "
+              "grouping will be coarse, review the clusters carefully.",
+              file=sys.stderr)
+    return 0
+
+
 def _write_output(fmt: str, content: str, report: dict,
                    suffix: str = "",
                    explicit_ts: str | None = None,
