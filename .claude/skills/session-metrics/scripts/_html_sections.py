@@ -1663,6 +1663,10 @@ tr.resume-marker-row td.resume-marker-cell{text-align:center;font-size:12px;opac
 .resume-marker-pill .resume-marker-time{font-size:11px;opacity:.7;font-variant-numeric:tabular-nums}
 .resume-marker-pill.terminal{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.4)}
 .resume-marker-pill.terminal strong,.resume-marker-pill.terminal .resume-marker-icon{color:#FBBF24}
+.resume-marker-pill.compaction{background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.4)}
+.resume-marker-pill.compaction strong,.resume-marker-pill.compaction .resume-marker-icon{color:#38BDF8}
+.resume-marker-pill.continued{background:rgba(148,163,184,.08);border-color:rgba(148,163,184,.3)}
+.resume-marker-pill.continued strong,.resume-marker-pill.continued .resume-marker-icon{color:var(--fg-dim)}
 
 /* Idle-gap dividers */
 tr.idle-gap-row td{padding:4px 10px;border-top:1px solid rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.06)}
@@ -2567,6 +2571,52 @@ def render_html(report: dict, variant: str = "single",
             )
         else:
             clear_divider = ""
+        # Q1c item 2: "continued from prior conversation" pill on a session's
+        # first turn when it opened on a compaction summary (the boundary lives
+        # in a predecessor file). Lightweight + muted — distinct from the
+        # in-session compaction divider below. Rendered above the turn row.
+        if t.get("is_continued_from_prior"):
+            continued_divider = (
+                f'<tr class="resume-marker-row" data-session="{session_id[:8]}">'
+                f'<td class="num resume-marker-idx"></td>'
+                f'<td colspan="{_full_cols - 1}" class="resume-marker-cell">'
+                f'<span class="resume-marker-pill continued" '
+                f'title="This session opened on a compaction summary — it '
+                f'continues a prior conversation whose compact_boundary lives in '
+                f'a predecessor JSONL. The first turn rebuilds context from that '
+                f'summary.">'
+                f'<span class="resume-marker-icon">&#8617;&#65039;</span>'
+                f'<strong>Continued from prior conversation</strong>'
+                f'</span></td></tr>'
+            )
+        else:
+            continued_divider = ""
+        # Q1c item 1: in-session compaction divider before the first turn that
+        # followed a compact_boundary. Mirrors clear_divider (prepended row; the
+        # real turn stays clickable). Sourced from the deduped boundary set, so
+        # one divider per boundary that had a following turn.
+        if t.get("is_post_compaction"):
+            _trig = t.get("compaction_trigger") or "auto"
+            _rec  = t.get("compaction_reclaimed_tokens")
+            _rec_str = (f' &middot; {_rec:,} reclaimed'
+                        if isinstance(_rec, int) else "")
+            compaction_divider = (
+                f'<tr class="resume-marker-row" data-session="{session_id[:8]}">'
+                f'<td class="num resume-marker-idx"></td>'
+                f'<td colspan="{_full_cols - 1}" class="resume-marker-cell">'
+                f'<span class="resume-marker-pill compaction" '
+                f'title="A context-window compaction (compact_boundary) occurred '
+                f'before this turn. The conversation was summarised and older '
+                f'messages dropped from context; the next turn rebuilds cache '
+                f'from the summary, so cache-read typically dips here.">'
+                f'<span class="resume-marker-icon">&#128476;&#65039;</span>'
+                f'<strong>Context compacted ({html_mod.escape(str(_trig))})</strong>'
+                f'<span class="resume-marker-time">before turn {t["index"]}'
+                f'{_rec_str}</span>'
+                f'</span></td></tr>'
+            )
+        else:
+            compaction_divider = ""
         if t.get("is_resume_marker"):
             ts_fmt = html_mod.escape(t.get("timestamp_fmt", ""))
             is_terminal = t.get("is_terminal_exit_marker", False)
@@ -2646,6 +2696,8 @@ def render_html(report: dict, variant: str = "single",
             f'</div></td>'
         ) if show_waste else ""
         return (
+            f'{continued_divider}'
+            f'{compaction_divider}'
             f'{clear_divider}'
             f'<tr id="turn-{turn_key}" class="turn-row" data-session="{session_id[:8]}"'
             f' data-turn-id="{turn_key}" role="button" tabindex="0">'

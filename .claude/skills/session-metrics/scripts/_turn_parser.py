@@ -832,6 +832,13 @@ def _build_turn_record(global_index: int, entry: dict,
         "tool_use_names":         tool_names,
         "is_resume_marker":       bool(entry.get("_is_resume_marker", False)),
         "is_clear_event":         bool(entry.get("_is_clear_event", False)),
+        # Q1c: stamped later by ``_build_report`` from the canonical, deduped
+        # compaction-boundary set (NOT a per-file flag here — boundaries replay
+        # across sibling JSONLs). ``is_post_compaction`` marks the first turn
+        # after a mid-session ``compact_boundary``; ``is_continued_from_prior``
+        # marks a session's first turn when it opens on a compaction summary.
+        "is_post_compaction":     False,
+        "is_continued_from_prior": False,
         "prompt_text":            prompt_text,
         "prompt_snippet":         _truncate(prompt_text, 240),
         "slash_command":          slash_cmd,

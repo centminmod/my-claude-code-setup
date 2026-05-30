@@ -3,6 +3,16 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.47.0 — 2026-05-30
+
+### Context-compaction timeline markers (Q1c)
+
+**Added — inline compaction dividers + "continued" pill in the HTML detail timeline.** Building on v1.46.0's compaction card, the turn-by-turn HTML report now renders a sky-blue `🗜️ Context compacted (auto|manual) — before turn N · X reclaimed` divider immediately above the first turn that ran on the freshly-compacted context, so the cache-creation spike / cache-read dip on that turn is explained in place. A session that opens on a compaction summary (it continues a prior conversation whose boundary lives in a predecessor JSONL) gets a muted `↩️ Continued from prior conversation` pill on its first turn. Both reuse the existing resume-marker divider styling and leave the real turn row fully clickable.
+
+**Correctness — dividers sourced from the deduped boundary set.** The divider→turn correlation runs in `_build_report` over the already-deduped, subagent-excluded `compaction_events` (not a per-file stamp), so the rendered divider count can never exceed the card's `boundary_count` even though boundaries replay across sibling JSONLs. Each boundary claims the first distinct real turn after it via a timestamp two-pointer walk; a boundary with no following turn (compaction at session end) is still counted on the card but renders no divider. Verified at project scope: 110 boundaries → 110 dividers → 110 stamped turns (0 over-count), 2 continued pills = 2 continuation sessions.
+
+**Internals.** New per-turn fields `is_post_compaction` / `is_continued_from_prior` (defaulted in `_build_turn_record`, stamped by the correlation pass in `_build_report`); rendered in `turn_row` (`_html_sections.py`) alongside the existing clear/resume dividers. No new top-level functions, no `_SCRIPT_VERSION` change.
+
 ## v1.46.0 — 2026-05-30
 
 ### Context-compaction detection (Q1)

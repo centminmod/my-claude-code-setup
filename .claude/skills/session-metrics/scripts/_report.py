@@ -659,6 +659,41 @@ def _build_report(
         _comp = (compaction_events_by_session or {}).get(session_id) or {}
         session_dict["compaction_events"] = _comp.get("boundaries", []) or []
         session_dict["starts_with_summary"] = bool(_comp.get("starts_with_summary", False))
+        # Q1c: correlate each boundary to the first not-yet-claimed real turn
+        # that follows it (timestamp walk), so the HTML timeline can render a
+        # "Context compacted" divider before that turn. Sourcing from the
+        # canonical, deduped, subagent-excluded ``compaction_events`` (above) —
+        # NOT a per-file stamp — means the rendered divider count can never
+        # exceed ``compaction_summary["boundary_count"]`` even though boundaries
+        # replay across sibling JSONLs. Both lists are timestamp-sorted, so this
+        # is a single two-pointer pass; each boundary claims a distinct turn, so
+        # back-to-back compactions don't collapse onto one row. A boundary with
+        # no following turn (compaction at session end) stays unmapped → no
+        # divider, but is still counted in the KPI card (divider_count ≤ N).
+        _boundaries = sorted(
+            session_dict["compaction_events"], key=lambda b: b.get("timestamp", ""),
+        )
+        _claimable = [t for t in turn_records if not t.get("is_resume_marker")]
+        _ti = 0
+        for _b in _boundaries:
+            _bts = _b.get("timestamp", "")
+            while _ti < len(_claimable) and _claimable[_ti].get("timestamp", "") <= _bts:
+                _ti += 1
+            if _ti < len(_claimable):
+                _t = _claimable[_ti]
+                _t["is_post_compaction"] = True
+                _t["compaction_trigger"] = _b.get("trigger", "")
+                _t["compaction_reclaimed_tokens"] = _b.get("reclaimed_tokens")
+                _ti += 1
+        # Q1c item 2: a session that opens on a compaction summary continues a
+        # prior conversation whose boundary lives in a predecessor file. Mark
+        # its first real turn so the timeline can show a "Continued from prior
+        # conversation" pill (visually distinct from the in-session divider).
+        if session_dict["starts_with_summary"]:
+            for _t in turn_records:
+                if not _t.get("is_resume_marker"):
+                    _t["is_continued_from_prior"] = True
+                    break
         sessions_out.append(session_dict)
 
     all_turns = [t for s in sessions_out for t in s["turns"]]
