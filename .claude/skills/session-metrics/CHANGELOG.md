@@ -3,6 +3,16 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.53.0 — 2026-05-30
+
+### `--quiet` — keep export stdout small so the `[export]` paths aren't buried
+
+**Added — a `--quiet` / `-q` flag** that suppresses the per-turn timeline on stdout, printing only the legend, scope header, grand-total subtotal, and footer. The `[export]` path lines (and `[self-cost]`) still print. Motivation: a `--project-cost` export across a large project rendered the full per-turn timeline to stdout first (e.g. ~18,800 lines / 1.9 MB for 187 sessions), which the harness spills into an overflow file showing only a 2 KB preview — pushing the `[export] … → path` lines, the actual deliverable, past the visible cut. `--quiet` collapses that stdout to ~80–90 lines regardless of session/turn count (O(1) in project size; the whole per-session loop is dropped in project mode, replaced by a one-line note), so the run stays inline. The full per-turn detail still lands in the written HTML/JSON.
+
+**Changed — SKILL.md now adds `--quiet` to every session and project export command.** When exporting, the per-turn detail is redundant on stdout (it's in the files), so the export shortcuts and Quick-usage examples pass `--quiet`. `--all-projects` is excluded — its instance dashboard text is already compact and the flag is a no-op there.
+
+Session and project scopes only. +3 tests (per-turn-row suppression in session and project modes, default-not-quiet). No behaviour change to any export file's contents.
+
 ## v1.52.0 — 2026-05-30
 
 ### Task grouping UX: automatic Tasks page, nav button, cleaner request labels

@@ -457,7 +457,8 @@ def _run_single_session(jsonl_path: Path, slug: str, include_subagents: bool,
                          evidence: bool = False,
                          include_workflows: bool = True,
                          no_workflow_detail: bool = False,
-                         task_companion_nav: bool = False) -> None:
+                         task_companion_nav: bool = False,
+                         quiet: bool = False) -> None:
     print(f"Session : {jsonl_path.stem}", file=sys.stderr)
     print(f"File    : {jsonl_path}", file=sys.stderr)
     print(file=sys.stderr)
@@ -497,7 +498,8 @@ def _run_single_session(jsonl_path: Path, slug: str, include_subagents: bool,
               share_safe=share_safe,
               evidence=evidence,
               no_workflow_detail=no_workflow_detail,
-              task_companion_nav=task_companion_nav)
+              task_companion_nav=task_companion_nav,
+              quiet=quiet)
     if not no_self_cost and self_cost:
         _print_self_cost_summary(self_cost)
     _maybe_run_invariants(report, invariants_thresholds)
@@ -522,7 +524,8 @@ def _run_project_cost(slug: str, include_subagents: bool, formats: list[str],
                       evidence: bool = False,
                       include_workflows: bool = True,
                       no_workflow_detail: bool = False,
-                      task_companion_nav: bool = False) -> None:
+                      task_companion_nav: bool = False,
+                      quiet: bool = False) -> None:
     files = _sm()._find_jsonl_files(slug)
     if not files:
         print(f"[error] No sessions found for slug: {slug}", file=sys.stderr)
@@ -569,7 +572,8 @@ def _run_project_cost(slug: str, include_subagents: bool, formats: list[str],
               share_safe=share_safe,
               evidence=evidence,
               no_workflow_detail=no_workflow_detail,
-              task_companion_nav=task_companion_nav)
+              task_companion_nav=task_companion_nav,
+              quiet=quiet)
     if not no_self_cost and self_cost:
         _print_self_cost_summary(self_cost)
     _maybe_run_invariants(report, invariants_thresholds)
@@ -1432,9 +1436,12 @@ def _dispatch(report: dict, formats: list[str],
                share_safe: bool = False,
                evidence: bool = False,
                no_workflow_detail: bool = False,
-               task_companion_nav: bool = False) -> None:
-    # Always render text to stdout
-    print(_sm().render_text(report))
+               task_companion_nav: bool = False,
+               quiet: bool = False) -> None:
+    # Render text to stdout. In quiet mode the per-turn timeline is
+    # suppressed (see render_text) so large exports don't bury the
+    # ``[export]`` path lines printed below under an overflow-sized dump.
+    print(_sm().render_text(report, quiet=quiet))
 
     is_compare = report.get("mode") == "compare"
 

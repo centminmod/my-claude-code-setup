@@ -275,6 +275,14 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Export formats in addition to stdout text. "
                         "One or more of: json csv md html. "
                         "Written to exports/session-metrics/ in the project root.")
+    p.add_argument("--quiet", "-q", action="store_true",
+                   help="Suppress the per-turn timeline on stdout, printing "
+                        "only the legend, scope header, grand-total subtotal, "
+                        "and footer (plus the [export] path lines). Keeps "
+                        "stdout small on large session/project exports so the "
+                        "export paths aren't buried under an overflow-sized "
+                        "dump. The full per-turn detail still lands in the "
+                        "written HTML/JSON. Session and project scopes only.")
     p.add_argument("--include-subagents", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="Tally spawned subagent JSONL files (default: on). "
@@ -1023,6 +1031,7 @@ def main() -> None:
             include_workflows=args.include_workflows,
             no_workflow_detail=args.no_workflow_detail,
             task_companion_nav=args.task_companion_nav,
+            quiet=args.quiet,
         )
         return
 
@@ -1046,5 +1055,6 @@ def main() -> None:
         include_workflows=args.include_workflows,
         no_workflow_detail=args.no_workflow_detail,
         task_companion_nav=args.task_companion_nav,
+        quiet=args.quiet,
     )
 

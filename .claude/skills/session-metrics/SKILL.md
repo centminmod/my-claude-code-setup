@@ -70,24 +70,26 @@ Reached when `$ARGUMENTS[0]` is `export`. Scan the **full argument string** (not
 
 Infer format flags from the argument string: `html` → `html`, `csv` → `csv`, `md` or `markdown` → `md`. Always add `json` alongside any requested format per the post-export audit convention (see `## Optional post-export audit` below).
 
+**Always add `--quiet` to session and project export commands.** When exporting, the per-turn detail lives in the written HTML/JSON, so the full stdout timeline is redundant — and at project scope (or for a long session) it can run to thousands of lines, spilling the run into a harness overflow file that buries the `[export]` path lines you need. `--quiet` collapses stdout to the legend + grand total + footer (plus the `[export]` lines), keeping the run inline. Do **not** add `--quiet` for `--all-projects` — its instance dashboard text is already compact and the flag has no effect there.
+
 **Examples:**
 
 | Full argument string | Command |
 |---|---|
-| `export session` | `--session ${CLAUDE_SESSION_ID} --output json` |
-| `export session to html` | `--session ${CLAUDE_SESSION_ID} --output html json` |
-| `export session metrics to html` | `--session ${CLAUDE_SESSION_ID} --output html json` |
-| `export to html` | `--session ${CLAUDE_SESSION_ID} --output html json` |
-| `export project` | `--project-cost --output json` |
-| `export project to html` | `--project-cost --output html json` |
-| `export project sessions` | `--project-cost --output json` |
-| `export project sessions to html` | `--project-cost --output html json` |
-| `export entire project's session metrics to html` | `--project-cost --output html json` |
-| `export project metrics to html csv` | `--project-cost --output html csv json` |
+| `export session` | `--session ${CLAUDE_SESSION_ID} --quiet --output json` |
+| `export session to html` | `--session ${CLAUDE_SESSION_ID} --quiet --output html json` |
+| `export session metrics to html` | `--session ${CLAUDE_SESSION_ID} --quiet --output html json` |
+| `export to html` | `--session ${CLAUDE_SESSION_ID} --quiet --output html json` |
+| `export project` | `--project-cost --quiet --output json` |
+| `export project to html` | `--project-cost --quiet --output html json` |
+| `export project sessions` | `--project-cost --quiet --output json` |
+| `export project sessions to html` | `--project-cost --quiet --output html json` |
+| `export entire project's session metrics to html` | `--project-cost --quiet --output html json` |
+| `export project metrics to html csv` | `--project-cost --quiet --output html csv json` |
 | `export all-projects` | `--all-projects --output json` |
 | `export all-projects to html` | `--all-projects --output html json` |
 
-`project` and `project-cost` as the first arg also pick up `--output` flags from remaining args the same way (e.g. `/session-metrics project metrics export to html` → `--project-cost --output html json`).
+`project` and `project-cost` as the first arg also pick up `--output` flags from remaining args the same way (e.g. `/session-metrics project metrics export to html` → `--project-cost --quiet --output html json`).
 
 ## Quick usage
 
@@ -109,10 +111,11 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --list
 # All sessions — timeline + per-session subtotals + grand project total
 uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --project-cost
 
-# Export to exports/session-metrics/ (one or more formats)
-uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --output json
-uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --output json csv md html
-uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --project-cost --output html
+# Export to exports/session-metrics/ (one or more formats).
+# Add --quiet on exports so a long timeline doesn't bury the [export] paths.
+uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --quiet --output json
+uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --quiet --output json csv md html
+uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --project-cost --quiet --output html
 ```
 
 > `${CLAUDE_SKILL_DIR}` is expanded by Claude Code to the skill's install directory (plugin cache, project-local copy, or bundled template — whichever applies). When running the script manually from a shell, substitute the actual path.
@@ -148,6 +151,7 @@ project root, named `session_<id8>_<YYYYMMDD_HHMMSS>.<ext>` (single) or
 | `--tz <IANA>`                | IANA timezone for time-of-day bucketing **and timeline/export timestamps**. Defaults to the system local tz (auto-detected via `TZ` env var or the OS setting). |
 | `--utc-offset <H>`           | Fixed UTC offset, DST-naive. Use `--tz` for DST-aware. |
 | `--no-cache`                 | Skip `~/.cache/session-metrics/parse/` and always re-parse from scratch. |
+| `--quiet` / `-q`             | Suppress the per-turn timeline on stdout — print only the legend, scope header, grand-total subtotal, and footer (the `[export]` path lines still print). Keeps stdout small on large session/project exports so the export paths aren't buried under an overflow-sized dump; the full per-turn detail still lands in the written HTML/JSON. Session and project scopes only (no effect on `--all-projects`). |
 | `--no-self-cost`             | Suppress the self-cost meta-metric (stderr `[self-cost]` line, HTML KPI card, and JSON `self_cost` key). |
 | `--redact-user-prompts`      | Replace freeform `prompt_text` / `prompt_snippet` / `assistant_text` / `assistant_snippet` with `[redacted]` on every turn of single-session and project **JSON** exports, plus compare HTML. Tool inputs, slash-command names, and structured cost / token fields stay visible. HTML / MD / CSV / text are NOT redacted. |
 | `--export-share-safe`        | One-flag pre-share gesture (v1.36.0+): implies `--redact-user-prompts` and `--no-self-cost`, and chmods every written export file to `0600` (`rw-------`). For full prompt redaction, pair with `--output json`. |

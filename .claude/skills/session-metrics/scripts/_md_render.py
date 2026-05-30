@@ -206,7 +206,18 @@ def _text_legend(tz_label: str, show_mode: bool, show_ttl: bool,
     return "\n".join(lines)
 
 
-def render_text(report: dict) -> str:
+def render_text(report: dict, quiet: bool = False) -> str:
+    """Render the plain-text report to a string.
+
+    When ``quiet`` is set, the per-turn timeline (and, in project mode, the
+    whole per-session loop) is suppressed — only the legend, scope header,
+    grand-total subtotal, and footer are emitted. This keeps stdout
+    O(1) in turn/session count so large project/session exports don't
+    overflow the harness output cap (the useful ``[export]`` path lines,
+    printed separately by the dispatcher, stay visible). Used by
+    ``--quiet`` / export runs where the per-turn detail lives in the
+    written HTML/JSON anyway.
+    """
     if report.get("mode") == "compare":
         return sys.modules["session_metrics_compare"].render_compare_text(report)
     if report.get("mode") == "instance":
@@ -233,24 +244,28 @@ def render_text(report: dict) -> str:
     if report["mode"] == "project":
         p(f"Project: {report['slug']}")
         p(f"Sessions with data: {len(sessions)}")
+        if quiet:
+            p("  (per-session and per-turn detail suppressed by --quiet; "
+              "see the HTML/JSON export)")
         p()
-        for i, s in enumerate(sessions, 1):
-            p(wide)
-            _adv_n = s["subtotal"].get("advisor_call_count", 0)
-            _adv_tag = ""
-            if _adv_n > 0:
-                _adv_c = s["subtotal"].get("advisor_cost_usd", 0.0)
-                _adv_m = s.get("advisor_configured_model") or ""
-                _adv_label = f" · {_adv_m}" if _adv_m else ""
-                _adv_tag = f"  [advisor: {_adv_n} call{'s' if _adv_n != 1 else ''}{_adv_label} · +${_adv_c:.4f}]"
-            p(f"  Session {s['session_id'][:8]}…  {s['first_ts']} → {s['last_ts']}  ({len(s['turns'])} turns){_adv_tag}")
-            p(wide)
-            p(hdr)
-            for t in s["turns"]:
-                p(_row_text(t, m, has_content))
-            p(sep)
-            p(_subtotal_text(f"S{i:02}", s["subtotal"], m, has_content))
-            p()
+        if not quiet:
+            for i, s in enumerate(sessions, 1):
+                p(wide)
+                _adv_n = s["subtotal"].get("advisor_call_count", 0)
+                _adv_tag = ""
+                if _adv_n > 0:
+                    _adv_c = s["subtotal"].get("advisor_cost_usd", 0.0)
+                    _adv_m = s.get("advisor_configured_model") or ""
+                    _adv_label = f" · {_adv_m}" if _adv_m else ""
+                    _adv_tag = f"  [advisor: {_adv_n} call{'s' if _adv_n != 1 else ''}{_adv_label} · +${_adv_c:.4f}]"
+                p(f"  Session {s['session_id'][:8]}…  {s['first_ts']} → {s['last_ts']}  ({len(s['turns'])} turns){_adv_tag}")
+                p(wide)
+                p(hdr)
+                for t in s["turns"]:
+                    p(_row_text(t, m, has_content))
+                p(sep)
+                p(_subtotal_text(f"S{i:02}", s["subtotal"], m, has_content))
+                p()
         p(wide)
         p(f"  PROJECT TOTAL — {len(sessions)} session{'s' if len(sessions) != 1 else ''}, {report['totals']['turns']} turns")
         p(wide)
@@ -260,8 +275,9 @@ def render_text(report: dict) -> str:
     else:
         s = sessions[0]
         p(hdr)
-        for t in s["turns"]:
-            p(_row_text(t, m, has_content))
+        if not quiet:
+            for t in s["turns"]:
+                p(_row_text(t, m, has_content))
         p(sep)
         p(_subtotal_text("TOT", s["subtotal"], m, has_content))
 
