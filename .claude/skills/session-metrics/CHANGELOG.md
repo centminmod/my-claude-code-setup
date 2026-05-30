@@ -3,6 +3,30 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.57.0 — 2026-05-30
+
+### Drop the `model: sonnet` pin from `task-breakdown`
+
+Completes the unpinning started in v1.56.0. `task-breakdown` was the last pinned
+sibling (`model: sonnet`). The same mechanism applies: a `model:` pin runs the
+inline skill turn on that model, carrying the **entire conversation** as input,
+so the effective window becomes that model's — and Sonnet's default 200k would
+overflow identically on a long session (e.g. running `/task-breakdown` late in
+the same session that produced the export). The skill's own input is small (the
+compact `request_units` worksheet), so the cliff is driven by conversation
+length, not the skill's data.
+
+Removing the pin makes it run in the session's own model/window. Unlike the
+audit, this work is **judgement-heavy** (semantic grouping + worth-it / wasted
+verdicts), so the cheap path is `/model sonnet` before invoking — capable
+enough for the verdicts, cheaper than a frontier model. **Don't** drop to Haiku
+here; the semantic calls need the headroom. Added a `## Model` note to the
+SKILL.md, updated CLAUDE.md + the marketplace/plugin descriptions, and a third
+`test_*_skill_frontmatter_unpinned` regression guard (one per sibling now).
+
+No script or behaviour change beyond the model the skill runs on. `_SKILL_VERSION`
+→ `1.57.0`. All three siblings are now unpinned.
+
 ## v1.56.0 — 2026-05-30
 
 ### Drop the `model: haiku` pin from `session-metrics` + `audit-session-metrics`

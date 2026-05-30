@@ -1,6 +1,5 @@
 ---
 name: task-breakdown
-model: sonnet
 description: >
   Group a session-metrics session's turns into higher-level SEMANTIC TASKS
   ("what was I actually trying to do") and render a Tasks companion page
@@ -23,6 +22,14 @@ in — "added auth", "debugged the cache miss" — and labels each with a verdic
 You do the one thing deterministic code can't: decide which requests belong to
 the same task. The script does everything else (cost, turns, tokens, waste
 signals, the themed page).
+
+**Model.** This skill runs on your session's current model. It no longer pins
+one (a hard `model:` pin ran the inline turn on that model, dragging the whole
+conversation into that model's context window — on a long session that
+overflowed and broke invocation). The grouping + verdict work is
+judgement-heavy, so it wants a capable model; for a cheaper run that's still
+strong enough, `/model sonnet` before invoking. Don't drop to Haiku — the
+semantic verdicts need the headroom.
 
 **Division of labour — do not blur it:**
 - **The export owns the numbers.** Every cost / turn / token / waste figure
