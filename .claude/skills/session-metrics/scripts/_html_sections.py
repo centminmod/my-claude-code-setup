@@ -3036,6 +3036,37 @@ def render_html(report: dict, variant: str = "single",
             f'<div class="kpi-val">&#9986; {_n_trunc} turn{"s" if _n_trunc != 1 else ""}</div>'
             f'</div>'
         ) if _n_trunc > 0 else ""
+        # Q1: context-compaction KPI card. Auto-hides when no boundary was
+        # recorded. Reclaimed = preTokens-postTokens summed across boundaries;
+        # a compaction resets working context (next turn rebuilds it → cache
+        # write spike), so this card explains otherwise-anomalous token flow.
+        compaction_card = ""
+        _cs = report.get("compaction_summary") or {}
+        _cn = int(_cs.get("boundary_count", 0) or 0)
+        if _cn > 0:
+            _auto = int(_cs.get("auto_count", 0) or 0)
+            _manual = int(_cs.get("manual_count", 0) or 0)
+            _recl = int(_cs.get("total_reclaimed_tokens", 0) or 0)
+            _cont = int(_cs.get("continuation_session_count", 0) or 0)
+            _split = []
+            if _auto:
+                _split.append(f"{_auto} auto")
+            if _manual:
+                _split.append(f"{_manual} manual")
+            _split_str = (" &middot; " + ", ".join(_split)) if _split else ""
+            _cont_note = (
+                f' &middot; {_cont} continued session{"s" if _cont != 1 else ""}'
+                if _cont else ""
+            )
+            compaction_card = (
+                f'\n  <div class="kpi" title="Context-window compaction events '
+                f'(compact_boundary). Reclaimed = tokens dropped from context '
+                f'(preTokens - postTokens). A compaction resets the working '
+                f'context; the next turn rebuilds it (cache-write spike).">'
+                f'<div class="kpi-label">Context compactions{_split_str}{_cont_note}</div>'
+                f'<div class="kpi-val">&#128476;&#65039; {_cn} &middot; '
+                f'{_recl:,} reclaimed</div></div>'
+            )
         # v1.26.0: subagent share KPI card. Always rendered (even in
         # the "attribution disabled" branch) so the framing question
         # stays visible.
@@ -3095,7 +3126,7 @@ def render_html(report: dict, variant: str = "single",
   <div class="kpi cat-tokens"><div class="kpi-label">Input tokens (new)</div><div class="kpi-val">{totals['input']:,}</div></div>
   <div class="kpi cat-tokens"><div class="kpi-label">Output tokens</div><div class="kpi-val">{totals['output']:,}</div></div>
   <div class="kpi cat-tokens"><div class="kpi-label">Cache read tokens</div><div class="kpi-val">{totals['cache_read']:,}</div></div>
-  <div class="kpi cat-tokens"><div class="kpi-label">Cache write tokens</div><div class="kpi-val">{totals['cache_write']:,}</div></div>{ttl_mix_card}{thinking_card}{tool_calls_card}{advisor_card}{resumes_card}{truncated_card}{self_cost_card}
+  <div class="kpi cat-tokens"><div class="kpi-label">Cache write tokens</div><div class="kpi-val">{totals['cache_write']:,}</div></div>{ttl_mix_card}{thinking_card}{tool_calls_card}{advisor_card}{resumes_card}{truncated_card}{compaction_card}{self_cost_card}
 </div>'''
 
     # Usage Insights panel — sits between the summary cards and the

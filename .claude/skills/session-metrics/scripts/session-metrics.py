@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.45.1"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.46.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -419,6 +419,7 @@ _CONTINUE_FROM_RESUME_MARKER  = _tp_m._CONTINUE_FROM_RESUME_MARKER
 _RESUME_LOOKBACK_USER_ENTRIES = _tp_m._RESUME_LOOKBACK_USER_ENTRIES
 _resume_fingerprint_match     = _tp_m._resume_fingerprint_match
 _extract_turns                = _tp_m._extract_turns
+_extract_compaction_events    = _tp_m._extract_compaction_events
 _SLASH_WRAPPED_RE             = _tp_m._SLASH_WRAPPED_RE
 _SLASH_BARE_RE                = _tp_m._SLASH_BARE_RE
 _XML_MARKER_RE                = _tp_m._XML_MARKER_RE
@@ -548,6 +549,7 @@ del _hs_m
 
 _rp_m = _load_leaf("_report")
 _compute_subagent_share             = _rp_m._compute_subagent_share
+_build_compaction_summary           = _rp_m._build_compaction_summary
 _compute_within_session_split       = _rp_m._compute_within_session_split
 _compute_window_stats               = _rp_m._compute_window_stats
 _compute_instance_subagent_share    = _rp_m._compute_instance_subagent_share

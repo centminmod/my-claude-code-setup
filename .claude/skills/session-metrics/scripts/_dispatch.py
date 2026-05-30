@@ -131,6 +131,7 @@ def _resolve_subagent_type(sub_path: Path) -> str:
 def _load_session(
     jsonl_path: Path, include_subagents: bool, use_cache: bool = True,
     seen_uuids: set[str] | None = None,
+    compaction_sink: dict | None = None,
 ) -> tuple[str, list[dict], list[int]]:
     """Load a session JSONL and return structured data for report building.
 
@@ -145,6 +146,15 @@ def _load_session(
     to treat as one scope (project/instance); pass ``None`` to skip dedup
     (session scope — the in-file ``message.id`` dedup in ``_extract_turns``
     already handles streaming splits).
+
+    ``compaction_sink`` is an opt-in mutable accumulator (same idiom as
+    ``seen_uuids``). When provided, this session's compaction events
+    (``_extract_compaction_events``) are stored under
+    ``compaction_sink[session_id]``. Threaded this way rather than via a
+    return-tuple element so callers (incl. the separate compare tool) that
+    don't need it are unaffected, and so we avoid a second parse —
+    ``_cached_parse_jsonl`` is a per-call disk pickle load, not in-memory
+    memoized, so re-reading would cost a full second deserialize per file.
 
     Returns:
         3-tuple of (session_id, assistant_turns, user_epoch_secs) where
@@ -190,6 +200,19 @@ def _load_session(
                 seen_uuids.add(uid)
             filtered.append(e)
         entries = filtered
+    # Compaction events: extract AFTER the cross-file dedup above, NOT before.
+    # Verified empirically (this project: 206 files, 136 boundary entries but
+    # only 109 distinct uuids — 3 uuids appear in >1 file): resume REPLAYS
+    # compact_boundary entries across sibling JSONLs, just like turns. So
+    # boundaries need the same first-occurrence-wins ``seen_uuids`` protection,
+    # or project/instance summaries would double-count the ~27 replayed ones.
+    # At session scope ``seen_uuids is None`` → no filtering → all in-file
+    # boundaries kept (correct). The merged ``entries`` also holds subagent
+    # logs (which DO carry their own boundaries), but ``_extract_compaction_events``
+    # skips ``_subagent_agent_id``-tagged entries so only main-session
+    # boundaries count.
+    if compaction_sink is not None:
+        compaction_sink[jsonl_path.stem] = _sm()._extract_compaction_events(entries)
     return (
         jsonl_path.stem,
         _sm()._extract_turns(entries),
@@ -221,9 +244,11 @@ def _run_single_session(jsonl_path: Path, slug: str, include_subagents: bool,
     # Single-session scope: ``message.id`` dedup in ``_extract_turns`` already
     # handles streaming splits for the one file being loaded, so we don't need
     # cross-file UUID dedup here. Pass ``None`` to disable.
+    compaction_by_session: dict = {}
     session_id, turns, user_ts = _load_session(jsonl_path, include_subagents,
                                                  use_cache=use_cache,
-                                                 seen_uuids=None)
+                                                 seen_uuids=None,
+                                                 compaction_sink=compaction_by_session)
     if not turns:
         print("[info] No assistant turns with usage data found.", file=sys.stderr)
         return
@@ -236,6 +261,7 @@ def _run_single_session(jsonl_path: Path, slug: str, include_subagents: bool,
         subagent_attribution=subagent_attribution,
         sort_prompts_by=sort_prompts_by,
         include_subagents=include_subagents,
+        compaction_events_by_session=compaction_by_session,
     )
     if plan_cost is not None:
         report["plan_cost"] = float(plan_cost)
@@ -276,11 +302,13 @@ def _run_project_cost(slug: str, include_subagents: bool, formats: list[str],
     # project so a resumed session replaying prior entries doesn't
     # double-count tokens in project totals (gap #8 fix).
     project_seen: set[str] = set()
+    compaction_by_session: dict = {}
     sessions_raw = []
     for path in reversed(files):   # oldest first
         sid, turns, user_ts = _load_session(path, include_subagents,
                                               use_cache=use_cache,
-                                              seen_uuids=project_seen)
+                                              seen_uuids=project_seen,
+                                              compaction_sink=compaction_by_session)
         if turns:
             sessions_raw.append((sid, turns, user_ts))
 
@@ -296,6 +324,7 @@ def _run_project_cost(slug: str, include_subagents: bool, formats: list[str],
         subagent_attribution=subagent_attribution,
         sort_prompts_by=sort_prompts_by,
         include_subagents=include_subagents,
+        compaction_events_by_session=compaction_by_session,
     )
     if plan_cost is not None:
         report["plan_cost"] = float(plan_cost)
@@ -344,6 +373,10 @@ def _run_all_projects(formats: list[str],
     # new file) can't double-count in instance totals. Loaded entries add
     # their UUIDs; subsequent files skip anything already present.
     instance_seen: set[str] = set()
+    # Compaction events for every session across every project, keyed by
+    # session_id. Populated in the serial load phase below and handed to each
+    # per-project ``_build_report`` (which picks out only its own sessions).
+    instance_compaction: dict = {}
     # Raw sessions_raw tuples across every project — preserved so the
     # instance-scope insights (_build_session_blocks, _build_weekly_rollup)
     # see the same raw JSONL shape they do in project mode. Without this
@@ -366,7 +399,8 @@ def _run_all_projects(formats: list[str],
             try:
                 sid, turns, user_ts = _load_session(path, include_subagents,
                                                      use_cache=use_cache,
-                                                     seen_uuids=instance_seen)
+                                                     seen_uuids=instance_seen,
+                                                     compaction_sink=instance_compaction)
             except (OSError, json.JSONDecodeError) as exc:
                 print(f"[warn] {slug}: skipping {path.name} ({exc})",
                       file=sys.stderr)
@@ -400,6 +434,7 @@ def _run_all_projects(formats: list[str],
             subagent_attribution=subagent_attribution,
             sort_prompts_by=sort_prompts_by,
             include_subagents=include_subagents,
+            compaction_events_by_session=instance_compaction,
         )
 
     if len(project_inputs) > 1:
@@ -699,6 +734,16 @@ def _render_instance_md(report: dict) -> str:
     p(f"| Output tokens | {totals.get('output', 0):,} |")
     p(f"| Cache read tokens | {totals.get('cache_read', 0):,} |")
     p(f"| Cache write tokens | {totals.get('cache_write', 0):,} |")
+    _ics = report.get("compaction_summary") or {}
+    if int(_ics.get("boundary_count", 0) or 0) > 0:
+        _split = []
+        if _ics.get("auto_count"):
+            _split.append(f"{_ics['auto_count']} auto")
+        if _ics.get("manual_count"):
+            _split.append(f"{_ics['manual_count']} manual")
+        _split_str = f" ({', '.join(_split)})" if _split else ""
+        p(f"| Context compactions | {_ics['boundary_count']}{_split_str} · "
+          f"{int(_ics.get('total_reclaimed_tokens', 0) or 0):,} tokens reclaimed |")
     if totals.get("cache_write_1h", 0) > 0:
         pct_1h = 100 * totals["cache_write_1h"] / max(1, totals["cache_write"])
         p(f"| Cache TTL mix (1h share of writes) | {pct_1h:.1f}% |")
@@ -892,6 +937,14 @@ def _render_instance_html(report: dict, chart_lib: str = "highcharts") -> str:
         (f"{totals.get('cache_read', 0):,}",        "Cache read"),
         (f"{totals.get('cache_write', 0):,}",       "Cache write"),
     ]
+    # Q1: instance-wide context-compaction card. Auto-hides when none recorded.
+    _ics = report.get("compaction_summary") or {}
+    if int(_ics.get("boundary_count", 0) or 0) > 0:
+        cards.append((
+            f"{_ics['boundary_count']} · "
+            f"{int(_ics.get('total_reclaimed_tokens', 0) or 0):,} reclaimed",
+            "Context compactions",
+        ))
     if top_project:
         cards.append((f"`{top_project['slug'][:18]}…`"
                        if len(top_project["slug"]) > 18

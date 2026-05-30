@@ -11,6 +11,70 @@ def _sm():
     return sys.modules["session_metrics"]
 
 
+def _build_compaction_summary(sessions_out: list[dict]) -> tuple[list[dict], dict]:
+    """Aggregate per-session compaction events into a flat list + summary.
+
+    Q1 (compaction detection). Reads ``compaction_events`` (a list of
+    boundary dicts from ``_extract_compaction_events``) and
+    ``starts_with_summary`` off each session dict. Returns
+    ``(events, summary)`` where:
+
+      - ``events`` is the flattened boundary list with ``session_id`` stamped
+        on each, in session order (renderers / JSON read this directly).
+      - ``summary`` is a dict::
+
+          {boundary_count, auto_count, manual_count, unknown_trigger_count,
+           total_reclaimed_tokens, total_pre_tokens, total_post_tokens,
+           sessions_with_compaction, continuation_session_count}
+
+    ``reclaimed``/``pre``/``post`` sums skip boundaries where the field is
+    absent (older Claude Code builds), so totals are lower bounds when any
+    boundary lacks token counts. All counts default to 0, so a report with no
+    compaction yields an all-zero summary (renderers auto-hide on
+    ``boundary_count == 0``).
+    """
+    events: list[dict] = []
+    auto = manual = unknown = 0
+    total_reclaimed = total_pre = total_post = 0
+    sessions_with = 0
+    continuations = 0
+    for s in sessions_out:
+        boundaries = s.get("compaction_events") or []
+        if s.get("starts_with_summary"):
+            continuations += 1
+        if boundaries:
+            sessions_with += 1
+        for b in boundaries:
+            ev = dict(b)
+            ev["session_id"] = s.get("session_id", "")
+            events.append(ev)
+            trig = b.get("trigger")
+            if trig == "auto":
+                auto += 1
+            elif trig == "manual":
+                manual += 1
+            else:
+                unknown += 1
+            if isinstance(b.get("reclaimed_tokens"), int):
+                total_reclaimed += b["reclaimed_tokens"]
+            if isinstance(b.get("pre_tokens"), int):
+                total_pre += b["pre_tokens"]
+            if isinstance(b.get("post_tokens"), int):
+                total_post += b["post_tokens"]
+    summary = {
+        "boundary_count":           len(events),
+        "auto_count":               auto,
+        "manual_count":             manual,
+        "unknown_trigger_count":    unknown,
+        "total_reclaimed_tokens":   total_reclaimed,
+        "total_pre_tokens":         total_pre,
+        "total_post_tokens":        total_post,
+        "sessions_with_compaction": sessions_with,
+        "continuation_session_count": continuations,
+    }
+    return events, summary
+
+
 def _compute_subagent_share(report: dict) -> dict:
     """Compute the headline 'subagent share' stat + attribution coverage.
 
@@ -482,6 +546,7 @@ def _build_report(
     subagent_attribution: bool = True,
     sort_prompts_by: str | None = None,
     include_subagents: bool = False,
+    compaction_events_by_session: dict | None = None,
 ) -> dict:
     """Build a structured report dict from raw session data.
 
@@ -588,6 +653,12 @@ def _build_report(
         session_dict["by_subagent_type"] = _sm()._build_by_subagent_type(
             [session_dict], session_dict["subtotal"]["cost"],
         )
+        # Compaction events (Q1): threaded in via the caller's sink dict,
+        # keyed by session_id. Default to empty so renderers can always
+        # read the keys regardless of whether the caller supplied a sink.
+        _comp = (compaction_events_by_session or {}).get(session_id) or {}
+        session_dict["compaction_events"] = _comp.get("boundaries", []) or []
+        session_dict["starts_with_summary"] = bool(_comp.get("starts_with_summary", False))
         sessions_out.append(session_dict)
 
     all_turns = [t for s in sessions_out for t in s["turns"]]
@@ -628,6 +699,12 @@ def _build_report(
         # Phase-A cross-cutting tables (v1.6.0). All three are always
         # attached; renderers auto-hide when the list/dict is empty.
         "cache_breaks":        [cb for s in sessions_out for cb in s.get("cache_breaks", [])],
+        # Q1: context-compaction events flattened across sessions + summary.
+        # Renderers auto-hide when ``compaction_summary["boundary_count"]`` is 0.
+        **dict(zip(
+            ("compaction_events", "compaction_summary"),
+            _build_compaction_summary(sessions_out),
+        )),
         "by_skill":            _sm()._build_by_skill(sessions_out, totals.get("cost", 0.0)),
         "by_subagent_type":    _sm()._build_by_subagent_type(sessions_out, totals.get("cost", 0.0)),
         "cache_break_threshold": cache_break_threshold,
@@ -1053,6 +1130,26 @@ def _build_instance_report(
             inst_cache_breaks.append(tagged)
     inst_cache_breaks.sort(key=lambda b: -int(b.get("uncached", 0)))
 
+    # Q1: roll up per-project compaction events + summaries to instance scope.
+    # Each project report already carries both (from _build_report); we tag
+    # events with their project and sum the summary counters.
+    inst_compaction_events: list[dict] = []
+    inst_compaction_summary = {
+        "boundary_count": 0, "auto_count": 0, "manual_count": 0,
+        "unknown_trigger_count": 0, "total_reclaimed_tokens": 0,
+        "total_pre_tokens": 0, "total_post_tokens": 0,
+        "sessions_with_compaction": 0, "continuation_session_count": 0,
+    }
+    for pr in project_reports:
+        pr_slug = pr.get("slug", "")
+        for ev in pr.get("compaction_events", []) or []:
+            tagged = dict(ev)
+            tagged["project"] = pr_slug
+            inst_compaction_events.append(tagged)
+        cs = pr.get("compaction_summary") or {}
+        for k in inst_compaction_summary:
+            inst_compaction_summary[k] += int(cs.get(k, 0) or 0)
+
     report = {
         "generated_at":     datetime.now(timezone.utc).isoformat(),
         "skill_version":    _sm()._SKILL_VERSION,
@@ -1077,6 +1174,8 @@ def _build_instance_report(
         "daily":            daily,
         "top_project_slugs": top_slugs,
         "cache_breaks":        inst_cache_breaks,
+        "compaction_events":   inst_compaction_events,
+        "compaction_summary":  inst_compaction_summary,
         "by_skill":            inst_by_skill,
         "by_subagent_type":    inst_by_subagent,
         "cache_break_threshold": cache_break_threshold,

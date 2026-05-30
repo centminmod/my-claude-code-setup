@@ -268,6 +268,93 @@ def _extract_turns(entries: list[dict]) -> list[dict]:
     return turns
 
 
+def _extract_compaction_events(entries: list[dict]) -> dict:
+    """Extract context-compaction events from raw JSONL entries.
+
+    Claude Code records a compaction as a ``system`` entry with
+    ``subtype:"compact_boundary"`` carrying a ``compactMetadata`` object,
+    immediately followed by a ``user`` entry with ``isCompactSummary:true``
+    (the summary that starts with "This session is being continued…").
+    These entries are ``type != "assistant"`` so ``_extract_turns`` drops
+    them — this is the only place they are surfaced.
+
+    Two manifestations (see CLAUDE-compaction-operations.md): a mid-session
+    in-place boundary, or a resume-start head boundary at the top of a new
+    session file. ``starts_with_summary`` flags the latter (the file *begins*
+    as a continuation of a prior conversation).
+
+    MAIN-SESSION boundaries only: subagents ALSO get compacted (their JSONLs
+    carry their own ``compact_boundary`` entries — verified empirically), but
+    those are internal to a one-shot agent run and don't affect the user's
+    conversation flow or lineage, so entries tagged ``_subagent_agent_id``
+    (set by ``_load_session`` when merging subagent logs) are skipped. This
+    is what makes post-dedup extraction over the merged entries list safe.
+
+    All ``compactMetadata`` fields are treated as OPTIONAL — older Claude Code
+    builds omit ``preCompactDiscoveredTools``/``preservedSegment``/
+    ``preservedMessages``. Returns a dict::
+
+        {"boundaries": [ {kind, trigger, pre_tokens, post_tokens,
+                          reclaimed_tokens, duration_ms, timestamp, uuid,
+                          logical_parent_uuid, preserved_uuids,
+                          discovered_tools}, … ],
+         "starts_with_summary": bool}
+
+    ``boundaries`` is ordered as encountered (a single file can hold several).
+    """
+    boundaries: list[dict] = []
+    starts_with_summary = False
+    seen_first_user = False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        # Skip merged subagent entries — subagents have their own compactions
+        # but they're internal to the agent run, not main-session events.
+        if entry.get("_subagent_agent_id"):
+            continue
+        etype = entry.get("type")
+        # First user entry: does the file BEGIN as a continuation?
+        if etype == "user" and not seen_first_user:
+            seen_first_user = True
+            if entry.get("isCompactSummary") is True:
+                starts_with_summary = True
+        if etype != "system" or entry.get("subtype") != "compact_boundary":
+            continue
+        cm = entry.get("compactMetadata")
+        if not isinstance(cm, dict):
+            cm = {}
+        pre = cm.get("preTokens")
+        post = cm.get("postTokens")
+        reclaimed = (
+            pre - post
+            if isinstance(pre, int) and isinstance(post, int)
+            else None
+        )
+        pm = cm.get("preservedMessages")
+        if not isinstance(pm, dict):
+            pm = {}
+        # `uuids` is the file-present preserved subset; `allUuids` is NOT
+        # file-safe (can carry sub-message/merged uuids with no entry).
+        preserved_uuids = [u for u in (pm.get("uuids") or []) if isinstance(u, str)]
+        discovered = [
+            t for t in (cm.get("preCompactDiscoveredTools") or []) if isinstance(t, str)
+        ]
+        boundaries.append({
+            "kind":                "boundary",
+            "trigger":             cm.get("trigger"),  # "auto" | "manual" | None
+            "pre_tokens":          pre,
+            "post_tokens":         post,
+            "reclaimed_tokens":    reclaimed,
+            "duration_ms":         cm.get("durationMs"),
+            "timestamp":           entry.get("timestamp", "") or "",
+            "uuid":                entry.get("uuid", "") or "",
+            "logical_parent_uuid": entry.get("logicalParentUuid", "") or "",
+            "preserved_uuids":     preserved_uuids,
+            "discovered_tools":    discovered,
+        })
+    return {"boundaries": boundaries, "starts_with_summary": starts_with_summary}
+
+
 def _count_content_blocks(content) -> tuple[dict[str, int], list[str]]:
     """Count content blocks by type. Return (counts, tool_names).
 

@@ -3,6 +3,18 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.46.0 — 2026-05-30
+
+### Context-compaction detection (Q1)
+
+**Added — "Context compactions" report card.** session-metrics now parses `compact_boundary` / `compactMetadata` entries from the transcript (previously ignored entirely) and surfaces them at every scope: a new KPI card on the HTML dashboard (session + project + per-project drilldown) and the instance index; a Summary row plus a dedicated "Context compactions" table in Markdown; and `compaction_events` + `compaction_summary` keys in the JSON export. Each shows the boundary count, the auto/manual trigger split, and total tokens reclaimed (`preTokens − postTokens`). The card auto-hides when a report has no compaction. This explains otherwise-anomalous flow — the cache-creation spike + cache-read drop on the turn right after a compaction is the working context being rebuilt from a summary.
+
+**Correctness — boundaries are deduped and main-session-only.** Two facts were verified empirically against this install. (1) Resume *replays* `compact_boundary` entries across sibling JSONLs (a 206-file project held 136 boundary entries but only 109 distinct uuids; 3 uuids appeared in >1 file), so cross-scope (project/instance) aggregation dedups boundaries on `uuid` with first-occurrence-wins, exactly like turns — extraction now runs *after* the shared `seen_uuids` filter. (2) Subagents get compacted too (their JSONLs carry their own `compact_boundary` entries), so subagent-internal compactions are excluded from this session-flow metric via the `_subagent_agent_id` tag. A real project-scope export reconciles exactly to 109 distinct main-session boundaries (60 auto + 49 manual).
+
+**Internals.** New `_extract_compaction_events` (in `_turn_parser.py`), threaded out of `_load_session` via a `compaction_sink` mutable-accumulator argument (no return-tuple arity change, no second parse — the parse cache is a per-call disk pickle, not in-memory memoized), and aggregated by `_build_compaction_summary` into the report. `_SCRIPT_VERSION` is unchanged — the parse-cache blob format did not change.
+
+**Tests**: +6 (live-shape parse, subagent-boundary skip, continuation-head flag, missing/partial metadata, summary aggregation, end-to-end report). Full suite **738 passed, 1 skipped**. No change to existing report numbers.
+
 ## v1.45.1 — 2026-05-29
 
 ### Null-safety + prefix-shadow bug fixes (post-audit verified)

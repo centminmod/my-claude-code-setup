@@ -539,6 +539,16 @@ def render_md(report: dict) -> str:
     p(f"| Output tokens | {totals['output']:,} |")
     p(f"| Cache read tokens | {totals['cache_read']:,} |")
     p(f"| Cache write tokens | {totals['cache_write']:,} |")
+    _cs = report.get("compaction_summary") or {}
+    if int(_cs.get("boundary_count", 0) or 0) > 0:
+        _split = []
+        if _cs.get("auto_count"):
+            _split.append(f"{_cs['auto_count']} auto")
+        if _cs.get("manual_count"):
+            _split.append(f"{_cs['manual_count']} manual")
+        _split_str = f" ({', '.join(_split)})" if _split else ""
+        p(f"| Context compactions | {_cs['boundary_count']}{_split_str} · "
+          f"{int(_cs.get('total_reclaimed_tokens', 0) or 0):,} tokens reclaimed |")
     if totals.get("cache_write_1h", 0) > 0:
         pct_1h = 100 * totals["cache_write_1h"] / max(1, totals["cache_write"])
         p(f"| Cache TTL mix (1h share of writes) | {pct_1h:.1f}% |")
@@ -746,6 +756,40 @@ def render_md(report: dict) -> str:
         if len(cache_breaks_rows) > 25:
             p()
             p(f"_Showing top 25 of {len(cache_breaks_rows)} — raw list available in JSON export._")
+        p()
+
+    # Q1: context-compaction events. Each boundary reset the working context;
+    # reclaimed = preTokens-postTokens. Auto-hides when none recorded.
+    compaction_rows = report.get("compaction_events") or []
+    if compaction_rows:
+        p(f"## Context compactions")
+        p()
+        p(f"{len(compaction_rows)} compaction boundar"
+          f"{'y' if len(compaction_rows) == 1 else 'ies'} — points where the "
+          f"working context was summarised and reset. The turn after each "
+          f"rebuilds context (expect a cache-write spike).")
+        p()
+        p("| When | Session | Trigger | Pre → Post | Reclaimed | Duration |")
+        p("|------|---------|---------|-----------|----------:|---------:|")
+        for ev in compaction_rows[:50]:
+            sid8 = (ev.get("session_id") or "")[:8]
+            pre = ev.get("pre_tokens")
+            post = ev.get("post_tokens")
+            recl = ev.get("reclaimed_tokens")
+            dur = ev.get("duration_ms")
+            pre_post = (f"{pre:,} → {post:,}"
+                        if isinstance(pre, int) and isinstance(post, int) else "—")
+            recl_s = f"{recl:,}" if isinstance(recl, int) else "—"
+            dur_s = f"{dur / 1000:.1f}s" if isinstance(dur, int) else "—"
+            p(f"| {ev.get('timestamp') or ''} "
+              f"| `{sid8}` "
+              f"| {ev.get('trigger') or '—'} "
+              f"| {pre_post} "
+              f"| {recl_s} "
+              f"| {dur_s} |")
+        if len(compaction_rows) > 50:
+            p()
+            p(f"_Showing first 50 of {len(compaction_rows)} — raw list available in JSON export._")
         p()
 
     has_1h_cache = _has_1h_cache(report)
