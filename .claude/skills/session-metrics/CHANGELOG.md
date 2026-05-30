@@ -3,6 +3,70 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.52.0 — 2026-05-30
+
+### Task grouping UX: automatic Tasks page, nav button, cleaner request labels
+
+Follow-up to v1.51.0 after live testing — removes the friction of a separate `/task-breakdown` step and cleans up agent-heavy sessions.
+
+**Changed — the Tasks companion is now generated automatically during an HTML export.** session-metrics' SKILL.md, when `html` is requested, runs the export with the new `--task-companion-nav` flag and then (when the session has more than one request unit) groups the request units into semantic tasks and runs `--render-tasks` **in the same turn** — no separate slash command. The standalone `/task-breakdown <json>` skill remains for re-grouping a saved export later.
+
+**Added — a `Tasks` nav button** on the dashboard/detail pages, beside Dashboard / Detail / Workflows, pointing at `<stem>_tasks.html`. Rendered only under `--task-companion-nav` (set by the auto flow) so a raw-script run that skips grouping doesn't get a dangling link. `_tasks_companion_href` is stripped from JSON exports like the workflow one.
+
+**Changed — `<task-notification>` user entries collapse to their `<summary>`.** Background-agent completion notifications used to dominate a request unit's prompt snippet with raw XML (the embedded `<result>` payload). `_extract_user_prompt_text` now collapses each to a clean `↳ Agent "…" completed` label and discards the result body — so on agent-heavy sessions the per-request breakdown and the LLM grouping both read cleanly (e.g. a 146-turn $28 implementation unit now labels as `↳ Agent "Code-searcher design review" completed` instead of `<task-notification> <task-id>…`). The anchor still fires (it is a real work boundary); only the label changed.
+
+**Changed — the `task-breakdown` skill is pinned to `model: sonnet`.** Its core job (semantic grouping + verdict calibration) is interpretive with no deterministic pre-compute helper, unlike the Haiku-pinned `audit-session-metrics` — Sonnet fits the judgement and the input is tiny (the compact `request_units` digest), so the call stays cheap. Note: the automatic in-export grouping (above) still runs under session-metrics' own Haiku model; the Sonnet pin governs the standalone `/task-breakdown` path.
+
++4 tests (task-notification collapse, Tasks nav-button gating, +2 from v1.51.0 retained); full suite 767 passing.
+
+## v1.51.0 — 2026-05-30
+
+### Task grouping — per-request breakdown + Tasks companion + task-breakdown skill
+
+A three-layer answer to "I think in tasks, not turns": tell apart a 40-turn feature (worth it) from a 40-turn debug loop (waste). Grounded in a quad-AI consult (Codex GPT-5.5 + DeepSeek V4 Pro + GLM 5.1 + code-searcher) — empirically, explicit boundary signals fired only 3× in a real 385-turn session, so task **segmentation is semantic**, not regex; the deterministic layer only carves by user prompt.
+
+**Added — deterministic "Per-request breakdown" section (HTML + Markdown dashboards).** Groups every turn by its existing `prompt_anchor_index` into **request units** — one user prompt plus all the work it drove (follow-up tool turns + attributed subagents). Per unit: turn count, combined cost (incl. subagent cost), tokens, tool histogram, waste signals (risky turns, file re-reads, cache breaks — reusing the v1.8.0 classification), idle gap and wall-clock. Honest framing: this is *per-request*, **not** semantic tasks. Cost-sum invariant holds (`sum(units) == session subtotal`). Exposed in JSON as a top-level `request_units` array (redacted under `--redact-user-prompts`); compound `unit_id` (`<session_id>:<anchor>`) keeps project-scope units distinct.
+
+**Added — `--render-tasks <export.json> <grouping.json>` mode + `*_tasks.html` / `*_tasks.md` companion (the 4th export page).** Renders a themed, collapsible per-task page (cloning the workflow-companion shell) from a Claude-authored grouping file. The grouping only assigns `request_unit_ids` to titled tasks + a verdict (worth_it / mixed / likely_waste) + rationale; **every cost/turn/token total is recomputed from the export — the grouping is never trusted for math.** Validates schema version, duplicate/unknown unit ids, and sweeps uncovered units into a synthetic "Ungrouped requests" task. The workflow companion is untouched.
+
+**Added — `task-breakdown` sibling skill.** Reads `request_units` from a JSON export, groups them into semantic tasks (topical continuity primary; idle gaps a weak confirming-only hint), labels each with an evidence-based verdict, writes `grouping.json`, and invokes `--render-tasks`. session-metrics suggests it after a JSON export (alongside the audit suggestion). Only this Claude-authored layer is allowed to call groups "tasks".
+
+11 new tests (cost invariant, subagent rollup, compound-key isolation, JSON redaction, grouping validation, companion render, CLI writer); full suite 765 passing.
+
+## v1.50.1 — 2026-05-30
+
+### Workflow companion runs collapsed by default
+
+**Changed — the per-run `<details class="wf-run">` accordions on the `*_workflows.html` companion now start collapsed** (dropped the `open` attribute) so the page opens as a scannable list of runs; click any run to expand its phase → agent timeline. Display-only; no data, cost, or attribution change. +1 assertion in the companion render test; full suite 754 passing.
+
+## v1.50.0 — 2026-05-30
+
+### Workflow companion: timestamped naming + Markdown sibling
+
+**Changed — the `*_workflows.html` companion now shares the run's timestamped stem.** It was named `project_<slug>_workflows.html` / `session_<sid8>_workflows.html` (timestamp-less), so it sorted away from the `project_<TIMESTAMP>_dashboard.html` / `_detail.html` files in the export directory. It is now `project_<TIMESTAMP>_workflows.html` (and `session_<sid8>_<TIMESTAMP>_…`), sorting directly beside dashboard/detail. `_dispatch` computes **one** run timestamp shared by dashboard, detail, the companion, and every `_write_output` format (json/md/csv/single-page HTML) — which also fixes a pre-existing ~1s drift where the JSON filename's timestamp differed from the dashboard's. The Dashboard/Detail `Workflows` nav link updates to the new filename in lock-step.
+
+**Added — a Markdown companion `*_workflows.md`.** When `md` is among the requested formats and the report has workflows, a standalone `<stem>_workflows.md` deep-dive is written alongside the HTML companion — the Markdown sibling of `_build_workflow_companion_html`, with one section per run and a phase → agent timeline table (exact per-agent token/cost from transcripts; labels/previews from the journal). The main `.md` export keeps its inline `## Dynamic workflows` summary table. +2 tests; full suite 754 passing.
+
+## v1.49.0 — 2026-05-30
+
+### Theme-aware `*_workflows.html` companion
+
+**Changed — the dynamic-workflow companion deep-dive now supports all four themes** (Beacon / Console / Lattice / Pulse), matching the dashboard/detail pages. It previously shipped its own hardcoded dark stylesheet. `_build_workflow_companion_html` now reuses the main report's full page shell — `_theme_css()`, the topbar theme switcher, and the head/body bootstrap JS — so the picked theme applies pre-paint and persists across navigation via `localStorage['sm_theme']` and the `#theme=` hash. New companion-only CSS (`_workflow_companion_css`) is keyed entirely on the `var(--surface)` / `--border` / `--accent` / `--fg-dim` / `--surface-deep` tokens defined identically across all four `body.theme-*` blocks, so the page re-skins automatically on switch with no per-theme overrides.
+
+**Changed — companion restyled** with a cross-run summary KPI strip (runs / agents / cost / tokens), per-run accordions whose summary now uses pill-style chips, uppercase phase headers, and themed `wf-table` agent timelines (generic `th`/`td` colours inherited from the theme stack; result-preview rows omitted when empty). No data or attribution change — cost/token math is identical to v1.48.0. Verified live across all four themes. +1 regression test asserting the embedded theme stack (11 workflow tests); full suite 752 passing.
+
+## v1.48.0 — 2026-05-30
+
+### Dynamic-workflow (Workflow tool / ultracode) token + cost tracking
+
+**Added — workflow agents are now counted, costed, attributed, and surfaced.** Claude Code's `Workflow` tool fans out to 20–100+ background agents whose transcripts land one directory tier deeper than the parser reached — at `<session>/subagents/workflows/<runId>/agent-*.jsonl` — so **0%** of that spend was previously visible (on a real audit run this was Opus-4.8 work worth $32.59, **46% of the session's total**, completely invisible). `_load_session` now walks that tier (gated by a new `--include-workflows`, default on; requires `--include-subagents`), so the existing per-model pricing tallies workflow agents exactly, including the cache-read-heavy component the run journal omits. The sibling `journal.jsonl` event log is excluded; the `<synthetic>` orchestrator placeholder row is zero-priced via `_pricing_for` so it neither overcharges nor trips the unknown-model advisory.
+
+**Added — a dedicated "Dynamic workflows" cost table at every scope**, plus an auto-emitted companion. A new `by_workflow` aggregate (keyed by `runId`, cost from transcripts, metadata from the `wf_<runId>.json` journal) renders as a sortable table on the session/project/instance HTML dashboards, a `## Dynamic workflows` Markdown section, a `# DYNAMIC WORKFLOWS` CSV block, and a `by_workflow` JSON array. When a report contains workflows, a standalone `*_workflows.html` companion is written next to the main export with a per-run `<details>` **phase → agent timeline** (exact per-agent token/cost grafted from transcripts; labels/previews from the journal); both the inline table and a **`Workflows` link in the Dashboard/Detail nav bar** point to it (the companion has a `← back to report` link via `history.back()`). Suppress with `--no-workflow-detail`.
+
+**Fixed — workflow cost now rolls onto the spawning prompt.** Workflow agents carry `parentUuid: null` and no per-agent main-thread tool_use, so Phase-B attribution orphaned them. The main-thread `toolUseResult.runId` + the sibling `tool_result.tool_use_id` now bridge `runId → tool_use_id → spawning-prompt anchor` (captured *pre-dedup* so a resumed session can't lose the link, and the `Workflow` tool_use id is registered in `tool_use_ids` so Pass 1 anchors it). Verified at project scope on two real runs: both attribute with the run's full cost, 0 workflow orphans, no double-count.
+
+**Internals.** New `_build_by_workflow` / `_empty_workflow_row` (`_data.py`), `_parse_workflow_journal` / `_extract_workflow_spawn_links` (`_dispatch.py`), `_build_by_workflow_html` / `_build_workflow_companion_html` (`_html_sections.py`); `workflow_run_id` per-turn field; `workflow_sink` accumulator threaded like `compaction_sink`; `_ZERO_PRICING` / `_SYNTHETIC_MODEL`. `_SCRIPT_VERSION` unchanged (parse-cache blob format is unchanged). 9 new tests (`test_workflows.py`); full suite 750 passing.
+
 ## v1.47.0 — 2026-05-30
 
 ### Context-compaction timeline markers (Q1c)

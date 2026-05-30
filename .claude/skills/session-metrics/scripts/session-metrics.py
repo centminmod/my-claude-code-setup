@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.47.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.52.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -138,6 +138,12 @@ _PRICING: dict[str, dict[str, float]] = {
     "z-ai/glm-5-turbo":          {"input":  1.20, "output":   4.00, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
 }
 _DEFAULT_PRICING = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75, "cache_write_1h": 6.00}
+# Zero-rate tier for non-billable placeholder turns. Dynamic-workflow
+# transcripts carry a single ``<synthetic>``-model orchestrator row per run
+# (no real inference); pricing it at the Sonnet default would both overcharge
+# and pollute the unknown-model advisory. Short-circuited in `_pricing_for`.
+_ZERO_PRICING = {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0, "cache_write_1h": 0.0}
+_SYNTHETIC_MODEL = "<synthetic>"
 
 # Regex patterns for flexible model-ID matching — checked between exact match and prefix
 # sweep. re.search so partial IDs (no provider prefix, date suffixes, :tag qualifiers)
@@ -466,6 +472,8 @@ render_md                       = _mr_m.render_md
 _fmt_duration                   = _mr_m._fmt_duration
 _build_subagent_share_md        = _mr_m._build_subagent_share_md
 _build_within_session_split_md  = _mr_m._build_within_session_split_md
+_build_workflow_companion_md    = _mr_m._build_workflow_companion_md
+_build_tasks_companion_md       = _mr_m._build_tasks_companion_md
 _build_usage_insights_md        = _mr_m._build_usage_insights_md
 _build_waste_analysis_md        = _mr_m._build_waste_analysis_md
 del _mr_m
@@ -499,6 +507,7 @@ _SUBAGENT_FILENAME_RE           = _di_m._SUBAGENT_FILENAME_RE
 _resolve_subagent_type          = _di_m._resolve_subagent_type
 _load_session                   = _di_m._load_session
 _run_single_session             = _di_m._run_single_session
+_run_render_tasks               = _di_m._run_render_tasks
 _run_project_cost               = _di_m._run_project_cost
 _run_all_projects               = _di_m._run_all_projects
 _instance_export_root           = _di_m._instance_export_root
@@ -526,7 +535,11 @@ _tz_dropdown_options            = _hs_m._tz_dropdown_options
 _build_tod_heatmap_html         = _hs_m._build_tod_heatmap_html
 _fmt_cost                       = _hs_m._fmt_cost
 _build_by_skill_html            = _hs_m._build_by_skill_html
+_build_request_units_html       = _hs_m._build_request_units_html
 _build_by_subagent_type_html    = _hs_m._build_by_subagent_type_html
+_build_by_workflow_html         = _hs_m._build_by_workflow_html
+_build_workflow_companion_html  = _hs_m._build_workflow_companion_html
+_build_tasks_companion_html     = _hs_m._build_tasks_companion_html
 _build_subagent_share_card_html = _hs_m._build_subagent_share_card_html
 _build_subagent_turn_share_card_html = _hs_m._build_subagent_turn_share_card_html
 _build_plan_leverage_card_html  = _hs_m._build_plan_leverage_card_html
@@ -601,11 +614,16 @@ _empty_skill_row            = _da_m._empty_skill_row
 _accumulate_bucket          = _da_m._accumulate_bucket
 _finalise_skill_rows        = _da_m._finalise_skill_rows
 _build_by_skill             = _da_m._build_by_skill
+_build_request_units        = _da_m._build_request_units
+_detect_multi_intent        = _da_m._detect_multi_intent
+_assemble_tasks             = _da_m._assemble_tasks
+_TASKS_GROUPING_SCHEMA_VERSION = _da_m._TASKS_GROUPING_SCHEMA_VERSION
 _SELF_COST_SKILL_NAMES      = _da_m._SELF_COST_SKILL_NAMES
 _summarize_self_cost        = _da_m._summarize_self_cost
 _empty_subagent_row         = _da_m._empty_subagent_row
 _finalise_subagent_rows     = _da_m._finalise_subagent_rows
 _build_by_subagent_type     = _da_m._build_by_subagent_type
+_build_by_workflow          = _da_m._build_by_workflow
 _write_evidence_pack        = _da_m._write_evidence_pack
 del _da_m
 

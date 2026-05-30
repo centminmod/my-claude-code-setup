@@ -408,7 +408,8 @@ def _compute_prompt_anchor_indices(turn_records: list[dict]) -> None:
         )
 
 
-def _attribute_subagent_tokens(turn_records: list[dict]) -> dict:
+def _attribute_subagent_tokens(turn_records: list[dict],
+                               runid_to_tooluse: dict | None = None) -> dict:
     """Roll subagent token usage onto the user prompt that spawned them.
 
     Modifies the matching turn record in-place: increments
@@ -482,6 +483,17 @@ def _attribute_subagent_tokens(turn_records: list[dict]) -> dict:
             if anchor is not None:
                 agent_id_to_anchor[aid] = anchor
 
+    # Pass 2b: runId -> anchor, for dynamic-workflow agents. They carry no
+    # main-thread ``(tool_use_id, agentId)`` link (parentUuid is null), so the
+    # agentId map above never resolves them. Instead we bridge through the
+    # Workflow tool_result's ``runId`` -> its spawning ``tool_use_id`` (captured
+    # in ``runid_to_tooluse``) -> the prompt anchor from Pass 1.
+    runid_to_anchor: dict[str, int] = {}
+    for rid, tuid in (runid_to_tooluse or {}).items():
+        anchor = tool_use_to_anchor.get(tuid) if tuid else None
+        if anchor is not None:
+            runid_to_anchor[rid] = anchor
+
     # Pass 3: roll up subagent tokens onto root main turn.
     attributed_indices: set[int] = set()
     for t in turn_records:
@@ -489,6 +501,10 @@ def _attribute_subagent_tokens(turn_records: list[dict]) -> dict:
         if not aid:
             continue
         anchor = agent_id_to_anchor.get(aid)
+        if anchor is None:
+            # Dynamic-workflow agent: fall back to the run's spawning prompt.
+            wf_run = t.get("workflow_run_id") or ""
+            anchor = runid_to_anchor.get(wf_run) if wf_run else None
         if anchor is None:
             summary["orphan_subagent_turns"] += 1
             continue
@@ -547,6 +563,7 @@ def _build_report(
     sort_prompts_by: str | None = None,
     include_subagents: bool = False,
     compaction_events_by_session: dict | None = None,
+    workflow_journals_by_session: dict | None = None,
 ) -> dict:
     """Build a structured report dict from raw session data.
 
@@ -583,7 +600,17 @@ def _build_report(
         # so other features (sort tie-breaks) keep working.
         _compute_prompt_anchor_indices(turn_records)
         if subagent_attribution:
-            session_summary = _attribute_subagent_tokens(turn_records)
+            # runId → spawning tool_use_id for this session's workflows, so
+            # workflow-agent turns (which orphan on the agentId path) can
+            # roll up onto the prompt that launched the run.
+            _wf_runs = (workflow_journals_by_session or {}).get(session_id, {})
+            runid_to_tooluse = {
+                rid: meta.get("spawn_tool_use_id")
+                for rid, meta in (_wf_runs or {}).items()
+                if isinstance(meta, dict) and meta.get("spawn_tool_use_id")
+            }
+            session_summary = _attribute_subagent_tokens(
+                turn_records, runid_to_tooluse)
             for k, v in session_summary.items():
                 if k == "nested_levels_seen":
                     attribution_summary[k] = max(attribution_summary[k], v)
@@ -742,6 +769,12 @@ def _build_report(
         )),
         "by_skill":            _sm()._build_by_skill(sessions_out, totals.get("cost", 0.0)),
         "by_subagent_type":    _sm()._build_by_subagent_type(sessions_out, totals.get("cost", 0.0)),
+        # Dynamic-workflow (Workflow tool) cost table — runId-keyed, cost from
+        # transcripts, display metadata from the wf_<runId>.json journals.
+        # Empty list when no workflows ran; renderers auto-hide.
+        "by_workflow":         _sm()._build_by_workflow(
+            sessions_out, totals.get("cost", 0.0),
+            workflow_journals_by_session or {}),
         "cache_break_threshold": cache_break_threshold,
         # Phase-B (v1.7.0): subagent → parent-prompt attribution summary.
         # Renderers read ``attributed_subagent_*`` directly off turn
@@ -793,6 +826,12 @@ def _build_report(
     # turn_character / turn_character_label / turn_risk and attaches
     # the top-level waste_analysis summary dict.
     report["waste_analysis"] = _sm()._build_waste_analysis(sessions_out)
+    # Per-request breakdown (deterministic task-grouping foundation): group
+    # turns by (session_id, prompt_anchor_index) into "request units". Runs
+    # last — after attribution + cache-break + waste passes have stamped
+    # every turn — so each unit can aggregate cost, tokens, tool mix and
+    # waste signals. Honest framing: per-utterance, NOT semantic tasks.
+    report["request_units"] = _sm()._build_request_units(sessions_out)
     # Drop the internal flag after use so the report dict stays clean
     # for downstream renderers / JSON export.
     report.pop("_suppress_model_compare_insight", None)
@@ -1156,6 +1195,24 @@ def _build_instance_report(
                                          total_cost_for_pct)
     inst_by_subagent = _merge_bucket_rows(project_reports, "by_subagent_type",
                                             total_cost_for_pct)
+    # Dynamic-workflow rows are keyed by globally-unique ``runId`` (each
+    # workflow run lives in exactly one session/project), so instance-scope
+    # merge is a concatenation — no cross-project key collisions. We keep the
+    # rich per-row metadata (phases, agent_details, status) the generic
+    # name-keyed merger would drop, and just re-base ``pct_total_cost`` on the
+    # instance total + tag each row with its project for the drilldown.
+    inst_by_workflow: list[dict] = []
+    for pr in project_reports:
+        pr_slug = pr.get("slug", "")
+        for row in pr.get("by_workflow", []) or []:
+            tagged = dict(row)
+            tagged["project"] = pr_slug
+            tagged["pct_total_cost"] = (
+                round(100.0 * float(tagged.get("cost_usd", 0.0)) / total_cost_for_pct, 2)
+                if total_cost_for_pct else 0.0
+            )
+            inst_by_workflow.append(tagged)
+    inst_by_workflow.sort(key=lambda r: -float(r.get("cost_usd", 0.0)))
     inst_cache_breaks: list[dict] = []
     for pr in project_reports:
         pr_slug = pr.get("slug", "")
@@ -1213,6 +1270,7 @@ def _build_instance_report(
         "compaction_summary":  inst_compaction_summary,
         "by_skill":            inst_by_skill,
         "by_subagent_type":    inst_by_subagent,
+        "by_workflow":         inst_by_workflow,
         "cache_break_threshold": cache_break_threshold,
         # Phase-B (v1.7.0): instance-wide attribution summary — sum
         # per-project counts; max nested depth observed across all

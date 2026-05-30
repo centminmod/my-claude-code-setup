@@ -19,7 +19,7 @@ _EXTENSIONS = {"text": "txt", "json": "json", "csv": "csv", "md": "md", "html": 
 __all__ = [
     "_run_single_session", "_run_project_cost", "_run_all_projects",
     "_dispatch_instance", "_render_instance_text", "_render_instance_csv",
-    "_render_instance_md", "_render_instance_html",
+    "_render_instance_md", "_render_instance_html", "_run_render_tasks",
 ]
 
 
@@ -66,6 +66,72 @@ def _export_dir() -> Path:
     return Path(os.getcwd()) / "exports" / "session-metrics"
 
 
+def _run_render_tasks(export_json: str, grouping_json: str,
+                      formats: list[str] | None = None) -> int:
+    """Render the standalone Tasks companion from an export + grouping file.
+
+    ``--render-tasks`` entry point. Loads a session-metrics JSON export and a
+    Claude-authored ``grouping.json``, validates + resolves the grouping
+    against the export's ``request_units`` via ``_assemble_tasks`` (all
+    cost/turn figures summed from the export — the grouping is never trusted
+    for math), then writes ``<stem>_tasks.html`` / ``<stem>_tasks.md`` next to
+    the export. Prints any validation warnings + the output paths. Returns a
+    process exit code (0 ok, non-zero on hard error).
+    """
+    exp_path = Path(export_json).expanduser()
+    grp_path = Path(grouping_json).expanduser()
+    try:
+        report = json.loads(exp_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"error: cannot read export JSON {exp_path}: {e}", file=sys.stderr)
+        return 2
+    try:
+        grouping = json.loads(grp_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"error: cannot read grouping JSON {grp_path}: {e}", file=sys.stderr)
+        return 2
+    if not isinstance(report, dict) or "request_units" not in report:
+        print("error: export JSON has no 'request_units' — re-run "
+              "session-metrics to regenerate the export (the per-request "
+              "breakdown was added in a newer version).", file=sys.stderr)
+        return 2
+    if not isinstance(grouping, dict):
+        print("error: grouping JSON must be an object with a 'tasks' array.",
+              file=sys.stderr)
+        return 2
+
+    assembled = _sm()._assemble_tasks(report, grouping)
+    if not assembled.get("tasks"):
+        print("error: grouping produced no tasks (empty 'tasks' array and no "
+              "request units to fall back on).", file=sys.stderr)
+        return 2
+
+    fmts = formats or ["html", "md"]
+    stem = exp_path.stem  # e.g. session_2b74cec9_20260530T...
+    out_dir = exp_path.parent
+    written: list[Path] = []
+    if "html" in fmts:
+        html = _sm()._build_tasks_companion_html(report, assembled)
+        hp = out_dir / f"{stem}_tasks.html"
+        hp.write_text(html, encoding="utf-8")
+        written.append(hp)
+    if "md" in fmts:
+        md = _sm()._build_tasks_companion_md(report, assembled)
+        mp = out_dir / f"{stem}_tasks.md"
+        mp.write_text(md, encoding="utf-8")
+        written.append(mp)
+
+    for w in assembled.get("warnings") or []:
+        print(f"  ! {w}", file=sys.stderr)
+    print(f"Tasks companion: {assembled['unit_count']} requests → "
+          f"{len(assembled['tasks'])} task(s), "
+          f"{assembled['coverage_pct']:.0f}% grouped, "
+          f"${assembled['total_cost_usd']:.4f} total.", file=sys.stderr)
+    for w in written:
+        print(str(w))
+    return 0
+
+
 def _write_output(fmt: str, content: str, report: dict,
                    suffix: str = "",
                    explicit_ts: str | None = None,
@@ -107,6 +173,62 @@ def _write_output(fmt: str, content: str, report: dict,
 _SUBAGENT_FILENAME_RE = re.compile(r"^agent-a([^-]+)-[0-9a-fA-F]+$")
 
 
+def _parse_workflow_journal(path: Path) -> dict | None:
+    """Parse one ``workflows/wf_<runId>.json`` journal into a display summary.
+
+    The journal is the Workflow tool's own run record (metadata + an
+    aggregate ``totalTokens`` that EXCLUDES cache reads, so it is NOT used
+    for cost — transcripts are the source of truth). We mine it only for
+    display fields the per-agent transcripts don't carry: the human workflow
+    name, run status, phase structure, and per-agent labels / previews.
+
+    Returns ``None`` on any read/parse error so a malformed journal never
+    breaks the report (the transcripts still drive tokens/cost).
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            j = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(j, dict):
+        return None
+    run_id = j.get("runId") or path.stem
+    agents: list[dict] = []
+    for e in j.get("workflowProgress") or []:
+        if not isinstance(e, dict) or e.get("type") != "workflow_agent":
+            continue
+        agents.append({
+            "agentId":     str(e.get("agentId") or ""),
+            "label":       str(e.get("label") or ""),
+            "model":       str(e.get("model") or ""),
+            "phaseIndex":  e.get("phaseIndex"),
+            "phaseTitle":  str(e.get("phaseTitle") or ""),
+            "state":       str(e.get("state") or ""),
+            "tokens":      int(e.get("tokens") or 0),
+            "toolCalls":   int(e.get("toolCalls") or 0),
+            "durationMs":  int(e.get("durationMs") or 0),
+            "promptPreview":  str(e.get("promptPreview") or ""),
+            "resultPreview":  str(e.get("resultPreview") or ""),
+        })
+    phases = []
+    for p in j.get("phases") or []:
+        if isinstance(p, dict):
+            phases.append({"title": str(p.get("title") or ""),
+                           "detail": str(p.get("detail") or "")})
+    return {
+        "run_id":          str(run_id),
+        "workflow_name":   str(j.get("workflowName") or run_id),
+        "status":          str(j.get("status") or ""),
+        "agent_count":     int(j.get("agentCount") or 0),
+        "total_tool_calls": int(j.get("totalToolCalls") or 0),
+        "journal_total_tokens": int(j.get("totalTokens") or 0),
+        "duration_ms":     int(j.get("durationMs") or 0),
+        "default_model":   str(j.get("defaultModel") or ""),
+        "phases":          phases,
+        "agents":          agents,
+    }
+
+
 def _resolve_subagent_type(sub_path: Path) -> str:
     """Three-tier fallback identical in spirit to Anthropic's session-report:
     (1) ``<stem>.meta.json`` → ``agentType`` field, (2) filename label via
@@ -128,10 +250,47 @@ def _resolve_subagent_type(sub_path: Path) -> str:
     return "fork"
 
 
+def _extract_workflow_spawn_links(entries: list[dict]) -> dict[str, str]:
+    """Map ``runId → spawning tool_use_id`` from main-thread Workflow
+    ``tool_result`` entries.
+
+    Each launched workflow writes back a ``toolUseResult`` carrying its
+    ``runId`` on the user entry whose ``message.content`` holds the matching
+    ``tool_result`` block — that block's ``tool_use_id`` is the assistant
+    tool_use that spawned the run. Capturing the pair lets Phase-B attribution
+    resolve ``runId → tool_use_id → spawning-prompt anchor``.
+
+    Run this over the *pre-dedup* entry list: the cross-file ``seen_uuids``
+    filter can drop a resumed session's replayed ``toolUseResult`` entry, and
+    losing it would silently re-orphan the whole run's cost. First write wins.
+    """
+    links: dict[str, str] = {}
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        tur = e.get("toolUseResult")
+        run_id = tur.get("runId") if isinstance(tur, dict) else None
+        if not run_id or run_id in links:
+            continue
+        msg = e.get("message") or {}
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            continue
+        for b in content:
+            if isinstance(b, dict) and b.get("type") == "tool_result":
+                tuid = b.get("tool_use_id")
+                if isinstance(tuid, str) and tuid:
+                    links[run_id] = tuid
+                    break
+    return links
+
+
 def _load_session(
     jsonl_path: Path, include_subagents: bool, use_cache: bool = True,
     seen_uuids: set[str] | None = None,
     compaction_sink: dict | None = None,
+    include_workflows: bool = True,
+    workflow_sink: dict | None = None,
 ) -> tuple[str, list[dict], list[int]]:
     """Load a session JSONL and return structured data for report building.
 
@@ -183,6 +342,42 @@ def _load_session(
                         e["_subagent_type"] = agent_type
                         e["_subagent_agent_id"] = agent_id
                         entries.append(e)
+            # Dynamic-workflow agents (Workflow tool: agent()/parallel()/
+            # pipeline()) persist their transcripts one tier deeper, under
+            # ``subagents/workflows/<runId>/agent-*.jsonl`` — a level the
+            # non-recursive glob above never reaches. These carry full
+            # per-message ``usage`` blocks, so once merged the existing
+            # per-model pricing tallies them exactly. ``journal.jsonl`` (a
+            # key/value event log with no ``usage``) shares the dir and must
+            # be excluded; the ``agent-*.jsonl`` glob does so naturally. A
+            # workflow can fan out to 100s of agents, so this is the bulk of
+            # token spend under ultracode — see references/jsonl-schema.md.
+            if include_workflows:
+                wf_root = subagent_dir / "workflows"
+                if wf_root.exists():
+                    for run_dir in sorted(wf_root.iterdir()):
+                        if not run_dir.is_dir():
+                            continue
+                        run_id = run_dir.name
+                        for sub in sorted(run_dir.glob("agent-*.jsonl")):
+                            agent_type = _resolve_subagent_type(sub)
+                            agent_id = sub.stem
+                            if agent_id.startswith("agent-"):
+                                agent_id = agent_id[len("agent-"):]
+                            sub_entries = _sm()._cached_parse_jsonl(
+                                sub, use_cache=use_cache)
+                            for e in sub_entries:
+                                if isinstance(e, dict):
+                                    e["_subagent_type"] = agent_type
+                                    e["_subagent_agent_id"] = agent_id
+                                    e["_workflow_run_id"] = run_id
+                                    entries.append(e)
+    # Capture runId → spawning tool_use_id BEFORE the dedup below — a resumed
+    # session can have its replayed ``toolUseResult`` entry filtered out, which
+    # would lose the link and re-orphan the run's cost.
+    workflow_spawn_links: dict[str, str] = {}
+    if workflow_sink is not None and include_subagents and include_workflows:
+        workflow_spawn_links = _extract_workflow_spawn_links(entries)
     # Cross-file UUID dedup (opt-in). Anthropic's session-report uses this
     # to prevent resumed-session replays from double-counting across sibling
     # JSONLs. We do the same — but only when the caller provides the set
@@ -213,6 +408,29 @@ def _load_session(
     # boundaries count.
     if compaction_sink is not None:
         compaction_sink[jsonl_path.stem] = _sm()._extract_compaction_events(entries)
+    # Dynamic-workflow journals: display metadata (workflow name, status,
+    # phases, per-agent labels) keyed by runId. Cost/tokens come from the
+    # merged transcripts above — the journal is enrichment only. Same
+    # opt-in mutable-accumulator idiom as ``compaction_sink``. The journals
+    # live in ``<session>/workflows/`` (sibling of ``subagents/``).
+    if workflow_sink is not None and include_subagents and include_workflows:
+        wf_meta_dir = jsonl_path.parent / jsonl_path.stem / "workflows"
+        if wf_meta_dir.is_dir():
+            run_meta: dict[str, dict] = {}
+            for jp in sorted(wf_meta_dir.glob("wf_*.json")):
+                summary = _parse_workflow_journal(jp)
+                if summary:
+                    run_meta[summary["run_id"]] = summary
+            if run_meta:
+                # Phase-B link (captured pre-dedup above): runId → the
+                # ``tool_use_id`` of the Workflow call that launched it, the
+                # bridge that lets us roll a run's cost onto the prompt that
+                # spawned it (workflow agents have ``parentUuid: null`` so the
+                # agentId path orphans).
+                for rid, tuid in workflow_spawn_links.items():
+                    if rid in run_meta:
+                        run_meta[rid]["spawn_tool_use_id"] = tuid
+                workflow_sink[jsonl_path.stem] = run_meta
     return (
         jsonl_path.stem,
         _sm()._extract_turns(entries),
@@ -236,7 +454,10 @@ def _run_single_session(jsonl_path: Path, slug: str, include_subagents: bool,
                          share_safe: bool = False,
                          plan_cost: float | None = None,
                          invariants_thresholds: dict | None = None,
-                         evidence: bool = False) -> None:
+                         evidence: bool = False,
+                         include_workflows: bool = True,
+                         no_workflow_detail: bool = False,
+                         task_companion_nav: bool = False) -> None:
     print(f"Session : {jsonl_path.stem}", file=sys.stderr)
     print(f"File    : {jsonl_path}", file=sys.stderr)
     print(file=sys.stderr)
@@ -245,10 +466,13 @@ def _run_single_session(jsonl_path: Path, slug: str, include_subagents: bool,
     # handles streaming splits for the one file being loaded, so we don't need
     # cross-file UUID dedup here. Pass ``None`` to disable.
     compaction_by_session: dict = {}
+    workflow_by_session: dict = {}
     session_id, turns, user_ts = _load_session(jsonl_path, include_subagents,
                                                  use_cache=use_cache,
                                                  seen_uuids=None,
-                                                 compaction_sink=compaction_by_session)
+                                                 compaction_sink=compaction_by_session,
+                                                 include_workflows=include_workflows,
+                                                 workflow_sink=workflow_by_session)
     if not turns:
         print("[info] No assistant turns with usage data found.", file=sys.stderr)
         return
@@ -262,6 +486,7 @@ def _run_single_session(jsonl_path: Path, slug: str, include_subagents: bool,
         sort_prompts_by=sort_prompts_by,
         include_subagents=include_subagents,
         compaction_events_by_session=compaction_by_session,
+        workflow_journals_by_session=workflow_by_session,
     )
     if plan_cost is not None:
         report["plan_cost"] = float(plan_cost)
@@ -270,7 +495,9 @@ def _run_single_session(jsonl_path: Path, slug: str, include_subagents: bool,
               idle_gap_minutes=idle_gap_minutes,
               redact_user_prompts=redact_user_prompts,
               share_safe=share_safe,
-              evidence=evidence)
+              evidence=evidence,
+              no_workflow_detail=no_workflow_detail,
+              task_companion_nav=task_companion_nav)
     if not no_self_cost and self_cost:
         _print_self_cost_summary(self_cost)
     _maybe_run_invariants(report, invariants_thresholds)
@@ -292,7 +519,10 @@ def _run_project_cost(slug: str, include_subagents: bool, formats: list[str],
                       share_safe: bool = False,
                       plan_cost: float | None = None,
                       invariants_thresholds: dict | None = None,
-                      evidence: bool = False) -> None:
+                      evidence: bool = False,
+                      include_workflows: bool = True,
+                      no_workflow_detail: bool = False,
+                      task_companion_nav: bool = False) -> None:
     files = _sm()._find_jsonl_files(slug)
     if not files:
         print(f"[error] No sessions found for slug: {slug}", file=sys.stderr)
@@ -303,12 +533,15 @@ def _run_project_cost(slug: str, include_subagents: bool, formats: list[str],
     # double-count tokens in project totals (gap #8 fix).
     project_seen: set[str] = set()
     compaction_by_session: dict = {}
+    workflow_by_session: dict = {}
     sessions_raw = []
     for path in reversed(files):   # oldest first
         sid, turns, user_ts = _load_session(path, include_subagents,
                                               use_cache=use_cache,
                                               seen_uuids=project_seen,
-                                              compaction_sink=compaction_by_session)
+                                              compaction_sink=compaction_by_session,
+                                              include_workflows=include_workflows,
+                                              workflow_sink=workflow_by_session)
         if turns:
             sessions_raw.append((sid, turns, user_ts))
 
@@ -325,6 +558,7 @@ def _run_project_cost(slug: str, include_subagents: bool, formats: list[str],
         sort_prompts_by=sort_prompts_by,
         include_subagents=include_subagents,
         compaction_events_by_session=compaction_by_session,
+        workflow_journals_by_session=workflow_by_session,
     )
     if plan_cost is not None:
         report["plan_cost"] = float(plan_cost)
@@ -333,7 +567,9 @@ def _run_project_cost(slug: str, include_subagents: bool, formats: list[str],
               idle_gap_minutes=idle_gap_minutes,
               redact_user_prompts=redact_user_prompts,
               share_safe=share_safe,
-              evidence=evidence)
+              evidence=evidence,
+              no_workflow_detail=no_workflow_detail,
+              task_companion_nav=task_companion_nav)
     if not no_self_cost and self_cost:
         _print_self_cost_summary(self_cost)
     _maybe_run_invariants(report, invariants_thresholds)
@@ -355,7 +591,9 @@ def _run_all_projects(formats: list[str],
                       share_safe: bool = False,
                       plan_cost: float | None = None,
                       invariants_thresholds: dict | None = None,
-                      evidence: bool = False) -> None:
+                      evidence: bool = False,
+                      include_workflows: bool = True,
+                      no_workflow_detail: bool = False) -> None:
     projects_dir = _sm()._projects_dir()
     print(f"Scanning: {projects_dir}", file=sys.stderr)
     discovered = _sm()._list_all_projects()
@@ -377,6 +615,9 @@ def _run_all_projects(formats: list[str],
     # session_id. Populated in the serial load phase below and handed to each
     # per-project ``_build_report`` (which picks out only its own sessions).
     instance_compaction: dict = {}
+    # Dynamic-workflow journals for every session across every project,
+    # keyed by session_id — handed to each per-project ``_build_report``.
+    instance_workflows: dict = {}
     # Raw sessions_raw tuples across every project — preserved so the
     # instance-scope insights (_build_session_blocks, _build_weekly_rollup)
     # see the same raw JSONL shape they do in project mode. Without this
@@ -400,7 +641,9 @@ def _run_all_projects(formats: list[str],
                 sid, turns, user_ts = _load_session(path, include_subagents,
                                                      use_cache=use_cache,
                                                      seen_uuids=instance_seen,
-                                                     compaction_sink=instance_compaction)
+                                                     compaction_sink=instance_compaction,
+                                                     include_workflows=include_workflows,
+                                                     workflow_sink=instance_workflows)
             except (OSError, json.JSONDecodeError) as exc:
                 print(f"[warn] {slug}: skipping {path.name} ({exc})",
                       file=sys.stderr)
@@ -435,6 +678,7 @@ def _run_all_projects(formats: list[str],
             sort_prompts_by=sort_prompts_by,
             include_subagents=include_subagents,
             compaction_events_by_session=instance_compaction,
+            workflow_journals_by_session=instance_workflows,
         )
 
     if len(project_inputs) > 1:
@@ -1001,6 +1245,8 @@ def _render_instance_html(report: dict, chart_lib: str = "highcharts") -> str:
     inst_by_subagent_type_html = _sm()._build_by_subagent_type_html(
         report.get("by_subagent_type", []) or [],
         subagents_included=bool(report.get("include_subagents", False)))
+    inst_by_workflow_html = _sm()._build_by_workflow_html(
+        report.get("by_workflow", []) or [], show_project=True)
     inst_cache_breaks_html = _sm()._build_cache_breaks_html(
         report.get("cache_breaks", []) or [],
         int(report.get("cache_break_threshold", _sm()._CACHE_BREAK_DEFAULT_THRESHOLD)),
@@ -1141,6 +1387,7 @@ def _render_instance_html(report: dict, chart_lib: str = "highcharts") -> str:
 {inst_cache_breaks_html}
 {inst_by_skill_html}
 {inst_by_subagent_type_html}
+{inst_by_workflow_html}
 {inst_attribution_coverage_html}
 {inst_within_session_split_html}
 {projects_table_html}
@@ -1183,11 +1430,69 @@ def _dispatch(report: dict, formats: list[str],
                idle_gap_minutes: int = 10,
                redact_user_prompts: bool = False,
                share_safe: bool = False,
-               evidence: bool = False) -> None:
+               evidence: bool = False,
+               no_workflow_detail: bool = False,
+               task_companion_nav: bool = False) -> None:
     # Always render text to stdout
     print(_sm().render_text(report))
 
     is_compare = report.get("mode") == "compare"
+
+    # One timestamp for the whole run, shared by dashboard / detail / the
+    # workflow companion AND every _write_output format (json/md/csv/single
+    # HTML), so all files for a run carry the same ``<stem>`` and sort
+    # together in the export directory.
+    run_ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+    # Dynamic-workflow companion deep-dive: when an HTML (or Markdown) export
+    # contains ≥1 workflow run, write a standalone ``<stem>_workflows.{html,md}``
+    # alongside the main output — same timestamped ``<stem>`` as dashboard /
+    # detail so the companion sorts next to them — and link the inline HTML
+    # table to it (href set BEFORE render so it appears). Skipped for compare
+    # mode (no companion), when suppressed, or when no workflow ran. The href
+    # is stripped from JSON via its ``_`` prefix.
+    if (not is_compare and not no_workflow_detail
+            and (report.get("by_workflow") or [])
+            and ("html" in formats or "md" in formats)):
+        mode = report.get("mode", "session")
+        if mode == "project":
+            stem = f"project_{run_ts}"
+        else:
+            sid = (report.get("sessions") or [{}])[0].get("session_id", "session")
+            stem = f"session_{str(sid)[:8]}_{run_ts}"
+        _export_dir().mkdir(parents=True, exist_ok=True)
+        if "html" in formats:
+            companion_name = f"{stem}_workflows.html"
+            report["_workflow_companion_href"] = companion_name
+            companion_html = _sm()._build_workflow_companion_html(report)
+            if companion_html:
+                cp = _export_dir() / companion_name
+                cp.write_text(companion_html, encoding="utf-8")
+                if share_safe:
+                    cp.chmod(0o600)
+                print(f"[export] HTML (workflows) → {cp}", file=sys.stderr)
+        if "md" in formats:
+            companion_md = _sm()._build_workflow_companion_md(report)
+            if companion_md:
+                mp = _export_dir() / f"{stem}_workflows.md"
+                mp.write_text(companion_md, encoding="utf-8")
+                if share_safe:
+                    mp.chmod(0o600)
+                print(f"[export] MD   (workflows) → {mp}", file=sys.stderr)
+
+    # Tasks-companion nav link. The Tasks page itself is generated post-export
+    # by the task-breakdown flow (it needs an LLM to group request units), so
+    # the script can't write it here — but when the caller signals it WILL be
+    # generated (``--task-companion-nav``), point the dashboard/detail nav at
+    # the deterministic ``<stem>_tasks.html`` filename so the button is present
+    # when the page lands. Set BEFORE the render loop so the nav picks it up.
+    if (task_companion_nav and not is_compare
+            and (report.get("request_units") or [])
+            and "html" in formats):
+        _mode = report.get("mode", "session")
+        _stem = (f"project_{run_ts}" if _mode == "project"
+                 else f"session_{str((report.get('sessions') or [{}])[0].get('session_id', 'session'))[:8]}_{run_ts}")
+        report["_tasks_companion_href"] = f"{_stem}_tasks.html"
 
     for fmt in formats:
         if fmt == "text":
@@ -1202,14 +1507,15 @@ def _dispatch(report: dict, formats: list[str],
             content = smc.render_compare_html(
                 report, redact_user_prompts=redact_user_prompts,
             )
-            path = _write_output(fmt, content, report, share_safe=share_safe)
+            path = _write_output(fmt, content, report, explicit_ts=run_ts,
+                                 share_safe=share_safe)
             print(f"[export] HTML (compare) → {path}", file=sys.stderr)
             continue
         if fmt == "html" and not single_page:
             # Split into two files. Dashboard references detail as a sibling
             # by filename-only href so file:// works without a server.
             mode = report["mode"]
-            ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+            ts = run_ts
             stem = (f"project_{ts}" if mode == "project"
                     else f"session_{report['sessions'][0]['session_id'][:8]}_{ts}")
             dashboard_name = f"{stem}_dashboard.html"
@@ -1238,7 +1544,8 @@ def _dispatch(report: dict, formats: list[str],
             content = _sm().render_json(report, redact_user_prompts=redact_user_prompts)
         else:
             content = _sm()._RENDERERS[fmt](report)
-        path = _write_output(fmt, content, report, share_safe=share_safe)
+        path = _write_output(fmt, content, report, explicit_ts=run_ts,
+                             share_safe=share_safe)
         print(f"[export] {fmt.upper():4} → {path}", file=sys.stderr)
         if evidence and fmt == "json":
             sha_p, prov_p = _sm()._write_evidence_pack(

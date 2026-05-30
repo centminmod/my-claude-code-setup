@@ -406,6 +406,23 @@ _XML_MARKER_RE     = re.compile(
     re.IGNORECASE,
 )
 
+# A ``<task-notification>`` user entry is the harness injecting a background
+# agent's completion — not the user typing. Its `<result>` block holds the full
+# agent output (often tens of KB), which would otherwise dominate a request
+# unit's prompt snippet with raw XML. Collapse the whole block to its short
+# `<summary>` (e.g. ``Agent "Explore …" completed``) so the anchor stays (it IS
+# a real work boundary — new work resumed here) but reads as a clean label.
+_TASK_NOTIF_RE = re.compile(
+    r"<task-notification>([\s\S]*?)</task-notification>", re.IGNORECASE)
+_TASK_NOTIF_SUMMARY_RE = re.compile(
+    r"<summary>([\s\S]*?)</summary>", re.IGNORECASE)
+
+
+def _summarise_task_notification(inner: str) -> str:
+    m = _TASK_NOTIF_SUMMARY_RE.search(inner)
+    summary = (m.group(1).strip() if m else "") or "background task completed"
+    return f"↳ {summary}"
+
 # Bound on embedded assistant-text payload to keep the HTML JSON blob tractable
 # even when a session has a few 10k-char monologues. Prompt text is bounded by
 # the natural shape of user input and typically doesn't need a cap.
@@ -447,7 +464,11 @@ def _extract_user_prompt_text(content) -> str:
         raw = "\n".join(parts)
     else:
         return ""
-    # Strip XML markers (including their inner text) before collapsing whitespace.
+    # Collapse background-agent completion notifications to their summary line
+    # first (discards the embedded `<result>` payload), then strip the remaining
+    # plumbing XML markers before collapsing whitespace.
+    raw = _TASK_NOTIF_RE.sub(
+        lambda m: " " + _summarise_task_notification(m.group(1)) + " ", raw)
     raw = _XML_MARKER_RE.sub("", raw).strip()
     # Collapse runs of whitespace so snippets don't waste characters on
     # indentation or blank lines.
@@ -760,6 +781,16 @@ def _build_turn_record(global_index: int, entry: dict,
                 bid = block.get("id")
                 if isinstance(bid, str) and bid:
                     tool_use_ids.append(bid)
+            elif name == "Workflow":
+                # Capture the Workflow tool_use id so Phase-B can anchor the
+                # run's agent costs onto the spawning prompt (runId -> this
+                # tool_use_id -> anchor). Unlike Agent/Task, this does not
+                # register a ``spawned_subagents`` type — workflow agents are
+                # surfaced via the dedicated by_workflow table, not the
+                # subagent-type table.
+                bid = block.get("id")
+                if isinstance(bid, str) and bid:
+                    tool_use_ids.append(bid)
     # When advisor was called, surface it in the drawer tool list so it appears
     # alongside Bash/Read etc. The actual advisor response is encrypted, so the
     # preview is a fixed label.
@@ -773,6 +804,10 @@ def _build_turn_record(global_index: int, entry: dict,
     subagent_type = str(entry.get("_subagent_type") or "")
     # Phase-B: filename-derived agentId (only present on subagent turns).
     subagent_agent_id = str(entry.get("_subagent_agent_id") or "")
+    # Dynamic-workflow run id (only present on turns loaded from a
+    # ``subagents/workflows/<runId>/`` transcript). Drives the by_workflow
+    # aggregate and runId-based prompt attribution. Empty for everything else.
+    workflow_run_id = str(entry.get("_workflow_run_id") or "")
     # Phase-B: ``(tool_use_id, agentId)`` pairs surfaced from the user
     # entry preceding this turn (set in ``_extract_turns``). Empty for
     # turns whose preceding user message was not an Agent/Task result.
@@ -857,6 +892,7 @@ def _build_turn_record(global_index: int, entry: dict,
         "tool_use_ids":              tool_use_ids,
         "agent_links":               agent_links,
         "subagent_agent_id":         subagent_agent_id,
+        "workflow_run_id":           workflow_run_id,
         "prompt_anchor_index":       0,
         "attributed_subagent_tokens": 0,
         "attributed_subagent_cost":   0.0,

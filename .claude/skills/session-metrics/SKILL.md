@@ -445,6 +445,52 @@ slash command keeps the turn focused and lets its `model: haiku`
 frontmatter apply as the entry point. The user runs the slash command
 at their own discretion.
 
+## Automatic Tasks companion (no extra command)
+
+The per-request breakdown is the deterministic foundation for **task grouping**
+("what was I actually trying to do"). To remove the friction of a separate
+`/task-breakdown` step, the Tasks companion is generated **automatically as part
+of an HTML export**, in this same turn — the user gets it for free.
+
+**When `html` is among the requested formats**, add `--task-companion-nav` to the
+script invocation (alongside the always-on `json`). This renders a `Tasks` nav
+button on the dashboard/detail pages pointing at `<stem>_tasks.html`.
+
+**Then, after the `[export]` lines, if the JSON export's `request_units` array
+has more than one entry** (skip otherwise — a single-prompt session needs no
+grouping), generate the companion automatically by following the
+**task-breakdown** skill's procedure inline:
+
+1. Read `request_units` from the JSON export just written.
+2. Group the units into a handful of semantic tasks (topical/lexical continuity
+   is the primary signal; shared tools/files; slash/skill starts; idle gaps are
+   a weak confirming-only hint). Label each task `worth_it` / `mixed` /
+   `likely_waste` using the deterministic waste signals (`risk_turn_count`,
+   `reread_path_count`, `cache_break_count`) as evidence — **bias toward
+   `mixed`/`worth_it` when unsure**; never invent or re-sum numbers.
+3. Write `grouping.json` next to the export (`{schema_version:"1", scope_label,
+   tasks:[{title, verdict, rationale, request_unit_ids:[…]}]}`), covering every
+   `unit_id` once.
+4. Run the renderer (it recomputes all totals from the export and validates the
+   grouping):
+
+   ```bash
+   uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --render-tasks \
+     <export.json> <grouping.json>
+   ```
+
+5. Tell the user the task list (verdicts + turns + cost, read back from the
+   script's stdout / the rendered `*_tasks.md` — do not recompute) and the
+   `*_tasks.html` / `*_tasks.md` paths. The dashboard `Tasks` nav button now
+   resolves to that page.
+
+This is automatic for HTML exports. The standalone `/task-breakdown
+<json-path>` skill remains for re-grouping a saved JSON export later (or a
+project-scope export) without re-running session-metrics. Keep it lightweight:
+most sessions are a handful of tasks; don't over- or under-segment. The
+deterministic "Per-request breakdown" section in the dashboard is the honest
+*per-request* view; the Tasks page is the *semantic* layer you just authored.
+
 ## Self-cost meta-metric
 
 session-metrics tracks its own running cost in the current session.

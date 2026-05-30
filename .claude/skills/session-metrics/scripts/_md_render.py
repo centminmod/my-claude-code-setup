@@ -429,6 +429,29 @@ def render_csv(report: dict) -> str:
                 f"{float(r.get('sp_amortisation_pct', 0.0)):.1f}",
             ])
 
+    by_workflow = report.get("by_workflow") or []
+    if by_workflow:
+        w.writerow([])
+        w.writerow(["# DYNAMIC WORKFLOWS"])
+        w.writerow(["run_id", "workflow_name", "status", "agents",
+                    "agent_count_journal", "tool_calls", "turns",
+                    "input", "output", "cache_read", "cache_write",
+                    "total_tokens", "cost_usd", "cache_hit_pct",
+                    "pct_total_cost", "default_model", "duration_ms"])
+        for r in by_workflow:
+            w.writerow([
+                r.get("run_id", ""), r.get("workflow_name", ""),
+                r.get("status", ""), r.get("agents", 0),
+                r.get("agent_count", 0), r.get("tool_calls", 0),
+                r.get("turns_attributed", 0), r.get("input", 0),
+                r.get("output", 0), r.get("cache_read", 0),
+                r.get("cache_write", 0), r.get("total_tokens", 0),
+                f"{float(r.get('cost_usd', 0.0)):.6f}",
+                f"{float(r.get('cache_hit_pct', 0.0)):.1f}",
+                f"{float(r.get('pct_total_cost', 0.0)):.2f}",
+                r.get("default_model", ""), r.get("duration_ms", 0),
+            ])
+
     cache_breaks = report.get("cache_breaks") or []
     if cache_breaks:
         w.writerow([])
@@ -725,6 +748,81 @@ def render_md(report: dict) -> str:
             p(base)
         p()
 
+    # Dynamic workflows (Workflow tool) — runId-keyed cost table. Cost/tokens
+    # exact from agent transcripts; name/status/duration from the run journal.
+    by_workflow_rows = report.get("by_workflow") or []
+    if by_workflow_rows:
+        p("## Dynamic workflows")
+        p()
+        p("| Workflow | Status | Agents | Tool calls | Total tokens "
+          "| % cached | Cost $ | % of total | Model | Duration |")
+        p("|----------|--------|-------:|-----------:|-------------:"
+          "|---------:|------:|-----------:|-------|---------:|")
+        for r in by_workflow_rows:
+            mdls = r.get("models") or {}
+            top = max(mdls, key=lambda k: mdls[k]) if mdls else "—"
+            mdl_lbl = top if len(mdls) <= 1 else f"{top} +{len(mdls) - 1}"
+            dur_s = int(r.get("duration_ms", 0)) // 1000
+            dur = (f"{dur_s // 60}m {dur_s % 60}s" if dur_s >= 60
+                   else (f"{dur_s}s" if dur_s else "—"))
+            p(
+                f"| `{r.get('workflow_name', '') or r.get('run_id', '')}` "
+                f"| {r.get('status', '') or '—'} "
+                f"| {int(r.get('agents', 0)):,} "
+                f"| {int(r.get('tool_calls', 0)):,} "
+                f"| {int(r.get('total_tokens', 0)):,} "
+                f"| {float(r.get('cache_hit_pct', 0.0)):.1f}% "
+                f"| ${float(r.get('cost_usd', 0.0)):.4f} "
+                f"| {float(r.get('pct_total_cost', 0.0)):.2f}% "
+                f"| {mdl_lbl} | {dur} |"
+            )
+        p()
+
+    # Per-request breakdown — deterministic task-grouping foundation. One row
+    # per user prompt + all the work it drove (follow-up turns + subagents).
+    # Honest framing: per-request, NOT semantic tasks (the task-breakdown skill
+    # groups these into labelled tasks on a separate companion page).
+    request_units = report.get("request_units") or []
+    if len(request_units) > 1:
+        _ru_total = float((report.get("totals") or {}).get("cost", 0.0) or 0.0)
+        _ru_rows = sorted(request_units,
+                          key=lambda u: -float(u.get("combined_cost_usd", 0.0)))
+        _ru_limit = 50
+        p("## Per-request breakdown")
+        p()
+        p("_One row per user prompt and all the work it drove (follow-up turns "
+          "+ attributed subagents). Per-request, **not** semantic tasks — the "
+          "`task-breakdown` skill groups these into labelled tasks._")
+        p()
+        p("| Turn | Request | Turns | Cost $ | % total | Tokens | Tools "
+          "| Risk | Re-reads | Idle (s) |")
+        p("|-----:|---------|------:|-------:|--------:|-------:|-------"
+          "|-----:|---------:|---------:|")
+        for u in _ru_rows[:_ru_limit]:
+            tools = list(u.get("tool_histogram") or {})
+            tools_str = ", ".join(tools[:3]) + (f" +{len(tools) - 3}"
+                                                if len(tools) > 3 else "")
+            snippet = (u.get("prompt_snippet") or "").replace("|", "\\|")
+            if u.get("slash_command"):
+                snippet = f"{u['slash_command']} · {snippet}"
+            if u.get("multi_intent_possible"):
+                snippet += " _(multi-ask?)_"
+            comb = float(u.get("combined_cost_usd", 0.0))
+            pct = (100.0 * comb / _ru_total) if _ru_total else 0.0
+            p(f"| #{u.get('anchor_index')} | {snippet} "
+              f"| {int(u.get('turn_count', 0)):,} "
+              f"| ${comb:.4f} "
+              f"| {pct:.1f}% "
+              f"| {int(u.get('total_tokens', 0)):,} "
+              f"| {tools_str or '—'} "
+              f"| {int(u.get('risk_turn_count', 0))} "
+              f"| {int(u.get('reread_path_count', 0))} "
+              f"| {int(u.get('idle_gap_before_seconds', 0))} |")
+        if len(_ru_rows) > _ru_limit:
+            p()
+            p(f"_Showing top {_ru_limit} of {len(_ru_rows)} requests by cost._")
+        p()
+
     # Within-session spawning split — descriptive contrast that holds
     # task / model / context constant. Only renders for sessions with
     # ≥3 spawning AND ≥3 non-spawning turns (median needs a floor).
@@ -932,6 +1030,188 @@ def _build_within_session_split_md(rows: list[dict]) -> str:
         )
     out.append("")
     return "\n".join(out)
+
+
+def _build_workflow_companion_md(report: dict) -> str:
+    """Standalone Markdown deep-dive for a report's dynamic workflows.
+
+    The Markdown sibling of ``_build_workflow_companion_html``: one section per
+    run with a phase → agent timeline. Per-agent token/cost are exact (summed
+    from agent transcripts); labels, phases, tool-calls and previews come from
+    the run journal. Returns "" when the report has no workflows.
+    """
+    rows = report.get("by_workflow") or []
+    if not rows:
+        return ""
+
+    def _dur(ms: int) -> str:
+        s = int(ms) // 1000
+        if s <= 0:
+            return "—"
+        if s < 60:
+            return f"{s}s"
+        m, sec = divmod(s, 60)
+        if m < 60:
+            return f"{m}m {sec}s"
+        h, m = divmod(m, 60)
+        return f"{h}h {m}m"
+
+    def _cell(text) -> str:
+        return str(text or "").replace("|", "\\|").replace("\n", " ").strip()
+
+    scope = report.get("slug") or report.get("mode") or ""
+    gen = report.get("generated_at", "") or ""
+    ver = str(report.get("skill_version", "") or "")
+    tot_runs = len(rows)
+    tot_agents = sum(int(r.get("agents", 0)) for r in rows)
+    tot_cost = sum(float(r.get("cost_usd", 0.0)) for r in rows)
+    tot_tokens = sum(int(r.get("total_tokens", 0)) for r in rows)
+
+    out: list[str] = [
+        f"# Dynamic workflows — {scope}",
+        "",
+        f"_Generated {gen} · skill v{ver}_",
+        "",
+        "Per-agent token/cost are exact (summed from agent transcripts); labels, "
+        "phases, tool-calls and previews come from the run journal.",
+        "",
+        f"**{tot_runs:,}** run{'s' if tot_runs != 1 else ''} · "
+        f"**{tot_agents:,}** agents · **${tot_cost:.4f}** · "
+        f"**{tot_tokens:,}** tokens",
+        "",
+    ]
+    for r in rows:
+        name = r.get("workflow_name") or r.get("run_id") or ""
+        out.append(f"## {name}")
+        out.append("")
+        meta_bits = [
+            f"status **{r.get('status') or '—'}**",
+            f"{int(r.get('agents', 0)):,} agents",
+            f"${float(r.get('cost_usd', 0.0)):.4f}",
+            f"{int(r.get('total_tokens', 0)):,} tokens",
+            _dur(int(r.get("duration_ms", 0))),
+        ]
+        if r.get("project"):
+            meta_bits.insert(0, f"project `{_cell(r.get('project'))}`")
+        out.append(" · ".join(meta_bits))
+        out.append("")
+
+        agents = r.get("agent_details") or []
+        by_phase: dict = {}
+        for a in agents:
+            by_phase.setdefault(int(a.get("phaseIndex") or 0), []).append(a)
+        phase_titles = {i + 1: (p.get("title") or "")
+                        for i, p in enumerate(r.get("phases") or [])}
+        for pidx in sorted(by_phase):
+            ptitle = phase_titles.get(pidx, "")
+            head = f"Phase {pidx}" + (f": {ptitle}" if ptitle else "")
+            out.append(f"### {head}")
+            out.append("")
+            out.append("| Agent | Model | Tokens | Cost $ | Tools | Duration | State |")
+            out.append("|-------|-------|-------:|-------:|------:|---------:|-------|")
+            ranked = sorted(by_phase[pidx],
+                            key=lambda x: -float(x.get("transcript_cost") or 0.0))
+            for a in ranked:
+                out.append(
+                    f"| `{_cell(a.get('label') or a.get('agentId'))}` "
+                    f"| {_cell(a.get('model'))} "
+                    f"| {int(a.get('transcript_tokens', 0)):,} "
+                    f"| ${float(a.get('transcript_cost', 0.0)):.4f} "
+                    f"| {int(a.get('toolCalls', 0)):,} "
+                    f"| {_dur(int(a.get('durationMs', 0)))} "
+                    f"| {_cell(a.get('state'))} |"
+                )
+            previews = [(a.get("label") or a.get("agentId") or "",
+                         (a.get("resultPreview") or "")[:200])
+                        for a in ranked if a.get("resultPreview")]
+            if previews:
+                out.append("")
+                for lbl, pv in previews:
+                    out.append(f"- `{_cell(lbl)}` — {_cell(pv)}")
+            out.append("")
+    return "\n".join(out).rstrip() + "\n"
+
+
+_TASK_VERDICT_MD = {
+    "worth_it": "✅ Worth it", "mixed": "🟡 Mixed", "likely_waste": "🔴 Likely waste",
+}
+
+
+def _build_tasks_companion_md(report: dict, tasks_data: dict) -> str:
+    """Standalone Markdown "Tasks" companion — the Markdown sibling of
+    :func:`_html_sections._build_tasks_companion_html`.
+
+    One section per Claude-grouped task with a verdict, rationale and a member
+    request-unit table. All figures come from ``tasks_data`` (summed from the
+    export's request units). Returns "" when there are no tasks.
+    """
+    tasks = tasks_data.get("tasks") or []
+    if not tasks:
+        return ""
+
+    def _cell(text) -> str:
+        return str(text or "").replace("|", "\\|").replace("\n", " ").strip()
+
+    scope = (tasks_data.get("scope_label")
+             or report.get("slug") or report.get("mode") or "")
+    gen = report.get("generated_at", "") or ""
+    ver = str(report.get("skill_version", "") or "")
+    out: list[str] = [
+        f"# Tasks — {scope}",
+        "",
+        f"_Generated {gen} · skill v{ver}_",
+        "",
+        "Semantic tasks grouped by Claude from the deterministic per-request "
+        "breakdown. Every figure is summed from the export's request units — "
+        "the grouping only assigns requests to tasks and labels each.",
+        "",
+        f"**{len(tasks):,}** task{'s' if len(tasks) != 1 else ''} · "
+        f"**{int(tasks_data.get('total_turns', 0)):,}** turns · "
+        f"**${float(tasks_data.get('total_cost_usd', 0.0)):.4f}** · "
+        f"**{tasks_data.get('coverage_pct', 0.0):.0f}%** of requests grouped",
+        "",
+    ]
+    for t in tasks:
+        out.append(f"## {t.get('title') or 'Untitled task'}")
+        out.append("")
+        verdict = _TASK_VERDICT_MD.get(t.get("verdict") or "", "")
+        meta = [m for m in [
+            verdict,
+            f"{int(t.get('member_count', 0)):,} requests",
+            f"{int(t.get('turn_count', 0)):,} turns",
+            f"${float(t.get('cost_usd', 0.0)):.4f}",
+            f"{int(t.get('total_tokens', 0)):,} tokens",
+            (f"⚠ {int(t.get('risk_turn_count', 0))} risky turns"
+             if int(t.get("risk_turn_count", 0)) else ""),
+        ] if m]
+        out.append(" · ".join(meta))
+        out.append("")
+        if t.get("rationale"):
+            out.append(f"> {_cell(t.get('rationale'))}")
+            out.append("")
+        out.append("| Req | Prompt | Turns | Cost $ | Tokens | Tools | Risk |")
+        out.append("|----:|--------|------:|-------:|-------:|-------|-----:|")
+        for u in t.get("members") or []:
+            tools = list(u.get("tool_histogram") or {})
+            tools_str = ", ".join(tools[:3]) + (f" +{len(tools) - 3}"
+                                                if len(tools) > 3 else "")
+            out.append(
+                f"| #{u.get('anchor_index')} "
+                f"| {_cell((u.get('prompt_snippet') or '')[:120])} "
+                f"| {int(u.get('turn_count', 0)):,} "
+                f"| ${float(u.get('combined_cost_usd', 0.0)):.4f} "
+                f"| {int(u.get('total_tokens', 0)):,} "
+                f"| {tools_str or '—'} "
+                f"| {int(u.get('risk_turn_count', 0)) or '—'} |")
+        out.append("")
+    warnings = tasks_data.get("warnings") or []
+    if warnings:
+        out.append("## Grouping notes")
+        out.append("")
+        for w in warnings[:20]:
+            out.append(f"- {_cell(w)}")
+        out.append("")
+    return "\n".join(out).rstrip() + "\n"
 
 
 def _build_usage_insights_md(insights: list[dict]) -> str:

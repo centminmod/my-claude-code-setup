@@ -330,10 +330,53 @@ the final settled usage values.
 
 ## Subagent logs
 
-Spawned agents write to `<session-uuid>/subagents/agent-<hex>.jsonl`.
-The main script ignores subagent files by default; pass
-`--include-subagents` to fold them in (adds a `[subagent]` marker in
-the turn index).
+Spawned agents (Agent/Task tool) write to
+`<session-uuid>/subagents/agent-<hex>.jsonl`. Folded in by default
+(`--include-subagents`, on); pass `--no-include-subagents` to skip.
+
+### Dynamic-workflow transcripts (Workflow tool, v1.48.0)
+
+The `Workflow` tool (dynamic workflows / ultracode) fans out to
+**20–100+ agents** per run, and their transcripts live **one tier
+deeper** than the Agent/Task path:
+
+```
+<session-uuid>/
+  subagents/
+    agent-<hex>.jsonl                       ← Agent/Task subagents
+    workflows/<runId>/
+        agent-<hex>.jsonl                   ← WORKFLOW agents (full usage; the bulk of ultracode cost)
+        agent-<hex>.meta.json               ← {agentType, description}
+        journal.jsonl                       ← key/value event log, NO usage — MUST be excluded
+  workflows/
+    wf_<runId>.json                         ← run journal (metadata, sibling of subagents/)
+    scripts/<name>-<runId>.js               ← the workflow script
+```
+
+- **Cost source of truth = the nested `agent-*.jsonl` transcripts.** They
+  carry full per-message `usage`, so the existing per-model pricing tallies
+  them exactly (incl. cache-read, which dominates). Discovered by
+  `_load_session` walking `subagents/workflows/<runId>/`; gated by
+  `--include-workflows` (default on, requires `--include-subagents`).
+- **`wf_<runId>.json` journal = display metadata only.** Mined by
+  `_parse_workflow_journal` for `workflowName`, `status`, `phases[]`,
+  `totalToolCalls`, `durationMs`, and the per-agent
+  `workflowProgress[type=workflow_agent]` entries (`label`, `model`,
+  `tokens`, `phaseTitle`, `promptPreview`/`resultPreview`). Its own
+  top-level `totalTokens` **excludes cache reads** and is NOT used for cost.
+- **`agents` vs `agent_count`.** The `by_workflow` row's `agents` counts
+  distinct agent **transcripts on disk** (often `agentCount + 1` — the run
+  includes one `<synthetic>`-model orchestrator placeholder, zero-priced via
+  `_pricing_for`); `agent_count` is the journal's reported figure. They are
+  *supposed* to differ — not a reconciliation bug.
+- **Attribution.** Workflow agents have `parentUuid: null` and no
+  main-thread per-agent tool_use, so the agentId path orphans. Instead the
+  main-thread `toolUseResult.runId` + the sibling `tool_result.tool_use_id`
+  bridge `runId → tool_use_id → spawning-prompt anchor` (captured pre-dedup
+  so a resumed session can't lose the link). Surfaced via the dedicated
+  **Dynamic workflows** table (session/project/instance), the
+  `by_workflow` JSON array, the MD/CSV sections, and an auto-emitted
+  `*_workflows.html` companion deep-dive (phase→agent timeline).
 
 ---
 

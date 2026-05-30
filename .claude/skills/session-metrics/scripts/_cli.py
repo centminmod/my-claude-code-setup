@@ -279,6 +279,24 @@ def _build_parser() -> argparse.ArgumentParser:
                    default=True,
                    help="Tally spawned subagent JSONL files (default: on). "
                         "Pass --no-include-subagents to skip for faster runs.")
+    p.add_argument("--include-workflows", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="Tally dynamic-workflow agent transcripts under "
+                        "subagents/workflows/<runId>/ (default: on). These can "
+                        "fan out to 100s of agents and dominate cost under "
+                        "ultracode. Requires --include-subagents. Pass "
+                        "--no-include-workflows to skip the extra parse IO.")
+    p.add_argument("--no-workflow-detail", action="store_true",
+                   help="Suppress the auto-emitted *_workflows.html/.md "
+                        "companion deep-dive when an export contains dynamic "
+                        "workflows. The summary table still renders inline.")
+    p.add_argument("--task-companion-nav", action="store_true",
+                   help="Render a 'Tasks' nav button on the dashboard/detail "
+                        "pages pointing to the deterministic <stem>_tasks.html. "
+                        "Set by the task-breakdown flow, which generates that "
+                        "companion right after the export; without that "
+                        "follow-up the link would dangle, so it is off by "
+                        "default for raw-script runs.")
     p.add_argument("--cache-break-threshold", type=int,
                    default=_sm()._CACHE_BREAK_DEFAULT_THRESHOLD, metavar="TOKENS",
                    help=(f"Turns whose input + cache_creation exceed TOKENS are "
@@ -531,6 +549,18 @@ def _build_parser() -> argparse.ArgumentParser:
                         "positional model IDs; defaults to 'claude-opus-4-6 "
                         "claude-opus-4-7'. A single model is accepted for "
                         "input-token measurement without ratios.")
+    # --- Task-breakdown companion renderer -------------------------------
+    _mode.add_argument("--render-tasks", nargs=2,
+                   metavar=("EXPORT_JSON", "GROUPING_JSON"),
+                   help="Render the standalone Tasks companion page "
+                        "(*_tasks.html + *_tasks.md) from a session-metrics "
+                        "JSON export and a Claude-authored grouping.json "
+                        "(schema: {schema_version, tasks:[{title, verdict, "
+                        "rationale, request_unit_ids:[...]}]}). All cost/turn "
+                        "figures are summed from the export's request_units — "
+                        "the grouping only assigns requests to tasks. Used by "
+                        "the task-breakdown skill; writes next to the export "
+                        "(or --export-dir).")
     # --- Phase 10 — Automated headless capture ---------------------------
     _mode.add_argument("--compare-run", nargs="*", metavar="MODEL",
                    default=None,
@@ -788,6 +818,13 @@ def main() -> None:
         smc._run_compare_list_prompts(_suite)
         return
 
+    if args.render_tasks is not None:
+        export_json, grouping_json = args.render_tasks
+        _task_fmts = [f for f in formats if f in ("html", "md")] or ["html", "md"]
+        rc = _sm()._run_render_tasks(export_json, grouping_json,
+                                     formats=_task_fmts)
+        sys.exit(rc)
+
     if args.compare_prep is not None:
         smc = _load_compare_module()
         suite_dir = Path(args.compare_prompts).expanduser() if args.compare_prompts else None
@@ -959,6 +996,8 @@ def main() -> None:
             plan_cost=plan_cost,
             invariants_thresholds=invariants_thresholds,
             evidence=args.evidence,
+            include_workflows=args.include_workflows,
+            no_workflow_detail=args.no_workflow_detail,
         )
         return
 
@@ -981,6 +1020,9 @@ def main() -> None:
             plan_cost=plan_cost,
             invariants_thresholds=invariants_thresholds,
             evidence=args.evidence,
+            include_workflows=args.include_workflows,
+            no_workflow_detail=args.no_workflow_detail,
+            task_companion_nav=args.task_companion_nav,
         )
         return
 
@@ -1001,5 +1043,8 @@ def main() -> None:
         share_safe=args.export_share_safe,
         plan_cost=plan_cost,
         invariants_thresholds=invariants_thresholds,
+        include_workflows=args.include_workflows,
+        no_workflow_detail=args.no_workflow_detail,
+        task_companion_nav=args.task_companion_nav,
     )
 

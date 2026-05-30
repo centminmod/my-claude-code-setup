@@ -52,6 +52,21 @@ def _redact_turns_for_json(sessions: list[dict]) -> list[dict]:
     return out
 
 
+def _redact_request_units_for_json(units: list[dict]) -> list[dict]:
+    """Return a shallow copy of ``units`` with the anchor prompt text masked.
+
+    Mirrors ``_redact_turns_for_json`` for the top-level ``request_units``
+    list, which carries its own ``prompt_text`` / ``prompt_snippet`` copies."""
+    out = []
+    for u in units:
+        red = {**u}
+        for fld in ("prompt_text", "prompt_snippet"):
+            if red.get(fld):
+                red[fld] = _REDACTED_PLACEHOLDER
+        out.append(red)
+    return out
+
+
 def render_json(report: dict, *, redact_user_prompts: bool = False) -> str:
     """Render the full report as indented JSON.
 
@@ -73,6 +88,10 @@ def render_json(report: dict, *, redact_user_prompts: bool = False) -> str:
         return _render_instance_json(report)
     # Shallow-transform: only replace time_of_day sections
     export = {**report}
+    # Transient render-only hint (companion filename) — keep out of the JSON
+    # so machine consumers see a stable schema.
+    export.pop("_workflow_companion_href", None)
+    export.pop("_tasks_companion_href", None)
     if "time_of_day" in export:
         export["time_of_day"] = _tod_for_json(export["time_of_day"])
     if "sessions" in export:
@@ -84,6 +103,11 @@ def render_json(report: dict, *, redact_user_prompts: bool = False) -> str:
             if "time_of_day" in s else s
             for s in sessions
         ]
+    # Request units carry their own copy of the anchor prompt text — redact
+    # it under the same flag so the per-request breakdown is share-safe too.
+    if redact_user_prompts and export.get("request_units"):
+        export["request_units"] = _redact_request_units_for_json(
+            export["request_units"])
     return json.dumps(export, indent=2)
 
 

@@ -49,6 +49,11 @@ def _pricing_for(model: str) -> dict[str, float]:
     rely on the side effect refreshing per call must call
     ``_pricing_for.cache_clear()`` (see autouse fixture in tests).
     """
+    # Non-billable placeholder: dynamic-workflow orchestrator rows carry the
+    # ``<synthetic>`` model marker and represent no real inference. Zero-rate
+    # them so they neither overcharge nor trip the unknown-model advisory.
+    if model == _sm()._SYNTHETIC_MODEL:
+        return _sm()._ZERO_PRICING
     if model in _sm()._PRICING:
         return _sm()._PRICING[model]
     # Regex patterns before prefix sweep so specific variants (e.g. glm-5-turbo)
@@ -1349,6 +1354,274 @@ def _summarize_self_cost(by_skill: list[dict]) -> dict:
     return out
 
 
+# Connective markers that hint a single prompt bundles multiple asks
+# ("fix the test AND update the README", "do X; then Y"). Used by
+# ``_build_request_units`` to set a conservative ``multi_intent_possible``
+# flag — a HINT for the optional LLM grouping pass, never a hard split.
+# Deliberately biased toward false negatives (only fires on explicit
+# enumeration) so the flag does not cry wolf on ordinary prose.
+_MULTI_INTENT_RE = re.compile(
+    r"(?:\b(?:also|then|additionally|afterwards?)\b"
+    r"|;\s|\n\s*[-*\d]"          # semicolons / bullet or numbered lines
+    r"|\band then\b)",
+    re.IGNORECASE,
+)
+
+
+def _detect_multi_intent(prompt_text: str) -> bool:
+    """Conservative heuristic: does this prompt bundle ≥2 distinct asks?
+
+    Fires only on explicit enumeration (≥2 connective markers in a prompt
+    long enough to plausibly hold two asks). The deterministic layer keeps
+    the request unit indivisible regardless — this flag only tells the LLM
+    pass "consider whether this one prompt was really two tasks".
+    """
+    text = (prompt_text or "").strip()
+    if len(text) < 60:
+        return False
+    return len(_MULTI_INTENT_RE.findall(text)) >= 2
+
+
+def _build_request_units(sessions: list[dict]) -> list[dict]:
+    """Group turns into deterministic "request units" by prompt anchor.
+
+    A **request unit** = every turn sharing one ``prompt_anchor_index`` —
+    i.e. all assistant/tool/subagent work caused by a single user prompt.
+    Subagent turns inherit their spawning prompt's anchor
+    (``_compute_prompt_anchor_indices``), so a unit's combined cost already
+    captures the subagent chain. This is a *per-utterance* carve-up, NOT a
+    semantic task: one prompt can bundle several asks and one task can span
+    many follow-up prompts. The honest UI label is "per-request breakdown".
+
+    Cost invariant: summing each unit's ``combined_cost_usd`` over a session
+    reproduces that session's ``subtotal.cost`` to float precision, because
+    every non-resume turn lands in exactly one unit and ``cost_usd`` is summed
+    over the whole group (the headline total is itself parent + subagent
+    direct cost). Tool histogram and waste signals aggregate over the MAIN
+    (non-subagent) turns only — they describe the main-thread work; subagent
+    internals are covered by the subagent / workflow tables.
+
+    The grouping key is the compound ``(session_id, anchor_index)`` so project
+    and instance scopes keep per-session units distinct (global turn indices
+    are unique today, but a unit's identity should not depend on that).
+    """
+    from collections import Counter
+
+    units: list[dict] = []
+    for session in sessions:
+        sid = session.get("session_id", "")
+        groups: dict[int, list[dict]] = {}
+        order: list[int] = []
+        for t in session.get("turns", []) or []:
+            if t.get("is_resume_marker"):
+                continue
+            anchor = t.get("prompt_anchor_index", t.get("index"))
+            if anchor not in groups:
+                groups[anchor] = []
+                order.append(anchor)
+            groups[anchor].append(t)
+
+        prev_end_epoch = 0
+        for anchor in order:
+            turns = groups[anchor]
+            # The anchor turn is the prompt-bearing main turn (index == anchor);
+            # fall back to the earliest turn if the anchor turn was filtered.
+            anchor_turn = next(
+                (t for t in turns if t.get("index") == anchor), turns[0])
+
+            tool_hist: Counter = Counter()
+            risk = cbreaks = 0
+            cross_ctx = False
+            reread_paths: set[str] = set()
+            direct_cost = sub_cost = 0.0
+            tokens = inp = out = cread = cwrite = 0
+            for t in turns:
+                cost = float(t.get("cost_usd", 0.0))
+                if t.get("subagent_agent_id"):
+                    sub_cost += cost
+                else:
+                    direct_cost += cost
+                    for n in (t.get("tool_use_names") or []):
+                        tool_hist[n] += 1
+                    if t.get("turn_risk"):
+                        risk += 1
+                    if t.get("is_cache_break"):
+                        cbreaks += 1
+                    if t.get("reread_cross_ctx"):
+                        cross_ctx = True
+                    for p in (t.get("reaccessed_paths") or []):
+                        reread_paths.add(p)
+                tokens += int(t.get("total_tokens", 0))
+                inp    += int(t.get("input_tokens", 0))
+                out    += int(t.get("output_tokens", 0))
+                cread  += int(t.get("cache_read_tokens", 0))
+                cwrite += int(t.get("cache_write_tokens", 0))
+
+            start_ts = anchor_turn.get("timestamp", "")
+            end_ts   = turns[-1].get("timestamp", "")
+            start_e  = _parse_iso_epoch(start_ts)
+            end_e    = _parse_iso_epoch(end_ts)
+            wall = (end_e - start_e) if (start_e and end_e and end_e > start_e) else 0
+            idle = (
+                (start_e - prev_end_epoch)
+                if (prev_end_epoch and start_e and start_e > prev_end_epoch)
+                else 0
+            )
+            if end_e:
+                prev_end_epoch = end_e
+
+            indices = [idx for t in turns
+                       if isinstance((idx := t.get("index")), int)]
+            prompt_text = anchor_turn.get("prompt_text") or ""
+            units.append({
+                "unit_id":           f"{sid}:{anchor}",
+                "session_id":        sid,
+                "anchor_index":      anchor,
+                "prompt_snippet":    anchor_turn.get("prompt_snippet") or "",
+                "prompt_text":       prompt_text,
+                "slash_command":     (anchor_turn.get("slash_command") or "").strip(),
+                "skill_invocations": sorted(
+                    {s for t in turns for s in (t.get("skill_invocations") or [])}),
+                "spawned_subagents": sorted(
+                    {s for t in turns for s in (t.get("spawned_subagents") or [])}),
+                "workflow_run_ids":  sorted(
+                    {rid for t in turns
+                     if (rid := t.get("workflow_run_id"))}),
+                "turn_count":        len(turns),
+                "first_index":       min(indices) if indices else anchor,
+                "last_index":        max(indices) if indices else anchor,
+                "start_ts":          start_ts,
+                "end_ts":            end_ts,
+                "wall_clock_seconds":      wall,
+                "idle_gap_before_seconds": idle,
+                "cost_usd":           round(direct_cost, 6),
+                "subagent_cost_usd":  round(sub_cost, 6),
+                "combined_cost_usd":  round(direct_cost + sub_cost, 6),
+                "total_tokens":       tokens,
+                "input":              inp,
+                "output":             out,
+                "cache_read":         cread,
+                "cache_write":        cwrite,
+                "tool_histogram":     dict(tool_hist.most_common()),
+                "risk_turn_count":    risk,
+                "reread_path_count":  len(reread_paths),
+                "reread_cross_ctx":   cross_ctx,
+                "cache_break_count":  cbreaks,
+                "multi_intent_possible": _detect_multi_intent(prompt_text),
+                "is_post_compaction": any(
+                    t.get("is_post_compaction") for t in turns),
+            })
+    return units
+
+
+# Schema version of the grouping.json consumed by ``--render-tasks``. Bumped
+# only when the grouping interchange shape changes (the renderer warns on a
+# mismatch so a stale grouping file produced against an older export doesn't
+# silently render wrong). Independent of _SKILL_VERSION.
+_TASKS_GROUPING_SCHEMA_VERSION = "1"
+
+_TASK_VERDICTS = ("worth_it", "mixed", "likely_waste")
+
+
+def _assemble_tasks(report: dict, grouping: dict) -> dict:
+    """Validate a Claude-authored ``grouping`` and resolve it against the
+    export's ``request_units``, computing every total FROM THE EXPORT.
+
+    The grouping file only assigns ``request_unit_ids`` to titled tasks and
+    labels each with a verdict + rationale — it is never trusted for cost or
+    token math (an LLM must not sum money). This function looks each member
+    unit up in ``report["request_units"]`` and sums the deterministic figures,
+    so a task's cost is always the exact sum of its members.
+
+    Validation (surfaced as ``warnings``, never silently dropped):
+      - schema-version mismatch,
+      - unknown unit ids (referenced but absent from the export),
+      - duplicate unit ids (a unit claimed by more than one task),
+      - uncovered units (present in the export but in no task) — collected
+        into a synthetic trailing "Ungrouped requests" task so the page's
+        totals still reconcile to the report.
+
+    Returns ``{schema_version, tasks, warnings, coverage_pct,
+    total_cost_usd, total_turns, unit_count, grouped_unit_count}``.
+    """
+    units_by_id = {u.get("unit_id"): u for u in (report.get("request_units") or [])}
+    all_ids = list(units_by_id)
+    warnings: list[str] = []
+
+    gv = str(grouping.get("schema_version") or "")
+    if gv and gv != _TASKS_GROUPING_SCHEMA_VERSION:
+        warnings.append(
+            f"grouping schema_version {gv!r} != expected "
+            f"{_TASKS_GROUPING_SCHEMA_VERSION!r}; rendering best-effort")
+
+    seen: set[str] = set()
+    tasks_out: list[dict] = []
+    for raw in grouping.get("tasks") or []:
+        member_ids = list(raw.get("request_unit_ids") or [])
+        members: list[dict] = []
+        for uid in member_ids:
+            if uid not in units_by_id:
+                warnings.append(f"task {raw.get('title','?')!r} references "
+                                f"unknown request unit {uid!r}")
+                continue
+            if uid in seen:
+                warnings.append(f"request unit {uid!r} assigned to more than "
+                                f"one task; counted once")
+                continue
+            seen.add(uid)
+            members.append(units_by_id[uid])
+        verdict = raw.get("verdict") or ""
+        if verdict and verdict not in _TASK_VERDICTS:
+            warnings.append(f"task {raw.get('title','?')!r} has unknown "
+                            f"verdict {verdict!r}")
+        tasks_out.append(_summarise_task(
+            raw.get("title") or "Untitled task", verdict,
+            raw.get("rationale") or "", members))
+
+    uncovered = [units_by_id[uid] for uid in all_ids if uid not in seen]
+    if uncovered:
+        tasks_out.append(_summarise_task(
+            "Ungrouped requests", "",
+            "Requests the grouping did not assign to any task.", uncovered))
+
+    grouped = len(seen)
+    return {
+        "schema_version":     _TASKS_GROUPING_SCHEMA_VERSION,
+        "scope_label":        grouping.get("scope_label") or "",
+        "tasks":              tasks_out,
+        "warnings":           warnings,
+        "unit_count":         len(all_ids),
+        "grouped_unit_count": grouped,
+        "coverage_pct":       round(100.0 * grouped / len(all_ids), 1) if all_ids else 0.0,
+        "total_cost_usd":     round(sum(t["cost_usd"] for t in tasks_out), 6),
+        "total_turns":        sum(t["turn_count"] for t in tasks_out),
+    }
+
+
+def _summarise_task(title: str, verdict: str, rationale: str,
+                    members: list[dict]) -> dict:
+    """Roll a task's member request units into deterministic totals."""
+    from collections import Counter
+    hist: Counter = Counter()
+    for u in members:
+        hist.update(u.get("tool_histogram") or {})
+    return {
+        "title":             title,
+        "verdict":           verdict,
+        "rationale":         rationale,
+        "member_count":      len(members),
+        "turn_count":        sum(int(u.get("turn_count", 0)) for u in members),
+        "cost_usd":          round(sum(float(u.get("combined_cost_usd", 0.0))
+                                       for u in members), 6),
+        "total_tokens":      sum(int(u.get("total_tokens", 0)) for u in members),
+        "risk_turn_count":   sum(int(u.get("risk_turn_count", 0)) for u in members),
+        "reread_path_count": sum(int(u.get("reread_path_count", 0)) for u in members),
+        "wall_clock_seconds": sum(int(u.get("wall_clock_seconds", 0)) for u in members),
+        "tool_histogram":    dict(hist.most_common()),
+        "members":           members,
+    }
+
+
 def _empty_subagent_row(name: str) -> dict:
     return {
         "name":             name,
@@ -1475,6 +1748,110 @@ def _build_by_subagent_type(sessions: list[dict], total_cost: float) -> list[dic
         row["first_turn_share_pct"] = round(100.0 * median_share, 1)
         row["sp_amortisation_pct"]  = round(100.0 * amort_count / n, 1)
     return _finalise_subagent_rows(rows, total_cost)
+
+
+def _empty_workflow_row(run_id: str) -> dict:
+    return {
+        "run_id":           run_id,
+        "workflow_name":    run_id,   # overwritten from journal when present
+        "status":           "",
+        "agents":           0,        # distinct on-disk agentIds (transcripts)
+        "agent_count":      0,        # journal-reported agentCount (may differ)
+        "tool_calls":       0,        # journal totalToolCalls
+        "turns_attributed": 0,        # workflow-tagged turns counted
+        "input":            0,
+        "output":           0,
+        "cache_read":       0,
+        "cache_write":      0,
+        "total_tokens":     0,
+        "cost_usd":         0.0,
+        "duration_ms":      0,
+        "default_model":    "",
+        "models":           {},       # model → turn count, from transcripts
+        "pct_total_cost":   0.0,
+        "cache_hit_pct":    0.0,
+        "phases":           [],       # journal phase list (display only)
+        "agent_details":    [],       # journal per-agent entries (companion)
+        "_sessions":        set(),
+        "_agent_ids":       set(),
+    }
+
+
+def _build_by_workflow(sessions: list[dict], total_cost: float,
+                       journals_by_session: dict) -> list[dict]:
+    """Aggregate dynamic-workflow token/cost per ``runId``.
+
+    Cost and tokens are summed from the merged workflow-agent transcripts
+    (turns tagged with ``workflow_run_id`` by ``_load_session``) using the
+    same per-model pricing as every other turn — so the figure is exact,
+    including the cache-read-heavy component that the journal's own
+    ``totalTokens`` omits. The ``wf_<runId>.json`` journals
+    (``journals_by_session[session_id][run_id]``) supply only display
+    metadata: workflow name, run status, phase structure, tool-call count,
+    wall-clock duration, and the per-agent label/preview list used by the
+    companion deep-dive. Returns ``[]`` when no workflow ran.
+    """
+    rows: dict[str, dict] = {}
+    # Per-agent exact token/cost from transcripts, keyed (run_id, agentId).
+    # Merged into the journal's per-agent entries so the companion deep-dive
+    # shows real cost rather than the journal's cache-read-excluding figure.
+    per_agent: dict[tuple[str, str], dict] = {}
+    for session in sessions:
+        sid = session.get("session_id", "")
+        for t in session.get("turns", []) or []:
+            if t.get("is_resume_marker"):
+                continue
+            run_id = t.get("workflow_run_id") or ""
+            if not run_id:
+                continue
+            row = rows.setdefault(run_id, _empty_workflow_row(run_id))
+            _accumulate_bucket(row, t)          # input/output/cache/cost/turns
+            row["_sessions"].add(sid)
+            aid = t.get("subagent_agent_id") or ""
+            if aid:
+                row["_agent_ids"].add(aid)
+                pa = per_agent.setdefault((run_id, aid),
+                                          {"tokens": 0, "cost": 0.0})
+                pa["tokens"] += int(t.get("total_tokens", 0))
+                pa["cost"]   += float(t.get("cost_usd", 0.0))
+            mdl = t.get("model") or ""
+            if mdl and mdl != _sm()._SYNTHETIC_MODEL:
+                row["models"][mdl] = row["models"].get(mdl, 0) + 1
+    # Enrich with journal metadata (name/status/phases/tool-calls/duration)
+    # and graft exact per-agent transcript cost onto each agent entry.
+    for run_meta in (journals_by_session or {}).values():
+        for run_id, summary in (run_meta or {}).items():
+            row = rows.get(run_id)
+            if not row:
+                continue  # journal present but no transcripts loaded — skip
+            row["workflow_name"] = summary.get("workflow_name") or run_id
+            row["status"]        = summary.get("status") or ""
+            row["agent_count"]   = int(summary.get("agent_count") or 0)
+            row["tool_calls"]    = int(summary.get("total_tool_calls") or 0)
+            row["duration_ms"]   = int(summary.get("duration_ms") or 0)
+            row["default_model"] = summary.get("default_model") or ""
+            row["phases"]        = summary.get("phases") or []
+            agents_out = []
+            for a in summary.get("agents") or []:
+                a = dict(a)
+                pa = per_agent.get((run_id, a.get("agentId") or ""))
+                a["transcript_tokens"] = int(pa["tokens"]) if pa else 0
+                a["transcript_cost"]   = round(float(pa["cost"]), 6) if pa else 0.0
+                agents_out.append(a)
+            row["agent_details"] = agents_out
+    out: list[dict] = []
+    for row in rows.values():
+        row = dict(row)
+        row["session_count"] = len(row.pop("_sessions", set()) or set())
+        row["agents"] = len(row.pop("_agent_ids", set()) or set())
+        total_input_side = (row["input"] + row["cache_read"] + row["cache_write"]) or 1
+        row["cache_hit_pct"] = round(100.0 * row["cache_read"] / total_input_side, 1)
+        row["pct_total_cost"] = (
+            round(100.0 * row["cost_usd"] / total_cost, 2) if total_cost else 0.0
+        )
+        out.append(row)
+    out.sort(key=lambda r: -r["cost_usd"])
+    return out
 
 
 # ---------------------------------------------------------------------------

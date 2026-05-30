@@ -736,6 +736,125 @@ def _build_by_skill_html(rows: list[dict],
     )
 
 
+def _fmt_secs_short(secs: float) -> str:
+    """Compact human duration: ``42s`` / ``7m`` / ``2h 5m``. ``0`` → em-dash."""
+    s = int(secs or 0)
+    if s <= 0:
+        return "&mdash;"
+    if s < 90:
+        return f"{s}s"
+    m = s // 60
+    if m < 120:
+        return f"{m}m"
+    h, mm = divmod(m, 60)
+    return f"{h}h {mm}m" if mm else f"{h}h"
+
+
+def _build_request_units_html(units: list[dict],
+                              total_cost: float = 0.0,
+                              limit: int = 50) -> str:
+    """Render the deterministic per-request breakdown. Returns "" when ≤1 unit.
+
+    Each row is one **request unit** — a user prompt plus all the work it
+    drove (follow-up tool turns + attributed subagents). This is a
+    per-utterance carve-up, NOT semantic tasks (the heading says so); the
+    optional ``task-breakdown`` skill groups these into labelled tasks on a
+    separate companion page. Rows link to the anchor turn's drawer, mirroring
+    the Prompts table. Sorted by combined cost; capped at ``limit`` with a
+    "+N more" note so a long session stays scannable.
+    """
+    if not units or len(units) <= 1:
+        return ""
+    rows = sorted(units, key=lambda u: -float(u.get("combined_cost_usd", 0.0)))
+    shown = rows[:limit]
+    body_rows: list[str] = []
+    for u in shown:
+        sid8 = (u.get("session_id") or "")[:8]
+        key = f'{sid8}-{u.get("anchor_index")}'
+        key_esc = html_mod.escape(key)
+        snippet = html_mod.escape(u.get("prompt_snippet") or "&mdash;")
+        badges = ""
+        if u.get("slash_command"):
+            badges += (f' <span class="prompts-slash">'
+                       f'{html_mod.escape(u["slash_command"])}</span>')
+        if u.get("multi_intent_possible"):
+            badges += (' <span class="ru-badge" title="This single prompt may '
+                       'bundle more than one ask — the deterministic unit keeps '
+                       'them together; the task-breakdown skill can split it.">'
+                       'multi-ask?</span>')
+        if float(u.get("subagent_cost_usd", 0.0)) > 0:
+            badges += (f' <span class="prompts-subagent" title="Includes '
+                       f'${u["subagent_cost_usd"]:.4f} of attributed subagent '
+                       f'work in this request’s combined cost.">+subagent</span>')
+        tools = list(u.get("tool_histogram") or {})
+        if tools:
+            tools_str = ", ".join(html_mod.escape(n) for n in tools[:3])
+            if len(tools) > 3:
+                tools_str += f" +{len(tools) - 3}"
+        else:
+            tools_str = "&mdash;"
+        risk = int(u.get("risk_turn_count", 0))
+        reread = int(u.get("reread_path_count", 0))
+        cbreaks = int(u.get("cache_break_count", 0))
+        waste_bits: list[str] = []
+        if risk:
+            waste_bits.append(f'<span class="ru-risk" title="{risk} turn(s) '
+                              f'flagged potentially wasteful (retry / dead-end / '
+                              f're-read / verbose edit)">&#9888; {risk}</span>')
+        if reread:
+            waste_bits.append(f'<span class="muted" title="{reread} file path(s) '
+                              f're-read within this request">&#8635;{reread}</span>')
+        if cbreaks:
+            waste_bits.append(f'<span class="muted" title="{cbreaks} cache-break '
+                              f'turn(s) in this request">&#10005;{cbreaks}</span>')
+        waste_str = " ".join(waste_bits) if waste_bits else "&mdash;"
+        pct = (100.0 * float(u.get("combined_cost_usd", 0.0)) / total_cost
+               if total_cost else 0.0)
+        body_rows.append(
+            f'<tr data-turn="{key_esc}" tabindex="0">'
+            f'<td class="num"><a class="prompt-turn-link" '
+            f'href="#turn-{key_esc}">#{u.get("anchor_index")}</a></td>'
+            f'<td><div class="prompt-text truncate">{snippet}{badges}</div></td>'
+            f'<td class="num">{int(u.get("turn_count", 0)):,}</td>'
+            f'<td class="cost">{_fmt_cost(u.get("combined_cost_usd", 0.0))}</td>'
+            f'<td class="num">{pct:.1f}%</td>'
+            f'<td class="num">{int(u.get("total_tokens", 0)):,}</td>'
+            f'<td class="tools">{tools_str}</td>'
+            f'<td class="num">{waste_str}</td>'
+            f'<td class="num">{_fmt_secs_short(u.get("idle_gap_before_seconds", 0))}</td>'
+            f'</tr>'
+        )
+    more = ""
+    if len(rows) > limit:
+        more = (f'<span class="hint">&middot; showing top {limit} of '
+                f'{len(rows)} requests by cost</span>')
+    return (
+        f'<section class="section">\n'
+        f'<div class="section-title"><h2>Per-request breakdown</h2>'
+        f'<span class="hint">one row per user prompt &amp; all the work it drove '
+        f'(follow-up turns + subagents) &middot; <strong>per-request, not '
+        f'semantic tasks</strong> &middot; click a row to open the turn drawer'
+        f'</span>{more}</div>\n'
+        f'<table class="models-table">\n'
+        f'<thead><tr>'
+        f'<th>Turn</th><th>Request</th>'
+        f'<th class="num">Turns</th>'
+        f'<th class="num">Cost $</th>'
+        f'<th class="num">% of total</th>'
+        f'<th class="num">Tokens</th>'
+        f'<th>Tools</th>'
+        f'<th class="num" title="Potentially-wasteful signals in this request: '
+        f'&#9888; risky turns, &#8635; file re-reads, &#10005; cache breaks">'
+        f'Waste</th>'
+        f'<th class="num" title="Idle wall-clock gap before this request '
+        f'started">Idle</th>'
+        f'</tr></thead>\n'
+        f'<tbody>{"".join(body_rows)}</tbody>\n'
+        f'</table>\n'
+        f'</section>'
+    )
+
+
 def _build_by_subagent_type_html(rows: list[dict],
                                    heading: str = "Subagent types",
                                    subagents_included: bool = True) -> str:
@@ -819,6 +938,440 @@ def _build_by_subagent_type_html(rows: list[dict],
         f'<th class="num">Cost $</th>'
         f'<th class="num">% of total</th>'
         f'{warmup_headers}'
+        f'</tr></thead>\n'
+        f'<tbody>{"".join(body_rows)}</tbody>\n'
+        f'</table>\n'
+        f'</section>'
+    )
+
+
+def _fmt_workflow_duration(ms: int) -> str:
+    """Human-readable wall-clock from a millisecond count (e.g. 1702105 →
+    ``28m 22s``). Returns ``&ndash;`` for non-positive input."""
+    s = int(ms) // 1000
+    if s <= 0:
+        return "&ndash;"
+    if s < 60:
+        return f"{s}s"
+    m, sec = divmod(s, 60)
+    if m < 60:
+        return f"{m}m {sec}s"
+    h, m = divmod(m, 60)
+    return f"{h}h {m}m"
+
+
+def _workflow_model_label(models: dict) -> str:
+    """Collapse a ``{model: turn_count}`` map to a single display label:
+    the sole model, or ``"<dominant> +N"`` when more than one ran."""
+    if not models:
+        return "&ndash;"
+    items = sorted(models.items(), key=lambda kv: -kv[1])
+    top = items[0][0]
+    if len(items) == 1:
+        return html_mod.escape(top)
+    return f'{html_mod.escape(top)} <span class="muted">+{len(items) - 1}</span>'
+
+
+def _workflow_companion_css() -> str:
+    """Companion-only CSS layered on top of :func:`_theme_css`.
+
+    Every colour is a ``var(--…)`` token defined identically across all four
+    ``body.theme-*`` blocks (``--surface``/``--border``/``--accent``/
+    ``--fg-dim``/``--surface-deep``/``--border-dim``), so the deep-dive page
+    themes automatically when the switcher toggles the body class — no
+    per-theme override blocks. Generic ``th``/``td`` colours come from
+    :func:`_theme_css` element rules; this only adds layout + the run
+    accordion + summary chips.
+    """
+    return """<style>
+.wf-summary-cards{margin:0 0 4px}
+.wf-intro{font-size:12px;opacity:.7;margin:0 0 20px}
+.wf-run{border:1px solid var(--border);border-radius:12px;margin:12px 0;background:var(--surface);overflow:hidden}
+.wf-run>summary{cursor:pointer;list-style:none;padding:13px 18px;display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:13px}
+.wf-run>summary::-webkit-details-marker{display:none}
+.wf-run>summary::before{content:"\\25B8";color:var(--accent);font-size:11px;transition:transform .15s ease;flex:none}
+.wf-run[open]>summary::before{transform:rotate(90deg)}
+.wf-run>summary strong{font-family:'Inter Tight','Inter',sans-serif;font-weight:600;font-size:14px}
+.wf-chips{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.wf-chip{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;padding:2px 9px;border-radius:999px;background:var(--surface-deep);border:1px solid var(--border);color:var(--fg-dim);white-space:nowrap}
+.wf-chip.cost{color:var(--accent)}
+.wf-chip.ok{color:#3fb950;border-color:rgba(63,185,80,.4)}
+.wf-chip.amber{color:#d29922;border-color:rgba(210,153,34,.4)}
+.wf-chip.warn{color:#f85149;border-color:rgba(248,81,73,.4)}
+.wf-body{padding:0 18px 16px}
+.wf-phase{margin-top:16px}
+.wf-phase>h3{margin:0 0 6px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);opacity:.9}
+table.wf-table{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px}
+table.wf-table th,table.wf-table td{padding:6px 10px;text-align:left;vertical-align:top}
+table.wf-table th.num,table.wf-table td.num,table.wf-table td.cost{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.wf-table td.cost{color:var(--accent)}
+table.wf-table code{background:var(--surface-deep);border:1px solid var(--border-dim);padding:1px 6px;border-radius:5px;font-size:11px}
+table.wf-table tr.preview td{padding-top:0;padding-bottom:11px;font-size:11px;line-height:1.5}
+.wf-empty{opacity:.55;font-size:12px;font-style:italic;padding:2px 0 6px}
+</style>"""
+
+
+def _build_workflow_companion_html(report: dict,
+                                   nav_sibling: str | None = None) -> str:
+    """Standalone, theme-aware deep-dive page for a report's dynamic workflows.
+
+    Reuses the main report's full page shell (:func:`_theme_css`, the
+    Beacon/Console/Lattice/Pulse switcher, and the head/body bootstrap JS) so
+    the companion matches the dashboard/detail pages and the picked theme
+    persists across navigation via ``localStorage['sm_theme']``. One
+    collapsible ``<details class="wf-run">`` per run (native accordion — no
+    custom JS) with a phase → agent timeline. Per-agent token/cost are exact
+    (grafted from transcripts in ``_build_by_workflow``); labels, previews,
+    phases and tool-calls come from the run journal. Returns "" when the
+    report has no workflows.
+    """
+    rows = report.get("by_workflow", []) or []
+    if not rows:
+        return ""
+    blocks: list[str] = []
+    for r in rows:
+        name = html_mod.escape(r.get("workflow_name") or r.get("run_id") or "")
+        status = html_mod.escape(r.get("status") or "")
+        status_cls = "ok" if status == "completed" else ""
+        proj = html_mod.escape(r.get("project") or "")
+        proj_bit = f'<span class="muted">{proj}</span>' if proj else ""
+        chips = (
+            '<span class="wf-chips">'
+            f'<span class="wf-chip">{int(r.get("agents", 0)):,} agents</span>'
+            f'<span class="wf-chip cost">{_fmt_cost(r.get("cost_usd", 0.0))}</span>'
+            f'<span class="wf-chip">{int(r.get("total_tokens", 0)):,} tok</span>'
+            f'<span class="wf-chip">{_fmt_workflow_duration(int(r.get("duration_ms", 0)))}</span>'
+            f'<span class="wf-chip {status_cls}">{status or "&ndash;"}</span>'
+            '</span>'
+        )
+        summary = f'<summary><strong>{name}</strong>{proj_bit}{chips}</summary>'
+        # Group agents by phase for the timeline.
+        agents = r.get("agent_details") or []
+        by_phase: dict = {}
+        for a in agents:
+            by_phase.setdefault(int(a.get("phaseIndex") or 0), []).append(a)
+        phase_titles = {i + 1: (p.get("title") or "")
+                        for i, p in enumerate(r.get("phases") or [])}
+        phase_html: list[str] = []
+        for pidx in sorted(by_phase):
+            ptitle = html_mod.escape(phase_titles.get(pidx, f"Phase {pidx}"))
+            head = f"Phase {pidx}" + (f": {ptitle}" if ptitle else "")
+            agent_rows = []
+            for a in sorted(by_phase[pidx],
+                            key=lambda x: -float(x.get("transcript_cost") or 0.0)):
+                label = html_mod.escape(a.get("label") or a.get("agentId") or "")
+                model = html_mod.escape(a.get("model") or "")
+                state = html_mod.escape(a.get("state") or "")
+                preview = html_mod.escape((a.get("resultPreview") or "")[:300])
+                preview_row = (
+                    f'<tr class="preview"><td colspan="7"><span class="muted">{preview}</span></td></tr>'
+                    if preview else ""
+                )
+                agent_rows.append(
+                    f'<tr>'
+                    f'<td><code>{label}</code></td>'
+                    f'<td>{model}</td>'
+                    f'<td class="num">{int(a.get("transcript_tokens", 0)):,}</td>'
+                    f'<td class="cost">{_fmt_cost(a.get("transcript_cost", 0.0))}</td>'
+                    f'<td class="num">{int(a.get("toolCalls", 0)):,}</td>'
+                    f'<td class="num">{_fmt_workflow_duration(int(a.get("durationMs", 0)))}</td>'
+                    f'<td class="muted">{state}</td>'
+                    f'</tr>{preview_row}'
+                )
+            body = ("".join(agent_rows)
+                    or '<tr><td colspan="7" class="wf-empty">No agent transcripts.</td></tr>')
+            phase_html.append(
+                f'<div class="wf-phase"><h3>{head}</h3>'
+                f'<table class="wf-table"><thead><tr>'
+                f'<th>Agent</th><th>Model</th><th class="num">Tokens</th>'
+                f'<th class="num">Cost $</th><th class="num">Tools</th>'
+                f'<th class="num">Duration</th><th>State</th>'
+                f'</tr></thead><tbody>{body}</tbody></table></div>'
+            )
+        blocks.append(
+            f'<details class="wf-run">{summary}'
+            f'<div class="wf-body">{"".join(phase_html)}</div></details>'
+        )
+
+    # Summary strip across all runs.
+    tot_runs = len(rows)
+    tot_agents = sum(int(r.get("agents", 0)) for r in rows)
+    tot_cost = sum(float(r.get("cost_usd", 0.0)) for r in rows)
+    tot_tokens = sum(int(r.get("total_tokens", 0)) for r in rows)
+    cards = (
+        '<div class="cards wf-summary-cards">'
+        f'<div class="card"><div class="val">{tot_runs:,}</div><div class="lbl">Workflow runs</div></div>'
+        f'<div class="card"><div class="val">{tot_agents:,}</div><div class="lbl">Agents</div></div>'
+        f'<div class="card amber"><div class="val">{_fmt_cost(tot_cost)}</div><div class="lbl">Workflow cost</div></div>'
+        f'<div class="card"><div class="val">{tot_tokens:,}</div><div class="lbl">Tokens</div></div>'
+        '</div>'
+    )
+
+    # Back-link: history.back() is robust to which page linked in (dashboard
+    # or detail, each carrying its own timestamp) — no filename coupling. Not
+    # tagged ``data-sm-nav``: theme persists via localStorage, and the
+    # onclick must win over any href rewrite.
+    back = ('<a class="navlink" href="#" '
+            'onclick="if(history.length>1){history.back();return false}">'
+            '&larr; Back</a>')
+    if nav_sibling:
+        back = (f'<a class="navlink" data-sm-nav '
+                f'href="{html_mod.escape(nav_sibling)}">&larr; Back</a>')
+    gen = html_mod.escape(report.get("generated_at", "") or "")
+    ver = html_mod.escape(str(report.get("skill_version", "") or ""))
+    scope = html_mod.escape(report.get("slug", "") or report.get("mode", "") or "")
+    run_word = "run" if tot_runs == 1 else "runs"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="session-metrics {ver}">
+<title>Dynamic workflows — {scope}</title>
+{_theme_css()}
+{_workflow_companion_css()}
+{_theme_bootstrap_head_js()}
+</head>
+<body class="theme-console">
+<div class="shell">
+<header class="topbar">
+<div class="brand"><span class="dot"></span><span>session-metrics</span></div>
+<nav class="nav">{back}{_theme_picker_markup()}</nav>
+</header>
+<header class="page-header">
+<h1>Dynamic workflows</h1>
+<p class="meta">{scope} &nbsp;·&nbsp; Generated {gen} &nbsp;·&nbsp; skill v{ver}</p>
+</header>
+{cards}
+<p class="wf-intro">Per-agent token/cost are exact (summed from agent
+transcripts); labels, phases, tool-calls and previews come from the run
+journal.</p>
+<section class="section">
+<div class="section-title"><h2>Workflow runs</h2>
+<span class="hint">{tot_runs:,} {run_word}</span></div>
+{"".join(blocks)}
+</section>
+<footer class="foot"><span class="muted">session-metrics · {gen}</span></footer>
+</div>
+{_theme_bootstrap_body_js()}
+</body>
+</html>"""
+
+
+_TASK_VERDICT_META = {
+    "worth_it":     ("ok",    "Worth it"),
+    "mixed":        ("amber", "Mixed"),
+    "likely_waste": ("warn",  "Likely waste"),
+}
+
+
+def _build_tasks_companion_html(report: dict, tasks_data: dict,
+                                nav_sibling: str | None = None) -> str:
+    """Standalone, theme-aware "Tasks" companion page (the 4th export page).
+
+    Renders the Claude-authored task grouping produced by the
+    ``task-breakdown`` skill: one collapsible ``<details class="wf-run">``
+    accordion per semantic task (reusing the workflow-companion shell + CSS),
+    with a verdict pill and member request-unit timeline. All cost/turn
+    figures come from :func:`_data._assemble_tasks` (summed from the export's
+    request units), never from the grouping file. Returns "" when there are
+    no tasks.
+    """
+    tasks = tasks_data.get("tasks") or []
+    if not tasks:
+        return ""
+    blocks: list[str] = []
+    for t in tasks:
+        title = html_mod.escape(t.get("title") or "")
+        vcls, vlabel = _TASK_VERDICT_META.get(
+            t.get("verdict") or "", ("", ""))
+        verdict_chip = (f'<span class="wf-chip {vcls}">{vlabel}</span>'
+                        if vlabel else "")
+        wall = _fmt_secs_short(t.get("wall_clock_seconds", 0))
+        risk = int(t.get("risk_turn_count", 0))
+        risk_chip = (f'<span class="wf-chip warn">&#9888; {risk} risky</span>'
+                     if risk else "")
+        chips = (
+            '<span class="wf-chips">'
+            f'{verdict_chip}'
+            f'<span class="wf-chip">{int(t.get("member_count", 0)):,} requests</span>'
+            f'<span class="wf-chip">{int(t.get("turn_count", 0)):,} turns</span>'
+            f'<span class="wf-chip cost">{_fmt_cost(t.get("cost_usd", 0.0))}</span>'
+            f'<span class="wf-chip">{int(t.get("total_tokens", 0)):,} tok</span>'
+            f'<span class="wf-chip">{wall}</span>'
+            f'{risk_chip}'
+            '</span>'
+        )
+        summary = f'<summary><strong>{title}</strong>{chips}</summary>'
+        rationale = html_mod.escape(t.get("rationale") or "")
+        rationale_html = (f'<p class="wf-intro">{rationale}</p>'
+                          if rationale else "")
+        member_rows: list[str] = []
+        for u in t.get("members") or []:
+            snippet = html_mod.escape((u.get("prompt_snippet") or "")[:200]
+                                      or "&mdash;")
+            tools = list(u.get("tool_histogram") or {})
+            tools_str = (", ".join(html_mod.escape(n) for n in tools[:3])
+                         + (f" +{len(tools) - 3}" if len(tools) > 3 else "")
+                         ) or "&mdash;"
+            ur = int(u.get("risk_turn_count", 0))
+            member_rows.append(
+                f'<tr>'
+                f'<td><code>#{u.get("anchor_index")}</code></td>'
+                f'<td>{snippet}</td>'
+                f'<td class="num">{int(u.get("turn_count", 0)):,}</td>'
+                f'<td class="cost">{_fmt_cost(u.get("combined_cost_usd", 0.0))}</td>'
+                f'<td class="num">{int(u.get("total_tokens", 0)):,}</td>'
+                f'<td>{tools_str}</td>'
+                f'<td class="num">{("&#9888; " + str(ur)) if ur else "&mdash;"}</td>'
+                f'</tr>'
+            )
+        body = ("".join(member_rows)
+                or '<tr><td colspan="7" class="wf-empty">No requests.</td></tr>')
+        table = (
+            f'<div class="wf-phase">'
+            f'<table class="wf-table"><thead><tr>'
+            f'<th>Req</th><th>Prompt</th><th class="num">Turns</th>'
+            f'<th class="num">Cost $</th><th class="num">Tokens</th>'
+            f'<th>Tools</th><th class="num">Risk</th>'
+            f'</tr></thead><tbody>{body}</tbody></table></div>'
+        )
+        blocks.append(
+            f'<details class="wf-run">{summary}'
+            f'<div class="wf-body">{rationale_html}{table}</div></details>'
+        )
+
+    tot_tasks = len(tasks)
+    cards = (
+        '<div class="cards wf-summary-cards">'
+        f'<div class="card"><div class="val">{tot_tasks:,}</div>'
+        f'<div class="lbl">Tasks</div></div>'
+        f'<div class="card"><div class="val">{int(tasks_data.get("total_turns", 0)):,}</div>'
+        f'<div class="lbl">Turns</div></div>'
+        f'<div class="card amber"><div class="val">'
+        f'{_fmt_cost(tasks_data.get("total_cost_usd", 0.0))}</div>'
+        f'<div class="lbl">Total cost</div></div>'
+        f'<div class="card"><div class="val">{tasks_data.get("coverage_pct", 0.0):.0f}%</div>'
+        f'<div class="lbl">Requests grouped</div></div>'
+        '</div>'
+    )
+    warnings = tasks_data.get("warnings") or []
+    warn_html = ""
+    if warnings:
+        items = "".join(f'<li>{html_mod.escape(w)}</li>' for w in warnings[:20])
+        warn_html = (f'<section class="section"><div class="section-title">'
+                     f'<h2>Grouping notes</h2></div>'
+                     f'<ul class="muted">{items}</ul></section>')
+
+    back = ('<a class="navlink" href="#" '
+            'onclick="if(history.length>1){history.back();return false}">'
+            '&larr; Back</a>')
+    if nav_sibling:
+        back = (f'<a class="navlink" data-sm-nav '
+                f'href="{html_mod.escape(nav_sibling)}">&larr; Back</a>')
+    gen = html_mod.escape(report.get("generated_at", "") or "")
+    ver = html_mod.escape(str(report.get("skill_version", "") or ""))
+    scope = html_mod.escape(tasks_data.get("scope_label")
+                            or report.get("slug", "")
+                            or report.get("mode", "") or "")
+    task_word = "task" if tot_tasks == 1 else "tasks"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="session-metrics {ver}">
+<title>Tasks — {scope}</title>
+{_theme_css()}
+{_workflow_companion_css()}
+{_theme_bootstrap_head_js()}
+</head>
+<body class="theme-console">
+<div class="shell">
+<header class="topbar">
+<div class="brand"><span class="dot"></span><span>session-metrics</span></div>
+<nav class="nav">{back}{_theme_picker_markup()}</nav>
+</header>
+<header class="page-header">
+<h1>Tasks</h1>
+<p class="meta">{scope} &nbsp;·&nbsp; Generated {gen} &nbsp;·&nbsp; skill v{ver}</p>
+</header>
+{cards}
+<p class="wf-intro">Semantic tasks grouped by Claude from the deterministic
+per-request breakdown. Every cost / turn figure is summed from the export's
+request units — the grouping only assigns requests to tasks and labels each
+with a verdict. Click a task to see its requests.</p>
+<section class="section">
+<div class="section-title"><h2>Tasks</h2>
+<span class="hint">{tot_tasks:,} {task_word}</span></div>
+{"".join(blocks)}
+</section>
+{warn_html}
+<footer class="foot"><span class="muted">session-metrics · {gen}</span></footer>
+</div>
+{_theme_bootstrap_body_js()}
+</body>
+</html>"""
+
+
+def _build_by_workflow_html(rows: list[dict],
+                            heading: str = "Dynamic workflows",
+                            companion_href: str | None = None,
+                            show_project: bool = False) -> str:
+    """Render ``by_workflow`` as a sortable cost table. Returns "" when empty.
+
+    Mirrors :func:`_build_by_subagent_type_html` (same ``models-table``
+    class, so theming/sorting are shared) but keyed on the Workflow tool's
+    ``runId``. Cost/tokens are exact (summed from the workflow-agent
+    transcripts); name/status/tool-calls/duration come from the run journal.
+    ``show_project`` adds a Project column for the instance dashboard.
+    """
+    if not rows:
+        return ""
+    body_rows: list[str] = []
+    for r in rows:
+        name = html_mod.escape(r.get("workflow_name") or r.get("run_id") or "")
+        status = html_mod.escape(r.get("status") or "")
+        status_cls = "ok" if status == "completed" else "muted"
+        proj_cell = (f'<td><code>{html_mod.escape(r.get("project") or "")}</code></td>'
+                     if show_project else "")
+        body_rows.append(
+            f'<tr>'
+            f'{proj_cell}'
+            f'<td><code>{name}</code></td>'
+            f'<td class="{status_cls}">{status or "&ndash;"}</td>'
+            f'<td class="num" title="Distinct agent transcripts merged from '
+            f'disk for this run.">{int(r.get("agents", 0)):,}</td>'
+            f'<td class="num">{int(r.get("tool_calls", 0)):,}</td>'
+            f'<td class="num">{int(r.get("total_tokens", 0)):,}</td>'
+            f'<td class="num">{float(r.get("cache_hit_pct", 0.0)):.1f}%</td>'
+            f'<td class="cost">{_fmt_cost(r.get("cost_usd", 0.0))}</td>'
+            f'<td class="num">{float(r.get("pct_total_cost", 0.0)):.2f}%</td>'
+            f'<td>{_workflow_model_label(r.get("models") or {})}</td>'
+            f'<td class="num">{_fmt_workflow_duration(int(r.get("duration_ms", 0)))}</td>'
+            f'</tr>'
+        )
+    link = (f' &middot; <a href="{html_mod.escape(companion_href)}">'
+            f'full breakdown &rarr;</a>') if companion_href else ""
+    proj_hdr = '<th>Project</th>' if show_project else ""
+    return (
+        f'<section class="section">\n'
+        f'<div class="section-title"><h2>{html_mod.escape(heading)}</h2>'
+        f'<span class="hint">cost from workflow-agent transcripts'
+        f'{link}</span></div>\n'
+        f'<table class="models-table">\n'
+        f'<thead><tr>'
+        f'{proj_hdr}'
+        f'<th>Workflow</th>'
+        f'<th>Status</th>'
+        f'<th class="num" title="Distinct agent transcripts on disk.">Agents</th>'
+        f'<th class="num">Tool calls</th>'
+        f'<th class="num">Total tokens</th>'
+        f'<th class="num">% cached</th>'
+        f'<th class="num">Cost $</th>'
+        f'<th class="num">% of total</th>'
+        f'<th>Model</th>'
+        f'<th class="num">Duration</th>'
         f'</tr></thead>\n'
         f'<tbody>{"".join(body_rows)}</tbody>\n'
         f'</table>\n'
@@ -1636,6 +2189,9 @@ tr.subtotal td{font-weight:600}
 /* Phase-B (v1.7.0) "+N subagents" badge on Prompts table rows. Teal contrasts with the purple slash-command badge so the two badges stay distinguishable when both render on the same row. */
 .prompts-subagent{display:inline-block;margin-left:6px;padding:1px 6px;font-size:10px;font-weight:500;letter-spacing:.04em;border-radius:4px;background:rgba(94,226,198,.14);color:#5EE2C6;border:1px solid rgba(94,226,198,.3);vertical-align:middle;cursor:help;white-space:nowrap}
 .advisor-badge{display:inline-block;margin-left:6px;padding:1px 6px;font-size:10px;font-weight:500;letter-spacing:.04em;border-radius:4px;background:rgba(251,191,36,.12);color:#FCD34D;border:1px solid rgba(251,191,36,.3);vertical-align:middle;cursor:help;white-space:nowrap}
+.ru-badge{display:inline-block;margin-left:6px;padding:1px 6px;font-size:10px;font-weight:500;border-radius:4px;background:rgba(245,158,11,.14);color:#f59e0b;border:1px solid rgba(245,158,11,.3);vertical-align:middle;cursor:help;white-space:nowrap}
+.ru-risk{color:#f59e0b;font-variant-numeric:tabular-nums;cursor:help}
+.models-table .prompts-slash{display:inline-block;padding:0 5px;font-size:10px;border-radius:3px;margin-left:6px;background:rgba(137,87,229,.18);border:1px solid rgba(137,87,229,.4);color:#bc8cff}
 
 td.mode-fast{font-size:10px;font-weight:600}
 td.mode-std{font-size:10px;opacity:.55}
@@ -2883,6 +3439,24 @@ def render_html(report: dict, variant: str = "single",
     # Split mode: brand left + [Dashboard | Detail | switcher] right.
     # Single mode: brand left + [switcher] right (no cross-link).
     _sw = _theme_picker_markup()
+    # Cross-link to the dynamic-workflow companion deep-dive when one was
+    # emitted (set on the report by ``_dispatch`` before render). Renders
+    # beside the Dashboard/Detail toggle in both split and single modes.
+    _wf_href = report.get("_workflow_companion_href")
+    _wf_link = (
+        f'<a class="navlink" data-sm-nav href="{html_mod.escape(_wf_href)}">Workflows</a>'
+        if _wf_href and (report.get("by_workflow") or []) else ""
+    )
+    # Cross-link to the Tasks companion. Unlike the workflow companion (written
+    # by the script itself), the Tasks page is generated post-export by the
+    # task-breakdown flow — so `_dispatch` sets ``_tasks_companion_href`` only
+    # when the caller signalled it will be generated (``--task-companion-nav``),
+    # keeping the link from dangling on a raw-script run that skips grouping.
+    _tasks_href = report.get("_tasks_companion_href")
+    _tasks_link = (
+        f'<a class="navlink" data-sm-nav href="{html_mod.escape(_tasks_href)}">Tasks</a>'
+        if _tasks_href and (report.get("request_units") or []) else ""
+    )
     if nav_sibling:
         label_here  = "Dashboard" if variant == "dashboard" else "Detail"
         label_other = "Detail"   if variant == "dashboard" else "Dashboard"
@@ -2893,6 +3467,8 @@ def render_html(report: dict, variant: str = "single",
             f'<nav class="nav">'
             f'<span class="navlink current">{label_here}</span>'
             f'<a class="navlink" data-sm-nav href="{nav_sibling}">{label_other}</a>'
+            f'{_wf_link}'
+            f'{_tasks_link}'
             f'{_sw}'
             f'</nav>'
             f'</header>'
@@ -2902,7 +3478,7 @@ def render_html(report: dict, variant: str = "single",
             f'<header class="topbar">'
             f'<div class="brand"><span class="dot"></span>'
             f'<span>session-metrics</span></div>'
-            f'<nav class="nav">{_sw}</nav>'
+            f'<nav class="nav">{_wf_link}{_tasks_link}{_sw}</nav>'
             f'</header>'
         )
 
@@ -3202,6 +3778,10 @@ def render_html(report: dict, variant: str = "single",
         by_subagent_type_html = _build_by_subagent_type_html(
             report.get("by_subagent_type", []) or [],
             subagents_included=bool(report.get("include_subagents", False)))
+        by_workflow_html = _build_by_workflow_html(
+            report.get("by_workflow", []) or [],
+            companion_href=report.get("_workflow_companion_href"),
+            show_project=bool(report.get("mode") == "instance"))
         cache_breaks_html = _build_cache_breaks_html(
             report.get("cache_breaks", []) or [],
             int(report.get("cache_break_threshold", _sm()._CACHE_BREAK_DEFAULT_THRESHOLD)),
@@ -3213,10 +3793,15 @@ def render_html(report: dict, variant: str = "single",
             _sm()._compute_subagent_share(report))
         within_session_split_html = _build_within_session_split_html(
             _sm()._compute_within_session_split(report.get("sessions") or []))
+        request_units_html = _build_request_units_html(
+            report.get("request_units", []) or [],
+            float(totals.get("cost", 0.0) or 0.0))
     else:
         by_skill_html = ""
         by_subagent_type_html = ""
+        by_workflow_html = ""
         cache_breaks_html = ""
+        request_units_html = ""
         attribution_coverage_html = ""
         within_session_split_html = ""
 
@@ -3860,12 +4445,14 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
 {cache_breaks_html}
 {by_skill_html}
 {by_subagent_type_html}
+{by_workflow_html}
 {attribution_coverage_html}
 {within_session_split_html}
 {tod_html}
 {chart_section_html}
 {chartrail_section_html}
 {table_section_html}
+{request_units_html}
 {prompts_section_html}
 {models_section_html}
 <footer class="foot">
