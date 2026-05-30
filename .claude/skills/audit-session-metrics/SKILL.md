@@ -1,6 +1,5 @@
 ---
 name: audit-session-metrics
-model: haiku
 description: >
   Audit a session-metrics JSON export for token-usage waste and produce a
   plain-English findings report. Trigger when the user runs
@@ -16,8 +15,11 @@ description: >
 # Audit Session-Metrics
 
 Reads a session-metrics JSON export and produces a prioritised, plain-English
-audit of token-usage waste. Pinned to Haiku in frontmatter so it runs ~10×
-cheaper than Sonnet for a turn that is mostly summarisation work.
+audit of token-usage waste. It runs on the session's current model (it no
+longer pins one — a hard model pin capped the usable context at that model's
+window and broke invocation on long sessions). The work is mostly
+summarisation over a small disk-read export, so for a ~10× cheaper run
+`/model haiku` before invoking.
 
 Supports three JSON scopes auto-detected from `digest.scope`:
 - **session** — single session (`session_*.json`) — per-turn analysis
@@ -121,12 +123,15 @@ If `$ARGUMENTS[1]` is missing, empty, or the file does not exist, print:
 
 ## Why this is a separate skill
 
-The cost saving is real: Haiku is roughly 10× cheaper than Sonnet for the
-summarisation-heavy work an audit does. The frontmatter `model: haiku`
-override only takes effect when the skill is the **entry point of its own
-turn**, which is why session-metrics suggests `/audit-session-metrics`
-rather than invoking it programmatically — running it as a fresh slash
-command keeps the model swap intact.
+The audit is a distinct, user-initiated analysis step over a finished
+export, not part of generating one. It reads only the on-disk JSON — never
+the conversation — so it stands alone as its own turn, which is why
+session-metrics *suggests* `/audit-session-metrics` rather than invoking it
+programmatically. Running it as a fresh slash command keeps the turn focused
+and lets the user decide when to spend on it. The work is summarisation-heavy
+and the input is tiny, so the cost path is `/model haiku` before invoking —
+~10× cheaper than a frontier model, with identical output (every dollar
+figure is pre-computed by `audit-extract.py`, not guessed by the model).
 
 ## Reference files
 

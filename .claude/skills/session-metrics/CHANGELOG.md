@@ -3,6 +3,36 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.56.0 — 2026-05-30
+
+### Drop the `model: haiku` pin from `session-metrics` + `audit-session-metrics`
+
+Both skills carried `model: haiku` frontmatter. A model pin runs the inline
+skill turn on that model, and the turn carries the **entire conversation** as
+input — so the effective context window becomes Haiku's 200k, not the session
+model's. On a long session against a 1M-window model (e.g. Opus 4.8), invoking
+the skill past ~200k of conversation overflowed Haiku's window → `Prompt is too
+long` plus an unexpected auto-compaction, even though the session was only
+~30% of its real window. Both skills read their data from disk (the JSONL / the
+JSON export) and never need the conversation, so the pin bought a cost saving
+at the price of making the skills uninvokable on exactly the long sessions
+people most want to measure.
+
+Removing the pin makes each skill run in the session's own model/window — no
+more 200k cliff. The cost path is preserved but now opt-in: the audit is
+summarisation-heavy over a tiny disk-read input, so `/model haiku` before
+invoking gives the same ~10× saving without the window trap. Prose in both
+`SKILL.md` files, the README, and the marketplace/plugin descriptions updated
+to match.
+
+Note: `task-breakdown` is still `model: sonnet`-pinned and shares the same
+mechanism — it would overflow on a long session against a 200k-window Sonnet.
+Left as-is for now (its input is the compact `request_units` digest and it's
+typically run deliberately); flagged here so it's not a surprise.
+
+No script or behaviour change beyond the model the skills run on; every number
+still comes from the deterministic Python. `_SKILL_VERSION` → `1.56.0`.
+
 ## v1.55.1 — 2026-05-30
 
 ### Hardening: `OSError` guards on the Tasks dispatch write paths

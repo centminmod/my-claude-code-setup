@@ -1,6 +1,5 @@
 ---
 name: session-metrics
-model: haiku
 description: >
   Tally Claude Code session token usage and cost estimates from the raw JSONL
   conversation log. Trigger when the user asks about session cost, token usage,
@@ -428,26 +427,28 @@ Determine scope from the JSON filename printed by the `[export] JSON` line:
 
 **Session scope:**
 > Want a token-usage audit of this session?
->   `/audit-session-metrics quick   <json-path>`   (Haiku — ~10× cheaper than Sonnet)
->   `/audit-session-metrics detailed <json-path>`  (Haiku, also reads CLAUDE.md + settings)
+>   `/audit-session-metrics quick   <json-path>`
+>   `/audit-session-metrics detailed <json-path>`  (also reads CLAUDE.md + settings)
 
 **Project scope:**
 > Want a per-session cost and cache health audit of this project?
->   `/audit-session-metrics quick   <json-path>`   (Haiku — surfaces top expensive sessions, cache outliers)
->   `/audit-session-metrics detailed <json-path>`  (Haiku, also drills into top session turn patterns)
+>   `/audit-session-metrics quick   <json-path>`   (surfaces top expensive sessions, cache outliers)
+>   `/audit-session-metrics detailed <json-path>`  (also drills into top session turn patterns)
 
 **Instance scope:**
 > Want a cross-project cost breakdown audit?
->   `/audit-session-metrics quick   <json-path>`   (Haiku — per-project cost shares and cache health)
+>   `/audit-session-metrics quick   <json-path>`   (per-project cost shares and cache health)
 
 Substitute `<json-path>` with the actual path printed by the
-`[export] JSON` line.
+`[export] JSON` line. The audit is summarisation-heavy and reads only the
+disk export (not the conversation), so for a ~10× cheaper run the user can
+`/model haiku` before invoking — the skill no longer pins a model itself.
 
 **Do not invoke `audit-session-metrics` programmatically from this
 turn.** It is a separate, user-initiated audit: running it as its own
-slash command keeps the turn focused and lets its `model: haiku`
-frontmatter apply as the entry point. The user runs the slash command
-at their own discretion.
+slash command keeps the turn focused and lets the user decide when to
+spend on it (and on which model). The user runs the slash command at
+their own discretion.
 
 ## Automatic Tasks companion (no extra command)
 
