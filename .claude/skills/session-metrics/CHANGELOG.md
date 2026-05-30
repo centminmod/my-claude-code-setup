@@ -3,6 +3,26 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.55.1 — 2026-05-30
+
+### Hardening: `OSError` guards on the Tasks dispatch write paths
+
+Follow-up audit of v1.54.0 + v1.55.0. Both Tasks dispatch entry points guarded
+their JSON *reads* with `try/except OSError` → exit code 2 but left their
+`write_text` calls bare, so a read-only / full export directory raised an
+uncaught traceback instead of a clean error.
+
+- `_run_prepare_tasks` — the `<stem>_grouping.json` skeleton write is now
+  wrapped; on `OSError` it prints a clean error and returns exit 2.
+- `_run_render_tasks` — the `_tasks.html` + `_tasks.md` companion writes are
+  wrapped together with the same guard.
+- +4 regression tests for the previously-untested `_run_prepare_tasks` entry
+  point (`tests/test_prepare_tasks_dispatch.py`): happy-path skeleton write,
+  missing `request_units` (exit 2), malformed JSON (exit 2), and the new
+  unwritable-directory guard (chmod `0o500` → exit 2, root-skipped). 793 pass.
+
+No success-path behaviour change.
+
 ## v1.55.0 — 2026-05-30
 
 ### `--prepare-tasks`: shift the Tasks companion from author to editor

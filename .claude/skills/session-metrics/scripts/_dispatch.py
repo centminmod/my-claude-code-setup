@@ -110,16 +110,21 @@ def _run_render_tasks(export_json: str, grouping_json: str,
     stem = exp_path.stem  # e.g. session_2b74cec9_20260530T...
     out_dir = exp_path.parent
     written: list[Path] = []
-    if "html" in fmts:
-        html = _sm()._build_tasks_companion_html(report, assembled)
-        hp = out_dir / f"{stem}_tasks.html"
-        hp.write_text(html, encoding="utf-8")
-        written.append(hp)
-    if "md" in fmts:
-        md = _sm()._build_tasks_companion_md(report, assembled)
-        mp = out_dir / f"{stem}_tasks.md"
-        mp.write_text(md, encoding="utf-8")
-        written.append(mp)
+    try:
+        if "html" in fmts:
+            html = _sm()._build_tasks_companion_html(report, assembled)
+            hp = out_dir / f"{stem}_tasks.html"
+            hp.write_text(html, encoding="utf-8")
+            written.append(hp)
+        if "md" in fmts:
+            md = _sm()._build_tasks_companion_md(report, assembled)
+            mp = out_dir / f"{stem}_tasks.md"
+            mp.write_text(md, encoding="utf-8")
+            written.append(mp)
+    except OSError as e:
+        print(f"error: cannot write Tasks companion next to {exp_path}: {e}",
+              file=sys.stderr)
+        return 2
 
     for w in assembled.get("warnings") or []:
         print(f"  ! {w}", file=sys.stderr)
@@ -157,7 +162,13 @@ def _run_prepare_tasks(export_json: str) -> int:
     print(_sm()._render_tasks_worksheet(report))
     skeleton = _sm()._build_tasks_skeleton(report)
     grp_path = exp_path.with_name(f"{exp_path.stem}_grouping.json")
-    grp_path.write_text(json.dumps(skeleton, indent=2) + "\n", encoding="utf-8")
+    try:
+        grp_path.write_text(json.dumps(skeleton, indent=2) + "\n",
+                            encoding="utf-8")
+    except OSError as e:
+        print(f"error: cannot write grouping skeleton {grp_path}: {e}",
+              file=sys.stderr)
+        return 2
 
     print(f"\n[prepare-tasks] {len(units)} request units → "
           f"{len(skeleton['tasks'])} candidate task(s)", file=sys.stderr)
