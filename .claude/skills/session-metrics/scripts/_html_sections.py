@@ -772,7 +772,7 @@ def _build_request_units_html(units: list[dict],
         sid8 = (u.get("session_id") or "")[:8]
         key = f'{sid8}-{u.get("anchor_index")}'
         key_esc = html_mod.escape(key)
-        snippet = html_mod.escape(u.get("prompt_snippet") or "&mdash;")
+        snippet = html_mod.escape(u.get("prompt_snippet") or "") or "&mdash;"
         badges = ""
         if u.get("slash_command"):
             badges += (f' <span class="prompts-slash">'
@@ -1208,8 +1208,7 @@ def _build_tasks_companion_html(report: dict, tasks_data: dict,
                           if rationale else "")
         member_rows: list[str] = []
         for u in t.get("members") or []:
-            snippet = html_mod.escape((u.get("prompt_snippet") or "")[:200]
-                                      or "&mdash;")
+            snippet = html_mod.escape((u.get("prompt_snippet") or "")[:200]) or "&mdash;"
             tools = list(u.get("tool_histogram") or {})
             tools_str = (", ".join(html_mod.escape(n) for n in tools[:3])
                          + (f" +{len(tools) - 3}" if len(tools) > 3 else "")

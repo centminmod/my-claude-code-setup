@@ -787,7 +787,8 @@ def _build_turn_record(global_index: int, entry: dict,
                 # tool_use_id -> anchor). Unlike Agent/Task, this does not
                 # register a ``spawned_subagents`` type — workflow agents are
                 # surfaced via the dedicated by_workflow table, not the
-                # subagent-type table.
+                # subagent-type table. (The token path enforces the same split:
+                # _build_by_subagent_type skips any turn tagged workflow_run_id.)
                 bid = block.get("id")
                 if isinstance(bid, str) and bid:
                     tool_use_ids.append(bid)

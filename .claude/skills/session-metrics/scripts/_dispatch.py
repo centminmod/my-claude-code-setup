@@ -236,45 +236,45 @@ def _parse_workflow_journal(path: Path) -> dict | None:
     try:
         with open(path, encoding="utf-8") as fh:
             j = json.load(fh)
-    except (OSError, json.JSONDecodeError):
+        if not isinstance(j, dict):
+            return None
+        run_id = j.get("runId") or path.stem
+        agents: list[dict] = []
+        for e in j.get("workflowProgress") or []:
+            if not isinstance(e, dict) or e.get("type") != "workflow_agent":
+                continue
+            agents.append({
+                "agentId":     str(e.get("agentId") or ""),
+                "label":       str(e.get("label") or ""),
+                "model":       str(e.get("model") or ""),
+                "phaseIndex":  e.get("phaseIndex"),
+                "phaseTitle":  str(e.get("phaseTitle") or ""),
+                "state":       str(e.get("state") or ""),
+                "tokens":      int(e.get("tokens") or 0),
+                "toolCalls":   int(e.get("toolCalls") or 0),
+                "durationMs":  int(e.get("durationMs") or 0),
+                "promptPreview":  str(e.get("promptPreview") or ""),
+                "resultPreview":  str(e.get("resultPreview") or ""),
+            })
+        phases = []
+        for p in j.get("phases") or []:
+            if isinstance(p, dict):
+                phases.append({"title": str(p.get("title") or ""),
+                               "detail": str(p.get("detail") or "")})
+        return {
+            "run_id":          str(run_id),
+            "workflow_name":   str(j.get("workflowName") or run_id),
+            "status":          str(j.get("status") or ""),
+            "agent_count":     int(j.get("agentCount") or 0),
+            "total_tool_calls": int(j.get("totalToolCalls") or 0),
+            "journal_total_tokens": int(j.get("totalTokens") or 0),
+            "duration_ms":     int(j.get("durationMs") or 0),
+            "default_model":   str(j.get("defaultModel") or ""),
+            "phases":          phases,
+            "agents":          agents,
+        }
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
         return None
-    if not isinstance(j, dict):
-        return None
-    run_id = j.get("runId") or path.stem
-    agents: list[dict] = []
-    for e in j.get("workflowProgress") or []:
-        if not isinstance(e, dict) or e.get("type") != "workflow_agent":
-            continue
-        agents.append({
-            "agentId":     str(e.get("agentId") or ""),
-            "label":       str(e.get("label") or ""),
-            "model":       str(e.get("model") or ""),
-            "phaseIndex":  e.get("phaseIndex"),
-            "phaseTitle":  str(e.get("phaseTitle") or ""),
-            "state":       str(e.get("state") or ""),
-            "tokens":      int(e.get("tokens") or 0),
-            "toolCalls":   int(e.get("toolCalls") or 0),
-            "durationMs":  int(e.get("durationMs") or 0),
-            "promptPreview":  str(e.get("promptPreview") or ""),
-            "resultPreview":  str(e.get("resultPreview") or ""),
-        })
-    phases = []
-    for p in j.get("phases") or []:
-        if isinstance(p, dict):
-            phases.append({"title": str(p.get("title") or ""),
-                           "detail": str(p.get("detail") or "")})
-    return {
-        "run_id":          str(run_id),
-        "workflow_name":   str(j.get("workflowName") or run_id),
-        "status":          str(j.get("status") or ""),
-        "agent_count":     int(j.get("agentCount") or 0),
-        "total_tool_calls": int(j.get("totalToolCalls") or 0),
-        "journal_total_tokens": int(j.get("totalTokens") or 0),
-        "duration_ms":     int(j.get("durationMs") or 0),
-        "default_model":   str(j.get("defaultModel") or ""),
-        "phases":          phases,
-        "agents":          agents,
-    }
 
 
 def _resolve_subagent_type(sub_path: Path) -> str:

@@ -637,6 +637,12 @@ def _model_breakdown(turn_records: list[dict]) -> dict[str, dict]:
     """
     out: dict[str, dict] = {}
     for r in turn_records:
+        # Skip the non-billable ``<synthetic>`` orchestrator/resume placeholder
+        # (zero-cost via `_pricing_for`'s zero-rate tier) so it never surfaces
+        # as a misleading $0 phantom row. Mirrors the same exclusion in
+        # `_build_by_workflow`.
+        if r["model"] == _sm()._SYNTHETIC_MODEL:
+            continue
         m = out.setdefault(r["model"], {"turns": 0, "cost_usd": 0.0})
         m["turns"] += 1
         m["cost_usd"] += float(r.get("cost_usd", 0.0))
@@ -1734,7 +1740,11 @@ def _assemble_tasks(report: dict, grouping: dict) -> dict:
     warnings: list[str] = []
 
     gv = str(grouping.get("schema_version") or "")
-    if gv and gv != _TASKS_GROUPING_SCHEMA_VERSION:
+    if not gv:
+        warnings.append(
+            f"grouping has no schema_version; expected "
+            f"{_TASKS_GROUPING_SCHEMA_VERSION!r} — rendering best-effort")
+    elif gv != _TASKS_GROUPING_SCHEMA_VERSION:
         warnings.append(
             f"grouping schema_version {gv!r} != expected "
             f"{_TASKS_GROUPING_SCHEMA_VERSION!r}; rendering best-effort")
@@ -1742,6 +1752,9 @@ def _assemble_tasks(report: dict, grouping: dict) -> dict:
     seen: set[str] = set()
     tasks_out: list[dict] = []
     for raw in grouping.get("tasks") or []:
+        if not isinstance(raw, dict):
+            warnings.append(f"ignoring non-object task entry: {raw!r}")
+            continue
         member_ids = list(raw.get("request_unit_ids") or [])
         members: list[dict] = []
         for uid in member_ids:
@@ -1903,6 +1916,14 @@ def _build_by_subagent_type(sessions: list[dict], total_cost: float) -> list[dic
     events whose type wasn't observed among the loaded subagent files still
     appear (with zero tokens) so users see the spawn signal even when the
     subagent JSONL wasn't loaded.
+
+    v1.58.0: dynamic-workflow agent turns (those tagged with a
+    ``workflow_run_id``) are **excluded** here — they are accounted
+    exclusively in the ``by_workflow`` table. The two tables therefore
+    decompose the merged turn set without overlap, so a user summing
+    "subagent share + workflow share" never double-counts the same agent
+    work. (Headline totals are unaffected either way: each turn is still
+    counted once in the merged entries.)
     """
     rows: dict[str, dict] = {}
     # v1.26.0: per-invocation grouping for fixed-cost signals. Each
@@ -1914,6 +1935,12 @@ def _build_by_subagent_type(sessions: list[dict], total_cost: float) -> list[dic
         sid = session.get("session_id", "")
         for t in session.get("turns", []) or []:
             if t.get("is_resume_marker"):
+                continue
+            # v1.58.0: workflow-agent turns belong to by_workflow only.
+            # Skipping the whole turn keeps the spawn-count, token, and
+            # per-invocation paths all out of the subagent-type table —
+            # see _turn_parser.py Workflow branch for the intent.
+            if t.get("workflow_run_id"):
                 continue
             # Spawn-count contribution from main turns.
             for st in (t.get("spawned_subagents") or []):
@@ -2047,7 +2074,14 @@ def _build_by_workflow(sessions: list[dict], total_cost: float,
         for run_id, summary in (run_meta or {}).items():
             row = rows.get(run_id)
             if not row:
-                continue  # journal present but no transcripts loaded — skip
+                # Journal present but no transcripts loaded (pruned
+                # transcripts, run still in flight, or runId mismatch). Data
+                # is still correct — no transcripts means no cost to report —
+                # but warn so a suppressed run is discoverable, not silent.
+                print(f"[warn] workflow run {run_id!r}: journal found but no "
+                      f"agent transcripts loaded — run omitted from by_workflow",
+                      file=sys.stderr)
+                continue
             row["workflow_name"] = summary.get("workflow_name") or run_id
             row["status"]        = summary.get("status") or ""
             row["agent_count"]   = int(summary.get("agent_count") or 0)

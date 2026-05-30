@@ -3,6 +3,35 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.58.0 — 2026-05-31
+
+### Audit-remediation batch — 7 fixes (Sessions 153–166 review)
+
+Seven fixes from a critical audit of the v1.46.0–v1.57.0 work, triaged via a
+quad-AI second opinion (Codex GPT-5.5, DeepSeek V4 Pro, GLM 5.1) and verified
+against source. No change to cost/token math or the request_units cost
+invariant. Tests 769 → 777.
+
+- **`--render-tasks` no longer crashes on a malformed grouping.json.**
+  `_assemble_tasks` skips non-dict `tasks[]` entries with a warning instead of
+  raising `AttributeError` on `raw.get(...)`.
+- **Workflow-journal parser honours its no-crash contract.**
+  `_parse_workflow_journal` widened its `try/except` to cover the `int()`
+  coercions, so a non-numeric journal field returns `None` instead of
+  propagating `ValueError`/`TypeError` and breaking the whole report.
+- **Workflow agents no longer double-surface.** `_build_by_subagent_type`
+  skips turns tagged `workflow_run_id`, so dynamic-workflow agent tokens appear
+  only in the Dynamic workflows table, not also in the per-subagent-type table.
+- **The non-billable `<synthetic>` orchestrator model is excluded from the
+  Models breakdown** (`_model_breakdown` + instance `_aggregate_models`), so it
+  no longer shows as a zero-cost phantom row. Adds an end-to-end fixture.
+- **A workflow journal with no loaded transcripts now emits a `[warn]`** instead
+  of silently dropping the run from the table.
+- **`--render-tasks` warns when a grouping.json has no `schema_version`**
+  (previously only a present-but-different version warned).
+- **Blank per-request snippets render an em-dash** instead of the literal text
+  `&mdash;` (the HTML-entity fallback was being double-escaped).
+
 ## v1.57.0 — 2026-05-30
 
 ### Drop the `model: sonnet` pin from `task-breakdown`

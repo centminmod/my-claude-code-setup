@@ -1036,6 +1036,11 @@ def _aggregate_models(project_reports: list[dict]) -> dict:
         for s in pr.get("sessions", []):
             for t in s.get("turns", []):
                 name = t.get("model", "unknown")
+                # Skip the non-billable ``<synthetic>`` placeholder (zero-cost)
+                # so it never surfaces as a misleading $0 phantom row. Mirrors
+                # the exclusion in `_model_breakdown` / `_build_by_workflow`.
+                if name == _sm()._SYNTHETIC_MODEL:
+                    continue
                 m = merged.setdefault(name, {
                     "turns":              0,
                     "input_tokens":       0,
