@@ -3,6 +3,17 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.54.0 — 2026-05-30
+
+### Task grouping: scope-gate the auto-companion + collapse guardrail
+
+Follow-up to v1.52.0 from live testing. A `--project-cost` HTML export (188 sessions, 1,574 request units) auto-triggered the Tasks companion, which asked the model to hand-author a semantic grouping over all 1,574 units. That is impractical at project scale, so the model collapsed everything into a single blank-titled task — and `--render-tasks` accepted it silently.
+
+- **Auto-companion is now scope-gated to single sessions.** SKILL.md only auto-generates the Tasks companion (and only adds `--task-companion-nav`) for single-session exports with **2–40 request units**. It is never generated for `--project-cost` or `--all-projects` (semantic tasks don't span sessions; hand-grouping hundreds of units is meaningless), and is skipped for unusually large single sessions. This also removes the dead `Tasks` nav button that previously appeared on project/instance dashboards pointing at a `*_tasks.html` that was never written. Standalone `/task-breakdown` remains for manual single-session re-grouping.
+- **Collapse guardrail in `_assemble_tasks`.** A blank/placeholder-titled task that covers more than 60% of all requests (with ≥ 3 units total) now emits a warning instead of rendering silently — the degenerate "one big blob" grouping. Anchored on the title (a well-titled single task covering a focused session stays valid); the synthetic "Ungrouped requests" task is excluded. The warning surfaces on stderr and in the HTML/MD "Grouping notes" section. Protects the manual `/task-breakdown` path too.
+- **task-breakdown SKILL.md large-scale guidance:** group at session granularity at large scale and never emit a single untitled catch-all.
+- +4 tests. No change to any export file's contents.
+
 ## v1.53.0 — 2026-05-30
 
 ### `--quiet` — keep export stdout small so the `[export]` paths aren't buried

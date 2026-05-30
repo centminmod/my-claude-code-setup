@@ -456,14 +456,31 @@ The per-request breakdown is the deterministic foundation for **task grouping**
 `/task-breakdown` step, the Tasks companion is generated **automatically as part
 of an HTML export**, in this same turn — the user gets it for free.
 
-**When `html` is among the requested formats**, add `--task-companion-nav` to the
-script invocation (alongside the always-on `json`). This renders a `Tasks` nav
-button on the dashboard/detail pages pointing at `<stem>_tasks.html`.
+**Scope gate — the auto-companion is a single-session feature.** Generate it
+only for **single-session exports** (the default route / `--session <id>`).
+**Never** auto-generate it for `--project-cost` or `--all-projects`: semantic
+task grouping does not span sessions, and hand-grouping hundreds of requests
+across many sessions is impractical and not meaningful (this is exactly the
+case that produces a single blank "blob" task). At project / instance scope,
+skip both the companion and the nav button, and simply tell the user that
+`/task-breakdown` can be run manually on a *single* session if they want a
+task view.
 
-**Then, after the `[export]` lines, if the JSON export's `request_units` array
-has more than one entry** (skip otherwise — a single-prompt session needs no
-grouping), generate the companion automatically by following the
-**task-breakdown** skill's procedure inline:
+**When `html` is among the requested formats AND this is a single-session
+export AND the auto-companion will actually be generated** (see the count gate
+below), add `--task-companion-nav` to the script invocation (alongside the
+always-on `json`). This renders a `Tasks` nav button on the dashboard/detail
+pages pointing at `<stem>_tasks.html`. Do **not** add `--task-companion-nav`
+when you are skipping the companion — it would render a button pointing at a
+`<stem>_tasks.html` that was never written (a dead link).
+
+**Then, after the `[export]` lines, if this is a single-session export and the
+JSON export's `request_units` array has between 2 and 40 entries**, generate
+the companion automatically by following the **task-breakdown** skill's
+procedure inline. Skip when there is only one unit (a single-prompt session
+needs no grouping) or when there are more than ~40 units (an unusually large
+session — tell the user it is too large for a clean auto-grouping and that
+`/task-breakdown` remains available manually):
 
 1. Read `request_units` from the JSON export just written.
 2. Group the units into a handful of semantic tasks (topical/lexical continuity
@@ -489,8 +506,10 @@ grouping), generate the companion automatically by following the
    resolves to that page.
 
 This is automatic for HTML exports. The standalone `/task-breakdown
-<json-path>` skill remains for re-grouping a saved JSON export later (or a
-project-scope export) without re-running session-metrics. Keep it lightweight:
+<json-path>` skill remains for re-grouping a saved JSON export later without
+re-running session-metrics. It is session-oriented; pointing it at a
+project-scope export with hundreds of units will produce a coarse grouping at
+best, so prefer a single-session export as its input. Keep it lightweight:
 most sessions are a handful of tasks; don't over- or under-segment. The
 deterministic "Per-request breakdown" section in the dashboard is the honest
 *per-request* view; the Tasks page is the *semantic* layer you just authored.

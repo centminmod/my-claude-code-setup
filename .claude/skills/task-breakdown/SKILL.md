@@ -77,6 +77,14 @@ If `$ARGUMENTS[0]` is missing, first generate a session export by invoking the
    Most sessions yield a handful of tasks. Don't over-segment ("now fix the
    test" is usually the SAME task as the feature it follows), and don't
    under-segment (one giant "misc" task is useless).
+   **At large scale** (many dozens of units, e.g. a project-scope export):
+   group at **session granularity** — one titled task per coherent
+   session-goal — rather than attempting per-unit segmentation. **Never emit a
+   single untitled catch-all task that swallows everything**: the renderer's
+   collapse guard flags a blank-titled task covering the bulk of requests, and
+   it is a useless grouping anyway. If you cannot segment meaningfully, that is
+   a signal the input is too coarse for this skill (prefer a single-session
+   export).
 
 4. **Label each task with a verdict**, using the deterministic waste signals as
    evidence, NOT a guess:

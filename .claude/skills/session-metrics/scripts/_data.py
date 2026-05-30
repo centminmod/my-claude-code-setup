@@ -1585,6 +1585,26 @@ def _assemble_tasks(report: dict, grouping: dict) -> dict:
             "Requests the grouping did not assign to any task.", uncovered))
 
     grouped = len(seen)
+
+    # Collapse guardrail: a blank/placeholder-titled task that swallows the bulk
+    # of the requests is the degenerate "one big blob" grouping (e.g. an inline
+    # heuristic that gave up on semantic segmentation), not a real grouping.
+    # Anchor on the title (a well-titled single task covering a focused session
+    # is legitimate); coverage is the secondary signal. Exclude the synthetic
+    # "Ungrouped requests" task — its high coverage is the already-warned
+    # under-assignment case, a different condition.
+    if len(all_ids) >= 3:
+        for t in tasks_out:
+            if t["title"] == "Ungrouped requests":
+                continue
+            if t["title"] in ("", "Untitled task"):
+                cov = 100.0 * t["member_count"] / len(all_ids)
+                if cov > 60.0:
+                    warnings.append(
+                        f"task covers {cov:.0f}% of all requests but has no "
+                        f"title — looks like an un-grouped collapse, not a "
+                        f"semantic grouping; re-run with one titled task per goal")
+
     return {
         "schema_version":     _TASKS_GROUPING_SCHEMA_VERSION,
         "scope_label":        grouping.get("scope_label") or "",
