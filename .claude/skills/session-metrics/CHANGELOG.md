@@ -3,6 +3,24 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.62.0 — 2026-05-31
+
+### Tasks page — per-turn drilldown inside each request
+
+The Tasks companion page (`*_tasks.html`) now lets you drill from a request
+down to its individual turns. Expand a task, then click any request row to
+reveal a compact per-turn sub-table — turn #, time, model, input / output /
+cache-read / total tokens, cost, and tools — mirroring the columns of the main
+details report's Timeline row. A `⚠` marks risky turns and a `sub` badge marks
+subagent turns (which inherit their spawner's request anchor, so the expanded
+row count reconciles with the request's `turns` chip).
+
+Turns are resolved from the export's `sessions[].turns[]`, available at session
+and project scope. Instance-scope exports carry no per-turn records, so they
+degrade gracefully — the per-request table renders with no turn expansion. All
+cost / token figures are read straight from the export (no re-summing). The
+toggle is click- and keyboard-accessible. No interface or output-format break.
+
 ## v1.61.0 — 2026-05-31
 
 ### Per-skill `effort` defaults + Haiku short-session caveat

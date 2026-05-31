@@ -1008,6 +1008,18 @@ table.wf-table td.cost{color:var(--accent)}
 table.wf-table code{background:var(--surface-deep);border:1px solid var(--border-dim);padding:1px 6px;border-radius:5px;font-size:11px}
 table.wf-table tr.preview td{padding-top:0;padding-bottom:11px;font-size:11px;line-height:1.5}
 .wf-empty{opacity:.55;font-size:12px;font-style:italic;padding:2px 0 6px}
+table.wf-table tr.req-row{cursor:pointer}
+table.wf-table tr.req-row:focus{outline:1px solid var(--accent);outline-offset:-1px}
+table.wf-table tr.req-row:hover>td{background:var(--surface-deep)}
+.req-caret{display:inline-block;color:var(--accent);font-size:9px;margin-right:6px;transition:transform .15s ease}
+table.wf-table tr.req-row.open .req-caret{transform:rotate(90deg)}
+table.wf-table tr.req-turns>td{padding:0 10px 10px 24px;background:var(--surface)}
+table.turn-subtable{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:11px;border-left:2px solid var(--border)}
+table.turn-subtable th,table.turn-subtable td{padding:4px 8px;text-align:left;vertical-align:top;color:var(--fg-dim)}
+table.turn-subtable th.num,table.turn-subtable td.num,table.turn-subtable td.cost{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.turn-subtable td.cost{color:var(--accent)}
+.sub-tag{font-size:9px;letter-spacing:.04em;padding:1px 5px;border-radius:999px;background:var(--surface-deep);border:1px solid var(--border-dim);color:var(--fg-dim);margin-left:5px}
+.turn-risk{color:#d29922;margin-left:5px}
 </style>"""
 
 
@@ -1165,6 +1177,57 @@ _TASK_VERDICT_META = {
 }
 
 
+def _task_turn_detail_row(req_key: str, turns: list[dict]) -> str:
+    """Hidden detail row holding a compact per-turn sub-table for one request
+    unit — the Tasks-page turn drilldown revealed when its request row is
+    clicked. Mirrors the columns of the details report's Timeline row. Every
+    figure is read straight from the turn dict (no re-summing), consistent with
+    the skill's "export owns the numbers" rule. Subagent turns (which inherit
+    their spawner's anchor, so they land in this unit) are badged so the row
+    count reconciles with the request's ``turn_count`` chip."""
+    rows: list[str] = []
+    for t in turns:
+        tools = t.get("tool_use_names") or []
+        tools_str = (", ".join(html_mod.escape(n) for n in tools[:3])
+                     + (f" +{len(tools) - 3}" if len(tools) > 3 else "")) or "&mdash;"
+        si = t.get("skill_invocations") or []
+        sc = t.get("slash_command") or ""
+        skill_label = si[0] if si else (sc.lstrip("/") if sc else "")
+        skill_badge = (f'<span class="sub-tag">{html_mod.escape(skill_label)}</span>'
+                       if skill_label else "")
+        sub_badge = ('<span class="sub-tag" title="subagent turn">sub</span>'
+                     if t.get("subagent_agent_id") else "")
+        risk_badge = ('<span class="turn-risk" title="Potentially wasteful turn">'
+                      '&#9888;</span>' if t.get("turn_risk") else "")
+        rows.append(
+            f'<tr>'
+            f'<td class="num">{t.get("index", "")}</td>'
+            f'<td>{html_mod.escape(t.get("timestamp_fmt", ""))}</td>'
+            f'<td>{html_mod.escape(t.get("model", ""))}{skill_badge}{sub_badge}</td>'
+            f'<td class="num">{int(t.get("input_tokens", 0)):,}</td>'
+            f'<td class="num">{int(t.get("output_tokens", 0)):,}</td>'
+            f'<td class="num">{int(t.get("cache_read_tokens", 0)):,}</td>'
+            f'<td class="num">{int(t.get("total_tokens", 0)):,}</td>'
+            f'<td class="cost">{_fmt_cost(t.get("cost_usd", 0.0))}</td>'
+            f'<td>{tools_str}{risk_badge}</td>'
+            f'</tr>'
+        )
+    head = (
+        '<thead><tr>'
+        '<th class="num">#</th><th>Time</th><th>Model</th>'
+        '<th class="num">In</th><th class="num">Out</th>'
+        '<th class="num">Cache rd</th><th class="num">Tokens</th>'
+        '<th class="num">Cost $</th><th>Tools</th>'
+        '</tr></thead>'
+    )
+    return (
+        f'<tr class="req-turns" data-req="{html_mod.escape(req_key)}" hidden>'
+        f'<td colspan="7">'
+        f'<table class="turn-subtable">{head}<tbody>{"".join(rows)}</tbody></table>'
+        f'</td></tr>'
+    )
+
+
 def _build_tasks_companion_html(report: dict, tasks_data: dict,
                                 nav_sibling: str | None = None) -> str:
     """Standalone, theme-aware "Tasks" companion page (the 4th export page).
@@ -1180,6 +1243,18 @@ def _build_tasks_companion_html(report: dict, tasks_data: dict,
     tasks = tasks_data.get("tasks") or []
     if not tasks:
         return ""
+    # Map each request unit's (session_id, anchor) to its constituent turns so a
+    # request row can drill down to per-turn detail. Mirrors the grouping key in
+    # _build_request_units. Empty at instance scope (no per-turn records are
+    # retained) → the per-request table renders without turn expansion.
+    turns_by_unit: dict[tuple, list[dict]] = {}
+    for s in report.get("sessions") or []:
+        sid = s.get("session_id", "")
+        for tn in s.get("turns") or []:
+            if tn.get("is_resume_marker"):
+                continue
+            anchor = tn.get("prompt_anchor_index", tn.get("index"))
+            turns_by_unit.setdefault((sid, anchor), []).append(tn)
     blocks: list[str] = []
     for t in tasks:
         title = html_mod.escape(t.get("title") or "")
@@ -1214,9 +1289,19 @@ def _build_tasks_companion_html(report: dict, tasks_data: dict,
                          + (f" +{len(tools) - 3}" if len(tools) > 3 else "")
                          ) or "&mdash;"
             ur = int(u.get("risk_turn_count", 0))
+            u_turns = turns_by_unit.get(
+                (u.get("session_id"), u.get("anchor_index")), [])
+            req_key = f'{(u.get("session_id") or "")[:8]}-{u.get("anchor_index")}'
+            if u_turns:
+                caret = '<span class="req-caret">&#9656;</span>'
+                req_attrs = (f' class="req-row" role="button" tabindex="0" '
+                             f'data-req="{html_mod.escape(req_key)}"')
+            else:
+                caret = ""
+                req_attrs = ""
             member_rows.append(
-                f'<tr>'
-                f'<td><code>#{u.get("anchor_index")}</code></td>'
+                f'<tr{req_attrs}>'
+                f'<td>{caret}<code>#{u.get("anchor_index")}</code></td>'
                 f'<td>{snippet}</td>'
                 f'<td class="num">{int(u.get("turn_count", 0)):,}</td>'
                 f'<td class="cost">{_fmt_cost(u.get("combined_cost_usd", 0.0))}</td>'
@@ -1225,6 +1310,8 @@ def _build_tasks_companion_html(report: dict, tasks_data: dict,
                 f'<td class="num">{("&#9888; " + str(ur)) if ur else "&mdash;"}</td>'
                 f'</tr>'
             )
+            if u_turns:
+                member_rows.append(_task_turn_detail_row(req_key, u_turns))
         body = ("".join(member_rows)
                 or '<tr><td colspan="7" class="wf-empty">No requests.</td></tr>')
         table = (
@@ -1308,6 +1395,25 @@ with a verdict. Click a task to see its requests.</p>
 {warn_html}
 <footer class="foot"><span class="muted">session-metrics · {gen}</span></footer>
 </div>
+<script>
+(function(){{
+  function toggle(row){{
+    var key=row.getAttribute('data-req');if(!key)return;
+    var sel='tr.req-turns[data-req="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]';
+    var det=row.parentNode.querySelector(sel);if(!det)return;
+    if(det.hasAttribute('hidden')){{det.removeAttribute('hidden');row.classList.add('open');}}
+    else{{det.setAttribute('hidden','');row.classList.remove('open');}}
+  }}
+  document.addEventListener('click',function(e){{
+    var row=e.target.closest&&e.target.closest('tr.req-row');if(row)toggle(row);
+  }});
+  document.addEventListener('keydown',function(e){{
+    if(e.key!=='Enter'&&e.key!==' ')return;
+    var row=e.target.closest&&e.target.closest('tr.req-row');
+    if(row){{e.preventDefault();toggle(row);}}
+  }});
+}})();
+</script>
 {_theme_bootstrap_body_js()}
 </body>
 </html>"""
