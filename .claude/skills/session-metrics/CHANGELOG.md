@@ -3,6 +3,21 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.59.0 — 2026-05-31
+
+### Bundled quick-run shell wrapper
+
+Adds `scripts/session-metrics-quick.sh`, a small portable shell helper for
+one-shot exports from any shell. It locates `session-metrics.py` (honouring a
+`$SM_PY` override, then its own bundled directory, a project-local checkout, a
+user-wide copy, and finally the newest **version-pinned** plugin-cache install),
+detects the current project slug + newest session from the cwd, echoes the
+picked target, and runs a quiet HTML+JSON export. Any arguments passed
+**replace** its `--quiet --output html json` default, so it doubles as a thin
+launcher for every script flag. `uv` is preferred, with a plain `python3`
+fallback (the script is stdlib-only). No change to `session-metrics.py`
+behaviour or any export format.
+
 ## v1.58.0 — 2026-05-31
 
 ### Audit-remediation batch — 7 fixes (Sessions 153–166 review)
