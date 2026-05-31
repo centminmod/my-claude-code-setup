@@ -3,6 +3,33 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.60.0 — 2026-05-31
+
+### quick-run wrapper: `--session <uuid>` override
+
+`scripts/session-metrics-quick.sh` now accepts an explicit session id
+(`--session <uuid>`, `-s <uuid>`, or `--session=<uuid>`) and targets that
+session instead of auto-detecting the newest one for the cwd's project. The id
+resolves across **all** projects (the report script falls back to a global
+search by uuid), so you can run it from a **fresh** Claude Code session — low
+context, cheap — to export an earlier heavy session's metrics without loading
+that session's context.
+
+Argument handling was reworked so `"$@"` now passes through verbatim rather than
+wholesale-replacing the defaults:
+
+- When you pass `--session`, the wrapper no longer also injects its
+  auto-detected session (previously it relied on argparse last-wins, which left
+  a confusing doubled `--session` and a misleading echo line).
+- The quick `--quiet --output html json` default is appended for a **bare** run
+  *or* a `--session` override that named no `--output` — so `--session <uuid>`
+  alone still produces HTML+JSON. Every other flag combo (`--list`,
+  `--project-cost`, a bare `--output …`) is left exactly as typed, matching the
+  pre-override "any args ⇒ verbatim" contract.
+- The echo line now shows the user override (tagged `(user override)`).
+
+No change to `session-metrics.py` behaviour or any export format.
+
 ## v1.59.0 — 2026-05-31
 
 ### Bundled quick-run shell wrapper

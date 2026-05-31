@@ -5,9 +5,17 @@
 # session-metrics.py so quick runs work from any shell without path juggling.
 #
 # Usage:
-#   ./session-metrics-quick.sh                   # newest session of cwd's project -> HTML+JSON
-#   ./session-metrics-quick.sh --output md csv    # override formats / pass ANY script flag
-#   ./session-metrics-quick.sh --project-cost     # flags pass straight through
+#   ./session-metrics-quick.sh                       # newest session of cwd's project -> HTML+JSON
+#   ./session-metrics-quick.sh --session <uuid>      # a SPECIFIC session -> HTML+JSON
+#   ./session-metrics-quick.sh --session <uuid> --output md csv   # override formats too
+#   ./session-metrics-quick.sh --output md csv       # override formats / pass ANY script flag
+#   ./session-metrics-quick.sh --project-cost        # flags pass straight through
+#
+# Passing --session/-s targets that session instead of auto-detecting the
+# newest one — handy from a FRESH session (low context) to export an earlier
+# heavy session's metrics. The id resolves across all projects, so the target
+# need not live under the cwd's project. Default formats (HTML+JSON) still apply
+# unless you pass --output/-o.
 #
 # Env overrides:
 #   SM_PY=/path/to/session-metrics.py    # skip auto-discovery
@@ -59,17 +67,42 @@ if [ -d "$PROJECTS_DIR/$SLUG" ]; then
   [ -n "$newest" ] && SESSION="$(basename "$newest" .jsonl)"
 fi
 
+# --- 2b. Sniff "$@" (never mutate it) for a user-supplied session + output ---
+# If the user passed --session/-s we must NOT also inject the auto-detected one
+# (a doubled flag relies on argparse last-wins and muddies the echo). If they
+# passed --output/-o we leave formats to them; otherwise we append the quick
+# HTML+JSON default. `user_session` is used only for the echo + skip-inject
+# decision — the real value reaches the script untouched via "$@".
+user_session=""; has_output=""; want_session=""
+for a in "$@"; do
+  case "$a" in
+    --session|-s)  want_session=1 ;;
+    --session=*)   user_session="${a#*=}" ;;
+    -o|--output|--output=*)  has_output=1 ;;
+    *) [ -n "$want_session" ] && { user_session="$a"; want_session=""; } ;;
+  esac
+done
+
 # --- 3. Pick a Python runner (uv preferred; plain python3 works — no deps) ---
 if command -v uv >/dev/null 2>&1; then RUN=(uv run python); else RUN=(python3); fi
 
-echo "[quick] script  : $SCRIPT"                              >&2
-echo "[quick] slug    : $SLUG"                                >&2
-echo "[quick] session : ${SESSION:-<auto-detect by script>}"  >&2
-
-# --- 4. Run: default to a quick HTML+JSON export; pass through any user args -
-ARGS=(--quiet --output html json); [ "$#" -gt 0 ] && ARGS=("$@")
-if [ -n "$SESSION" ]; then
-  exec "${RUN[@]}" "$SCRIPT" --session "$SESSION" "${ARGS[@]}"
-else
-  exec "${RUN[@]}" "$SCRIPT" "${ARGS[@]}"
+if [ -n "$user_session" ]; then  shown_session="$user_session (user override)"
+else                              shown_session="${SESSION:-<auto-detect by script>}"
 fi
+echo "[quick] script  : $SCRIPT"                  >&2
+echo "[quick] slug    : $SLUG"                     >&2
+echo "[quick] session : $shown_session"            >&2
+
+# --- 4. Run: pass "$@" through verbatim. Inject the auto-detected session only
+#        when the user gave none. Append the quick HTML+JSON default for a bare
+#        run OR a --session override that named no --output — but leave every
+#        other flag combo (--list, --project-cost, a bare --output …) exactly as
+#        typed, matching the pre-override contract (any args => verbatim).
+sess=(); [ -z "$user_session" ] && [ -n "$SESSION" ] && sess=(--session "$SESSION")
+extra=()
+if [ "$#" -eq 0 ] || { [ -n "$user_session" ] && [ -z "$has_output" ]; }; then
+  extra=(--quiet --output html json)
+fi
+# ${arr[@]+"${arr[@]}"} expands to nothing (not an "unbound variable" error)
+# when the array is empty under `set -u` on bash 3.2 — macOS's default shell.
+exec "${RUN[@]}" "$SCRIPT" ${sess[@]+"${sess[@]}"} "$@" ${extra[@]+"${extra[@]}"}

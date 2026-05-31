@@ -119,7 +119,7 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --project-cost --qu
 
 > `${CLAUDE_SKILL_DIR}` is expanded by Claude Code to the skill's install directory (plugin cache, project-local copy, or bundled template — whichever applies). When running the script manually from a shell, substitute the actual path.
 
-> **Quick shell wrapper.** For manual runs outside Claude Code, the bundled [`scripts/session-metrics-quick.sh`](scripts/session-metrics-quick.sh) auto-locates `session-metrics.py` (including the version-pinned plugin-cache install), detects the current project + newest session, and runs an HTML+JSON export. Any args you pass replace its `--quiet --output html json` default.
+> **Quick shell wrapper.** For manual runs outside Claude Code, the bundled [`scripts/session-metrics-quick.sh`](scripts/session-metrics-quick.sh) auto-locates `session-metrics.py` (including the version-pinned plugin-cache install), detects the current project + newest session, and runs an HTML+JSON export. Pass `--session <uuid>` (or `-s`) to target a specific session instead — it resolves across all projects, so you can run it from a fresh low-context session to export an earlier heavy one; the HTML+JSON default still applies unless you pass `--output`. Other flags (`--project-cost`, `--list`, an explicit `--output …`) pass through verbatim.
 
 ## Export formats
 
