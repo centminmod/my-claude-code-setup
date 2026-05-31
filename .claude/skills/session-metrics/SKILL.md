@@ -1,5 +1,6 @@
 ---
 name: session-metrics
+effort: medium
 description: >
   Tally Claude Code session token usage and cost estimates from the raw JSONL
   conversation log. Trigger when the user asks about session cost, token usage,
@@ -444,7 +445,9 @@ Determine scope from the JSON filename printed by the `[export] JSON` line:
 Substitute `<json-path>` with the actual path printed by the
 `[export] JSON` line. The audit is summarisation-heavy and reads only the
 disk export (not the conversation), so for a ~10× cheaper run the user can
-`/model haiku` before invoking — the skill no longer pins a model itself.
+`/model haiku` before invoking (short/early sessions only — Haiku's 200k
+window can't hold a long conversation) — the skill no longer pins a model
+itself.
 
 **Do not invoke `audit-session-metrics` programmatically from this
 turn.** It is a separate, user-initiated audit: running it as its own

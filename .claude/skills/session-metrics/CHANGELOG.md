@@ -3,6 +3,37 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.61.0 — 2026-05-31
+
+### Per-skill `effort` defaults + Haiku short-session caveat
+
+Both skills now declare an `effort` level in frontmatter, overriding the
+session effort while the skill is active:
+
+- **`audit-session-metrics` → `effort: low`.** The audit is summarisation
+  over a pre-computed digest (every dollar figure comes from
+  `audit-extract.py`, not the model), so low effort matches the work. Watch
+  point: the residual risk at low is contract adherence (versioned JSON
+  schema, write-order, row caps), not analysis quality.
+- **`session-metrics` → `effort: medium`.** The core report path is
+  near-deterministic script-relay, but two paths need real reasoning — the
+  auto-Tasks companion (merge/split/title/verdict) and compare mode — so
+  `medium` (not `low`) protects them from under-thinking while still
+  trimming the relay path.
+
+Unlike the removed `model:` pins (v1.56.0 / v1.57.0), `effort` does **not**
+change the model, so it leaves the context window intact — it cannot trigger
+the 200k-window overflow that the model pins did. `effort` trims output /
+thinking volume only; it does not reduce the carried-conversation input that
+dominates a long session, so the saving is modest and the `/model haiku`
+opt-in remains the big cost lever.
+
+Also added a short-session caveat to every `/model haiku` recommendation
+(both `SKILL.md` files + README): the manual cheap path still collapses the
+window to Haiku's 200k, so it only applies on short/early sessions.
+
+No script behaviour or export-format change. `_SCRIPT_VERSION` untouched.
+
 ## v1.60.0 — 2026-05-31
 
 ### quick-run wrapper: `--session <uuid>` override
