@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.62.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.63.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -544,6 +544,11 @@ _build_tasks_companion_html     = _hs_m._build_tasks_companion_html
 _build_subagent_share_card_html = _hs_m._build_subagent_share_card_html
 _build_subagent_turn_share_card_html = _hs_m._build_subagent_turn_share_card_html
 _build_plan_leverage_card_html  = _hs_m._build_plan_leverage_card_html
+_build_ttl_mix_card_html        = _hs_m._build_ttl_mix_card_html
+_build_thinking_card_html       = _hs_m._build_thinking_card_html
+_build_tool_calls_card_html     = _hs_m._build_tool_calls_card_html
+_build_advisor_card_html        = _hs_m._build_advisor_card_html
+_build_partial_hit_card_html    = _hs_m._build_partial_hit_card_html
 _build_window_ribbon_html       = _hs_m._build_window_ribbon_html
 _build_attribution_coverage_html = _hs_m._build_attribution_coverage_html
 _build_within_session_split_html = _hs_m._build_within_session_split_html

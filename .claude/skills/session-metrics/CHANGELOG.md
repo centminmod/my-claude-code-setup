@@ -3,6 +3,37 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.63.0 — 2026-06-01
+
+### Instance dashboard — full KPI-card parity with session/project scopes
+
+The all-projects (instance) `index.html` now renders the same KPI cards the
+session- and project-level dashboards already had: **Cache savings**,
+**Cache hit ratio**, **Total input tokens**, **Cache TTL mix**, **Extended
+thinking engagement**, **Tool calls**, **Advisor calls**, and **Partial hit
+rate**. Previously the instance hero grid surfaced only raw token/cost
+totals, so the cache-savings figure (e.g. ~$21.7k across 55 projects) was
+invisible at the aggregate scope even though session/project dashboards
+featured it.
+
+Root cause: `_aggregate_totals` summed the additive token/cost fields but
+never ran the derived-field pass that `_totals_from_turns` (session) and
+`_add_totals` (project) run, so `cache_savings` / `cache_hit_pct` /
+`total_input` / `partial_hit_rate` / `thinking_turn_pct` / `tool_call_*`
+were all absent at instance scope. It now runs that pass.
+
+Also fixes a latent bug surfaced during review: instance-scope tool-name
+aggregation read a per-turn field (`tool_use_names`) off the per-project
+`totals` dict (where it never exists — the real `_tool_name_counts` map is
+stripped before aggregation), so the Tool-calls card's "top:" names would
+have rendered `none`. Tool names are now re-walked from the per-project
+turns (mirroring `_aggregate_models`), skipping `<synthetic>` marker turns.
+
+The five secondary cards were extracted from the inline session renderer
+into shared `_build_*_card_html` helpers reused by both the session and
+instance renderers; session/project HTML output is unchanged. No interface
+change for existing users.
+
 ## v1.62.0 — 2026-05-31
 
 ### Tasks page — per-turn drilldown inside each request

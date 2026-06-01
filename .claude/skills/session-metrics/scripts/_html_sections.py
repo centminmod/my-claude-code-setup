@@ -1656,6 +1656,102 @@ def _build_plan_leverage_card_html(totals: dict, plan_cost: float | None) -> str
     )
 
 
+# ---------------------------------------------------------------------------
+# Secondary KPI cards — extracted from the inline dashboard builder so the
+# instance/all-projects renderer can reuse them (it already consumes
+# ``_build_plan_leverage_card_html`` / ``_build_subagent_share_card_html``).
+# Each returns the full ``"\n  <div…>"`` card string or ``""`` (auto-hide),
+# byte-identical to the former inline blocks.
+# ---------------------------------------------------------------------------
+
+def _build_ttl_mix_card_html(totals: dict) -> str:
+    """Cache TTL-mix card: premium paid for 1-hour cache writes vs 5-minute."""
+    if totals.get("cache_write_1h", 0) <= 0:
+        return ""
+    pct_1h = 100 * totals["cache_write_1h"] / max(1, totals["cache_write"])
+    extra = totals.get("extra_1h_cost", 0.0)
+    return (
+        f'\n  <div class="kpi cat-tokens" '
+        f'title="1-hour cache writes cost 2× input vs 1.25× for the 5-minute tier. '
+        f'This card shows the premium you paid for longer cache reuse.">'
+        f'<div class="kpi-label">Cache TTL mix (extra paid for 1h)</div>'
+        f'<div class="kpi-val">{pct_1h:.0f}% 1h · ${extra:.4f}</div></div>'
+    )
+
+
+def _build_thinking_card_html(totals: dict) -> str:
+    """Extended-thinking engagement card (signature-only block count)."""
+    if totals.get("thinking_turn_count", 0) <= 0:
+        return ""
+    tn = totals["thinking_turn_count"]
+    tp = totals.get("thinking_turn_pct", 0.0)
+    blocks = (totals.get("content_blocks") or {}).get("thinking", 0)
+    total_turns = totals.get("turns", 0)
+    return (
+        f'\n  <div class="kpi" '
+        f'title="Claude Code stores thinking blocks signature-only — '
+        f'the count is real but per-block token counts aren\'t recoverable '
+        f'from the transcript (thinking tokens are rolled into output_tokens).">'
+        f'<div class="kpi-label">Extended thinking engagement '
+        f'({tn} of {total_turns} turns)</div>'
+        f'<div class="kpi-val">{tp:.0f}% · {blocks} blocks</div></div>'
+    )
+
+
+def _build_tool_calls_card_html(totals: dict) -> str:
+    """Tool-calls card: total count, per-turn average, and top-3 tool names."""
+    if totals.get("tool_call_total", 0) <= 0:
+        return ""
+    tc = totals["tool_call_total"]
+    avg = totals.get("tool_call_avg_per_turn", 0.0)
+    top3 = totals.get("tool_names_top3") or []
+    # Tool names originate from the JSONL and are attacker-controllable
+    # in a compromised transcript — escape each before interpolating.
+    top3_str = ", ".join(html_mod.escape(n) for n in top3) if top3 else "none"
+    return (
+        f'\n  <div class="kpi">'
+        f'<div class="kpi-label">Tool calls &middot; top: {top3_str}</div>'
+        f'<div class="kpi-val">{tc} · {avg:.1f}/turn</div></div>'
+    )
+
+
+def _build_advisor_card_html(totals: dict, configured_model: str | None = None) -> str:
+    """Advisor-calls card. ``configured_model`` is the advisor model label
+    (dug out of the per-session ``sessions`` list by the session renderer);
+    instance scope has no equivalent source and passes ``None``."""
+    _adv_total = totals.get("advisor_call_count", 0)
+    if _adv_total <= 0:
+        return ""
+    _adv_cost = totals.get("advisor_cost_usd", 0.0)
+    _adv_total_cost = totals.get("cost", 0.0)
+    _adv_model_str = (
+        f" &middot; {html_mod.escape(configured_model)}" if configured_model else ""
+    )
+    _adv_pct = 100 * _adv_cost / _adv_total_cost if _adv_total_cost else 0.0
+    return (
+        f'\n  <div class="kpi" title="Advisor turns are billed at the'
+        f' advisor model\'s list rates with no prompt caching. Cost is'
+        f' included in the Total cost above.">'
+        f'<div class="kpi-label">Advisor calls{_adv_model_str}</div>'
+        f'<div class="kpi-val">{_adv_total} call{"s" if _adv_total != 1 else ""}'
+        f' &middot; +${_adv_cost:.4f} ({_adv_pct:.0f}% of total)</div></div>'
+    )
+
+
+def _build_partial_hit_card_html(totals: dict) -> str:
+    """Partial-hit-rate card: simultaneous read+write turns / cache-active turns."""
+    if totals.get("total_cache_turns", 0) <= 0:
+        return ""
+    return (
+        f'\n  <div class="kpi" title="Turns with simultaneous cache read+write'
+        f' (prefix extension) as % of all cache-active turns">'
+        f'<div class="kpi-label">Partial hit rate</div>'
+        f'<div class="kpi-val">{totals["partial_hit_rate"]:.1f}%</div>'
+        f'<div class="kpi-sub">{totals["partial_hit_turns"]:,} of'
+        f' {totals["total_cache_turns"]:,} cache turns</div></div>'
+    )
+
+
 def _build_attribution_coverage_html(stats: dict) -> str:
     """Trust gauge for the headline. Renders a small section with
     orphan-turn count, cycles detected, max nesting depth, and the
@@ -3671,66 +3767,18 @@ def render_html(report: dict, variant: str = "single",
 
     summary_cards_html = ""
     if include_insights:
-        ttl_mix_card = ""
-        if totals.get("cache_write_1h", 0) > 0:
-            pct_1h = 100 * totals["cache_write_1h"] / max(1, totals["cache_write"])
-            extra = totals.get("extra_1h_cost", 0.0)
-            ttl_mix_card = (
-                f'\n  <div class="kpi cat-tokens" '
-                f'title="1-hour cache writes cost 2× input vs 1.25× for the 5-minute tier. '
-                f'This card shows the premium you paid for longer cache reuse.">'
-                f'<div class="kpi-label">Cache TTL mix (extra paid for 1h)</div>'
-                f'<div class="kpi-val">{pct_1h:.0f}% 1h · ${extra:.4f}</div></div>'
-            )
-        thinking_card = ""
-        if totals.get("thinking_turn_count", 0) > 0:
-            tn = totals["thinking_turn_count"]
-            tp = totals.get("thinking_turn_pct", 0.0)
-            blocks = (totals.get("content_blocks") or {}).get("thinking", 0)
-            total_turns = totals.get("turns", 0)
-            thinking_card = (
-                f'\n  <div class="kpi" '
-                f'title="Claude Code stores thinking blocks signature-only — '
-                f'the count is real but per-block token counts aren\'t recoverable '
-                f'from the transcript (thinking tokens are rolled into output_tokens).">'
-                f'<div class="kpi-label">Extended thinking engagement '
-                f'({tn} of {total_turns} turns)</div>'
-                f'<div class="kpi-val">{tp:.0f}% · {blocks} blocks</div></div>'
-            )
-        tool_calls_card = ""
-        if totals.get("tool_call_total", 0) > 0:
-            tc = totals["tool_call_total"]
-            avg = totals.get("tool_call_avg_per_turn", 0.0)
-            top3 = totals.get("tool_names_top3") or []
-            # Tool names originate from the JSONL and are attacker-controllable
-            # in a compromised transcript — escape each before interpolating.
-            top3_str = ", ".join(html_mod.escape(n) for n in top3) if top3 else "none"
-            tool_calls_card = (
-                f'\n  <div class="kpi">'
-                f'<div class="kpi-label">Tool calls &middot; top: {top3_str}</div>'
-                f'<div class="kpi-val">{tc} · {avg:.1f}/turn</div></div>'
-            )
-        advisor_card = ""
-        _adv_total = totals.get("advisor_call_count", 0)
-        if _adv_total > 0:
-            _adv_cost = totals.get("advisor_cost_usd", 0.0)
-            _adv_total_cost = totals.get("cost", 0.0)
-            # Pull configured model from first session that has it
-            _adv_cfgm = next(
-                (s.get("advisor_configured_model") for s in sessions
-                 if s.get("advisor_configured_model")),
-                None,
-            )
-            _adv_model_str = f" &middot; {html_mod.escape(_adv_cfgm)}" if _adv_cfgm else ""
-            _adv_pct = 100 * _adv_cost / _adv_total_cost if _adv_total_cost else 0.0
-            advisor_card = (
-                f'\n  <div class="kpi" title="Advisor turns are billed at the'
-                f' advisor model\'s list rates with no prompt caching. Cost is'
-                f' included in the Total cost above.">'
-                f'<div class="kpi-label">Advisor calls{_adv_model_str}</div>'
-                f'<div class="kpi-val">{_adv_total} call{"s" if _adv_total != 1 else ""}'
-                f' &middot; +${_adv_cost:.4f} ({_adv_pct:.0f}% of total)</div></div>'
-            )
+        ttl_mix_card = _build_ttl_mix_card_html(totals)
+        thinking_card = _build_thinking_card_html(totals)
+        tool_calls_card = _build_tool_calls_card_html(totals)
+        # Advisor model label lives only on the per-session ``sessions`` list;
+        # pull it from the first session that has one and pass it in so the
+        # session card keeps its model annotation (instance scope passes None).
+        _adv_cfgm = next(
+            (s.get("advisor_configured_model") for s in sessions
+             if s.get("advisor_configured_model")),
+            None,
+        )
+        advisor_card = _build_advisor_card_html(totals, _adv_cfgm)
         resumes_card = ""
         resumes_list = report.get("resumes") or []
         if resumes_list:
@@ -3811,17 +3859,7 @@ def render_html(report: dict, variant: str = "single",
         _turn_share = _build_subagent_turn_share_card_html(_sa_stats)
         subagent_turn_share_card = ("\n  " + _turn_share) if _turn_share else ""
         # Partial-hit rate card — shown when any turn touched the cache.
-        _phr = ""
-        if totals.get("total_cache_turns", 0) > 0:
-            _phr = (
-                f'\n  <div class="kpi" title="Turns with simultaneous cache read+write'
-                f' (prefix extension) as % of all cache-active turns">'
-                f'<div class="kpi-label">Partial hit rate</div>'
-                f'<div class="kpi-val">{totals["partial_hit_rate"]:.1f}%</div>'
-                f'<div class="kpi-sub">{totals["partial_hit_turns"]:,} of'
-                f' {totals["total_cache_turns"]:,} cache turns</div></div>'
-            )
-        partial_hit_card = _phr
+        partial_hit_card = _build_partial_hit_card_html(totals)
         # cognitive-claude-inspired plan-leverage card. Empty when
         # --plan-cost / SESSION_METRICS_PLAN_COST is unset.
         plan_leverage_card = _build_plan_leverage_card_html(

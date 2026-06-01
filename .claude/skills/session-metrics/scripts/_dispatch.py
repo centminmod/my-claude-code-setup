@@ -1222,12 +1222,19 @@ def _render_instance_html(report: dict, chart_lib: str = "highcharts") -> str:
 
     active_days = len({d["date"] for d in daily}) if daily else 0
 
+    # Card tuples are (value, label) or (value, label, css_class); css_class
+    # defaults to "cat-tokens" in the render loop. Cache savings / hit ratio /
+    # total input mirror the session+project dashboard order. Instance dollar
+    # cards use ``$.2f`` (large figures) — not session's ``$.4f``.
     cards = [
-        (f"${float(totals.get('cost', 0.0)):.2f}", "Total cost"),
+        (f"${float(totals.get('cost', 0.0)):.2f}",          "Total cost"),
+        (f"${float(totals.get('cache_savings', 0.0)):.2f}", "Cache savings", "cat-save"),
+        (f"{float(totals.get('cache_hit_pct', 0.0)):.1f}%", "Cache hit ratio"),
         (f"{totals.get('turns', 0):,}",            "Total turns"),
         (f"{report.get('project_count', 0):,}",    "Projects"),
         (f"{report.get('session_count', 0):,}",    "Sessions"),
         (f"{active_days:,}",                        "Active days"),
+        (f"{int(totals.get('total_input', 0)):,}",  "Total input tokens"),
         (f"{totals.get('input', 0):,}",             "Input tokens (new)"),
         (f"{totals.get('output', 0):,}",            "Output tokens"),
         (f"{totals.get('cache_read', 0):,}",        "Cache read"),
@@ -1252,11 +1259,12 @@ def _render_instance_html(report: dict, chart_lib: str = "highcharts") -> str:
                       "Top model by cost"))
 
     cards_html_parts = []
-    for idx, (val, lbl) in enumerate(cards):
+    for idx, (val, lbl, *rest) in enumerate(cards):
+        cat = rest[0] if rest else "cat-tokens"
         safe_val = html_mod.escape(val)
         safe_lbl = html_mod.escape(lbl)
         # First card is "Total cost" — elevate to .featured
-        kpi_cls = "kpi featured cat-tokens" if idx == 0 else "kpi cat-tokens"
+        kpi_cls = "kpi featured cat-tokens" if idx == 0 else f"kpi {cat}"
         cards_html_parts.append(
             f'<div class="{kpi_cls}"><div class="kpi-label">{safe_lbl}</div>'
             f'<div class="kpi-val">{safe_val}</div></div>'
@@ -1269,9 +1277,19 @@ def _render_instance_html(report: dict, chart_lib: str = "highcharts") -> str:
     inst_turn_share_card = _sm()._build_subagent_turn_share_card_html(_sa_stats)
     inst_plan_leverage_card = _sm()._build_plan_leverage_card_html(
         totals, report.get("plan_cost"))
+    # Secondary parity cards — reuse the shared helpers extracted from the
+    # session renderer. Each auto-hides ("") when its gating field is absent.
+    # Advisor model label has no instance-scope source → configured_model=None.
+    inst_partial_hit_card = _sm()._build_partial_hit_card_html(totals)
+    inst_ttl_mix_card     = _sm()._build_ttl_mix_card_html(totals)
+    inst_thinking_card    = _sm()._build_thinking_card_html(totals)
+    inst_tool_calls_card  = _sm()._build_tool_calls_card_html(totals)
+    inst_advisor_card     = _sm()._build_advisor_card_html(totals)
     summary_cards_html = (
         f'<div class="kpi-grid">{"".join(cards_html_parts)}'
-        f'{inst_plan_leverage_card}{inst_share_card}{inst_turn_share_card}</div>'
+        f'{inst_plan_leverage_card}{inst_share_card}{inst_turn_share_card}'
+        f'{inst_partial_hit_card}{inst_ttl_mix_card}{inst_thinking_card}'
+        f'{inst_tool_calls_card}{inst_advisor_card}</div>'
     )
 
     # ---- Reused insights helpers ------------------------------------------

@@ -990,7 +990,8 @@ def _aggregate_totals(project_reports: list[dict]) -> dict:
     keys = ["input", "output", "cache_read", "cache_write",
             "cache_write_5m", "cache_write_1h", "extra_1h_cost",
             "cost", "no_cache_cost", "turns",
-            "advisor_call_count", "advisor_cost_usd"]
+            "advisor_call_count", "advisor_cost_usd",
+            "partial_hit_turns", "total_cache_turns"]
     out: dict = {k: 0 for k in keys}
     out["cost"] = 0.0
     out["no_cache_cost"] = 0.0
@@ -1008,15 +1009,40 @@ def _aggregate_totals(project_reports: list[dict]) -> dict:
         for k, v in cb.items():
             content_blocks[k] = content_blocks.get(k, 0) + int(v or 0)
         thinking_turn_count += t.get("thinking_turn_count", 0)
-        tun = t.get("tool_use_names") or {}
-        for name, n in tun.items():
-            name_counts[name] = name_counts.get(name, 0) + n
+        # Tool-name counts cannot be read from the per-project ``totals`` dict:
+        # the per-project name map (``_tool_name_counts``) is stripped in
+        # ``_build_report`` before the report is exposed, and ``tool_use_names``
+        # is a per-turn field, not a totals key. Re-walk the turns directly —
+        # same pattern as ``_aggregate_models`` — so ``tool_names_top3`` below
+        # reflects real names instead of an always-empty map.
+        for s in pr.get("sessions", []):
+            for tr in s.get("turns", []):
+                if tr.get("model") == _sm()._SYNTHETIC_MODEL:
+                    continue
+                for name in tr.get("tool_use_names", []) or []:
+                    name_counts[name] = name_counts.get(name, 0) + 1
     if any(v for v in content_blocks.values()):
         out["content_blocks"] = content_blocks
-    if thinking_turn_count:
-        out["thinking_turn_count"] = thinking_turn_count
+    # Store unconditionally (not gated on a truthy count) so the derived
+    # ``thinking_turn_pct`` below never KeyErrors on a thinking-free instance.
+    out["thinking_turn_count"] = thinking_turn_count
     if name_counts:
         out["tool_use_names"] = name_counts
+    # ---- Derived-field pass (parity with ``_totals_from_turns`` /
+    # ``_add_totals``). All inputs are sums of additive fields, so deriving
+    # here matches a single linear pass to within a float ULP. ----
+    out["total"]         = out["input"] + out["output"] + out["cache_read"] + out["cache_write"]
+    out["total_input"]   = out["input"] + out["cache_read"] + out["cache_write"]
+    out["cache_savings"] = out["no_cache_cost"] - out["cost"]
+    out["cache_hit_pct"] = 100 * out["cache_read"] / max(1, out["total_input"])
+    out["partial_hit_rate"] = round(
+        100.0 * out["partial_hit_turns"] / max(1, out["total_cache_turns"]), 1)
+    n = out["turns"]
+    out["thinking_turn_pct"]      = 100 * thinking_turn_count / n if n else 0.0
+    out["tool_call_total"]        = content_blocks.get("tool_use", 0)
+    out["tool_call_avg_per_turn"] = out["tool_call_total"] / n if n else 0.0
+    ranked = sorted(name_counts.items(), key=lambda x: (-x[1], x[0]))
+    out["tool_names_top3"] = [name for name, _ in ranked[:3]]
     return out
 
 
