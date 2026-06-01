@@ -3,6 +3,29 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.63.1 — 2026-06-02
+
+### Fix: instance JSON export leaked a `tool_use_names` dict into `totals`
+
+A penta-AI review (`/consult-codex-deepseek-gemini-zai`) of the v1.63.0
+instance-parity work surfaced a regression in `_aggregate_totals`
+(`_report.py`): the intermediate tool-name `{name: count}` map was stashed on
+the returned `totals` under the public key `tool_use_names`, which then leaked
+into instance `--output json` exports (`totals.tool_use_names` rendered as a
+**dict**). That collides with the per-turn `tool_use_names` field — a **list**
+at every other layer — and is a shape mismatch with session/project totals,
+which keep the map under the internal `_tool_name_counts` key and `.pop()` it
+before export. The stored map was dead weight: `tool_names_top3` is derived
+from the local variable, not the stored key. Removed the storage so the key no
+longer appears in any export. No user-visible card changed; `tool_names_top3`
+and `tool_call_total` are unaffected (verified by re-running a live
+`--all-projects --output json` export).
+
+Added `tests/test_instance.py::test_aggregate_totals_does_not_leak_tool_use_names_key`
+(guards both the aggregate dict and the rendered instance JSON) and tightened
+the existing parity test's now-vacuous assertion into a real leak guard. Full
+suite **781 passed / 1 skipped**.
+
 ## v1.63.0 — 2026-06-01
 
 ### Instance dashboard — full KPI-card parity with session/project scopes

@@ -1026,8 +1026,16 @@ def _aggregate_totals(project_reports: list[dict]) -> dict:
     # Store unconditionally (not gated on a truthy count) so the derived
     # ``thinking_turn_pct`` below never KeyErrors on a thinking-free instance.
     out["thinking_turn_count"] = thinking_turn_count
-    if name_counts:
-        out["tool_use_names"] = name_counts
+    # NB: deliberately do NOT stash ``name_counts`` on ``out``. The session/
+    # project paths keep their name map under the leading-underscore internal
+    # key ``_tool_name_counts`` and ``.pop()`` it in ``_build_report`` before
+    # export (_report.py ~742). The instance report has no equivalent strip
+    # pass, so storing it under the public, list-typed key ``tool_use_names``
+    # leaked a dict into instance JSON exports (``totals.tool_use_names`` ==
+    # {name: count}) — a shape mismatch with session/project totals (key
+    # absent) and a type collision with the per-turn ``tool_use_names`` list.
+    # The only consumer is ``tool_names_top3`` below, derived from the local
+    # ``name_counts`` directly, so nothing needs the field on ``out``.
     # ---- Derived-field pass (parity with ``_totals_from_turns`` /
     # ``_add_totals``). All inputs are sums of additive fields, so deriving
     # here matches a single linear pass to within a float ULP. ----
