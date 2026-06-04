@@ -191,10 +191,23 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
   `message.usage.cache_creation.ephemeral_{5m,1h}_input_tokens` and charges
   each at the correct rate. Turns without the nested object (legacy
   transcripts) fall back to the 5-minute rate, preserving their prior cost.
-- **Fast mode** (Opus 4.6 research preview): 6× standard base rates
-  ($30 input / $150 output). Not currently applied by `_cost` even when
-  `usage.speed == "fast"`. Cost display for fast-mode turns is therefore
-  underestimated by a factor of 6 — flagged as a known limitation.
+- **Fast mode** (research preview, **Opus 4.6 / 4.7 / 4.8 only**): a premium
+  rate tier — Opus 4.6/4.7 bill at **6× standard** ($30 input / $150 output),
+  Opus 4.8 at **2×** ($10 / $50). Prompt-caching multipliers apply *on top of*
+  the fast base, so every token category scales by the same factor. **Applied
+  since v1.64.0**: `_cost` / `_no_cache_cost` multiply the per-turn *primary*
+  token cost by the per-model factor (`_FAST_MODE_MULTIPLIERS`) when
+  `usage.speed == "fast"`. The advisor sub-cost is **not** scaled — it is a
+  separate model invocation whose speed tier the iteration record doesn't
+  carry. Pass `--no-fast-premium` to reproduce pre-v1.64.0 numbers. Source:
+  Anthropic pricing § "Fast mode pricing".
+- **Server-side web tools**: `web_search` is billed **$0.01 per request**
+  ($10 / 1,000 searches), outside the token rate — added by `_cost` since
+  v1.64.0, **after** any fast multiplier (a flat per-request charge is not
+  tier-scaled). `web_fetch` carries **no per-request charge** (token-only), so
+  it is intentionally not counted. Source: Anthropic pricing § "Web search
+  tool" / "Web fetch tool".
 - **Data residency multiplier**: US-only inference via `inference_geo`
-  adds 1.1× on top of all rates. Not tracked.
+  adds 1.1× on top of all rates (Opus 4.6+/Sonnet 4.6+/Haiku 4.5+). Not
+  tracked — no non-empty values observed in any transcript.
 - Prices are estimates; actual billing is on Anthropic's platform.

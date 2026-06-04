@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.63.1"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.64.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -144,6 +144,26 @@ _DEFAULT_PRICING = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_w
 # and pollute the unknown-model advisory. Short-circuited in `_pricing_for`.
 _ZERO_PRICING = {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0, "cache_write_1h": 0.0}
 _SYNTHETIC_MODEL = "<synthetic>"
+
+# Fast-mode (research preview) premium multipliers. Source: Anthropic pricing
+# (https://platform.claude.com/docs/en/about-claude/pricing § "Fast mode
+# pricing"). Fast mode is Opus-only and prices EVERY token category at a uniform
+# premium over standard rates — prompt-caching multipliers apply on top of the
+# fast base — so a single per-model factor applied to the computed token cost is
+# exact (not an approximation). Keyed by model-id prefix; `[1m]` and date
+# suffixes resolve via the prefix sweep in `_fast_multiplier_for`. Models absent
+# here → 1.0 (no premium is ever invented for an unmapped model).
+_FAST_MODE_MULTIPLIERS: dict[str, float] = {
+    "claude-opus-4-8": 2.0,   # fast $10/$50  vs standard $5/$25
+    "claude-opus-4-7": 6.0,   # fast $30/$150 vs standard $5/$25
+    "claude-opus-4-6": 6.0,   # fast $30/$150 vs standard $5/$25
+}
+# Server-side web_search is billed per request, OUTSIDE the token rate
+# ($10 / 1,000 searches = $0.01 per request). web_fetch has NO per-request
+# charge (token-only), so it is intentionally not modelled. Source: Anthropic
+# pricing § "Web search tool" / "Web fetch tool". This is a flat dollar charge,
+# so it must be added AFTER any fast-mode multiplier (never scaled by it).
+_WEB_SEARCH_REQUEST_USD = 0.01
 
 # Regex patterns for flexible model-ID matching — checked between exact match and prefix
 # sweep. re.search so partial IDs (no provider prefix, date suffixes, :tag qualifiers)
@@ -281,12 +301,23 @@ def _print_run_advisories() -> None:
         )
     if _FAST_MODE_TURNS[0]:
         n = _FAST_MODE_TURNS[0]
-        print(
-            f"[note] {n} fast-mode turn{'s' if n != 1 else ''} detected; "
-            "cost shown is base-rate × 1.0 (actual is ~6×). "
-            "See references/pricing.md § Fast mode.",
-            file=sys.stderr,
-        )
+        plural = "s" if n != 1 else ""
+        if _FAST_PREMIUM_DISABLED:
+            print(
+                f"[note] {n} fast-mode turn{plural} detected; the fast-mode "
+                "premium (Opus 4.6/4.7 6×, 4.8 2× standard rates) was SUPPRESSED "
+                "via --no-fast-premium, so cost is under-stated for those turns. "
+                "See references/pricing.md § Fast mode.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"[note] {n} fast-mode turn{plural} detected; priced at the "
+                "fast-mode premium (Opus 4.6/4.7 6×, 4.8 2× standard rates). "
+                "Pass --no-fast-premium to reproduce pre-premium numbers. "
+                "See references/pricing.md § Fast mode.",
+                file=sys.stderr,
+            )
 
 
 atexit.register(_print_run_advisories)
@@ -396,6 +427,11 @@ _build_cache_trend_sparkline_svg = _ch_m._build_cache_trend_sparkline_svg
 _CHART_PAGE                   = _ch_m._CHART_PAGE
 _VENDOR_CHARTS_DIR            = Path(_ch_m.__file__ or __file__).resolve().parent / "vendor" / "charts"
 _ALLOW_UNVERIFIED_CHARTS      = False
+# --no-fast-premium: when True, suppress the fast-mode cost multiplier so a
+# report reproduces pre-fast-premium numbers (parity with exports generated
+# before fast-mode pricing was applied). Set from the CLI; read in `_cost`,
+# `_no_cache_cost`, and the `extra_1h_cost` derivation.
+_FAST_PREMIUM_DISABLED        = False
 _PROJECTS_DIR_OVERRIDE: Path | None = None
 # v1.41.0: parse-cache and export directories are operator-overridable so
 # users with multiple Claude Code installs (CI, ephemeral envs, shared boxes)
@@ -588,6 +624,7 @@ del _rp_m
 
 _da_m = _load_leaf("_data")
 _pricing_for                = _da_m._pricing_for
+_fast_multiplier_for        = _da_m._fast_multiplier_for
 _parse_jsonl                = _da_m._parse_jsonl
 _parse_cache_dir            = _da_m._parse_cache_dir
 _parse_cache_key            = _da_m._parse_cache_key

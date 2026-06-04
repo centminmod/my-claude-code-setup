@@ -31,6 +31,9 @@ _INSIGHT_OFF_PEAK_PCT_THRESHOLD       = 60.0   # heavy off-peak only (above ~58%
 _INSIGHT_COST_CONCENTRATION_TOP_N     = 5
 _INSIGHT_COST_CONCENTRATION_PCT       = 25.0
 _INSIGHT_COST_CONCENTRATION_MIN_TURNS = 10     # avoid trivially-100% case for tiny sessions
+_INSIGHT_TRUNCATED_MIN_TURNS          = 5      # ≥ 5 max_tokens turns before the truncation insight fires
+_INSIGHT_TRUNCATED_PCT_THRESHOLD      = 5.0    # …and ≥ 5% of cost on those turns
+_INSIGHT_THINKING_PCT_THRESHOLD       = 10.0   # cost share from extended-thinking-engaged turns
 
 
 def _session_task_count(session: dict) -> int:
@@ -486,7 +489,46 @@ def _compute_usage_insights(report: dict) -> list[dict]:
             "always_on": True,
         })
 
-    # 11. Model compare hint — fires when the project has ≥2 distinct
+    # 11. Truncated responses — cost share + count of turns that hit the output
+    # token limit (stop_reason == "max_tokens"). Gated on a minimum count so a
+    # single truncated turn in a tiny session doesn't fire. Neutral framing: a
+    # truncated turn isn't necessarily wasted, but frequent limit-hits mean
+    # follow-ups that re-send context.
+    trunc_turns = [t for t in all_turns if t.get("stop_reason") == "max_tokens"]
+    trunc_n     = len(trunc_turns)
+    trunc_cost  = sum(t.get("cost_usd", 0.0) for t in trunc_turns)
+    trunc_pct   = 100.0 * trunc_cost / total_cost
+    candidates.append({
+        "id":        "truncated_responses",
+        "headline":  f"{trunc_pct:.0f}%",
+        "body":      (f" of cost came from {trunc_n:,} turn{'s' if trunc_n != 1 else ''} that hit the "
+                      f"output-token limit (stop_reason=max_tokens) — incomplete replies often need a "
+                      f"follow-up that re-sends context; a higher max-output-tokens setting can cut the round-trips."),
+        "value":     trunc_pct,
+        "threshold": _INSIGHT_TRUNCATED_PCT_THRESHOLD,
+        "shown":     trunc_n >= _INSIGHT_TRUNCATED_MIN_TURNS and trunc_pct >= _INSIGHT_TRUNCATED_PCT_THRESHOLD,
+        "always_on": False,
+    })
+
+    # 12. Extended-thinking engagement — cost share of turns that carried a
+    # thinking block. Behavioural signal ("how much spend involved extended
+    # thinking"), NOT a thinking-token cost: thinking tokens are billed inside
+    # output_tokens and are not separately measurable from the transcript.
+    thinking_cost = sum(t.get("cost_usd", 0.0) for t in all_turns
+                        if (t.get("content_blocks") or {}).get("thinking", 0) > 0)
+    thinking_pct  = 100.0 * thinking_cost / total_cost
+    candidates.append({
+        "id":        "thinking_engagement",
+        "headline":  f"{thinking_pct:.0f}%",
+        "body":      (" of cost came from turns that engaged extended thinking — reasoning trades extra "
+                      "output tokens (billed at the output rate) for deeper analysis."),
+        "value":     thinking_pct,
+        "threshold": _INSIGHT_THINKING_PCT_THRESHOLD,
+        "shown":     thinking_pct >= _INSIGHT_THINKING_PCT_THRESHOLD,
+        "always_on": False,
+    })
+
+    # 13. Model compare hint — fires when the project has ≥2 distinct
     # model families. Gated behind a state marker so the card escalates
     # from "hint you can run a benchmark" to "re-run for fresh numbers"
     # once the user actually tries --compare. Suppressed CLI-side via

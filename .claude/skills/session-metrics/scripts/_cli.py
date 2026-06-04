@@ -317,6 +317,12 @@ def _build_parser() -> argparse.ArgumentParser:
                         "up onto the user prompt that spawned the subagent "
                         "chain via additional ``attributed_subagent_*`` "
                         "fields (no double-counting).")
+    p.add_argument("--no-fast-premium", action="store_true",
+                   help="Suppress the fast-mode pricing premium. By default, "
+                        "turns with usage.speed=='fast' (Opus 4.6/4.7 = 6x, "
+                        "Opus 4.8 = 2x standard rates) are priced at the fast "
+                        "tier. Pass this to reproduce pre-fast-premium numbers "
+                        "for before/after comparison with older exports.")
     p.add_argument("--sort-prompts-by", choices=["total", "self"],
                    default=None, metavar="MODE",
                    help="How to rank top-prompts: 'total' (parent + attributed "
@@ -711,7 +717,18 @@ def _load_compare_module():
 
 
 def main() -> None:
-    args = _build_parser().parse_args()
+    parser = _build_parser()
+    args = parser.parse_args()
+    # P2.4: --compare-run-prompt-steering[-position] are consumed ONLY inside
+    # the compare-run dispatch (where ``args.compare_run is not None``). They
+    # live on the main parser — outside the ``_mode`` mutually-exclusive group —
+    # so without this guard they parse silently and are discarded when paired
+    # with any other mode (e.g. ``--count-tokens-only``). Key off the steering
+    # VARIANT only: ``--compare-run-prompt-steering-position`` has a non-None
+    # default ("prefix"), so it can't distinguish "user set it" from the default.
+    if getattr(args, "compare_run_prompt_steering", None) and getattr(args, "compare_run", None) is None:
+        parser.error("--compare-run-prompt-steering requires --compare-run; "
+                     "it has no effect with other modes.")
     # P5.2: --export-share-safe is a one-flag bundle that implies
     # --redact-user-prompts and --no-self-cost (chmod 0600 is wired
     # separately at every export write site via the share_safe param).
@@ -774,6 +791,9 @@ def main() -> None:
     # Flip the module-level gate so _read_vendor_files knows whether to
     # raise or warn on verification failures. Set before any chart code runs.
     _sm()._ALLOW_UNVERIFIED_CHARTS = bool(args.allow_unverified_charts)
+    # --no-fast-premium: suppress the fast-mode cost multiplier (parity with
+    # pre-fast-premium exports). Read in _cost / _no_cache_cost / extra_1h_cost.
+    _sm()._FAST_PREMIUM_DISABLED = bool(getattr(args, "no_fast_premium", False))
     _maybe_warn_chart_license(chart_lib, formats)
     # Apply --projects-dir / --cache-dir / --export-dir overrides early so
     # the corresponding helpers (_projects_dir, _parse_cache_dir, _export_dir)

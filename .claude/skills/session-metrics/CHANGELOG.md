@@ -3,6 +3,68 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.64.0 — 2026-06-05
+
+### Fast-mode pricing premium — `/fast` turns are now priced correctly (was under-reported 2×–6×)
+
+The skill has detected `usage.speed == "fast"` since the `/fast` feature
+shipped but never applied the fast-mode price premium, so every Opus turn run
+in fast mode was under-costed: by **6×** on Opus 4.6 / 4.7 and **2×** on Opus
+4.8 (fast mode is Opus-only). This was the single largest cost-accuracy gap in
+the tool.
+
+A new `_fast_multiplier_for(model)` mirrors `_pricing_for`'s full resolution
+chain (exact → regex → prefix sweep → family fallback → default **1.0**), so it
+handles `[1m]`- and date-suffixed model ids and never invents a multiplier for
+an unknown model. The multiplier scales the **primary** token cost only — the
+advisor sub-cost is a separate model invocation that may not be in fast mode, so
+it is billed unscaled. Applied uniformly in both `_cost` and `_no_cache_cost`
+(so the cache-savings delta stays correct on fast turns) and to the
+`extra_1h_cost` KPI. A new `--no-fast-premium` flag reverts to standard rates
+for before/after parity. The run advisory is now model-aware ("2×–6× per
+model") instead of the stale hardcoded "~6×".
+
+### Server-side `web_search` per-request billing
+
+`web_search_requests` was parsed nowhere and silently uncosted. Each
+server-side web search bills a flat **$0.01/request** on top of the token rate,
+now added in `_cost` / `_no_cache_cost` **after** the fast multiplier (a flat
+per-request charge must not be fast-scaled). `web_fetch` remains **token-only**
+(no per-request charge) — the schema/pricing docs that implied otherwise were
+corrected.
+
+### Two new Usage Insights
+
+- **Output-token-limit turns** — cost-share + count of turns that stopped on
+  `max_tokens`, gated ≥5 turns AND ≥5% cost. Framed neutrally: incomplete
+  responses often need a follow-up; consider raising max output tokens.
+- **Extended-thinking engagement** — cost-share of turns that engaged thinking
+  (`content_blocks.thinking > 0`), gated ≥10%. Behavioural, not a thinking-token
+  measurement (thinking tokens are billed inside `output_tokens`).
+
+### Two compare-mode bug fixes
+
+- `--compare-run-prompt-steering` set without `--compare-run` was silently
+  discarded; it now errors at parse time (exit 2) instead of running with no
+  effect.
+- IFEval predicate runtime errors were swallowed into a false "✗"; the runner
+  now collects the failing prompt names and emits one `[warn]` after the compare
+  loop, so a broken predicate is visible instead of masquerading as a model
+  failure.
+
+### Token efficiency — lazy-load three SKILL.md sections
+
+The Instance-dashboard, post-export-audit, and Tasks-companion sections (~8 KB
+of always-loaded `SKILL.md`) moved to `references/{instance-dashboard,
+post-export-audit,tasks-companion}.md`, fronted by actionable dispatch stubs
+that name the route-critical flags. The common "how much did this cost?" turn no
+longer pays for three unused features' prose on every invocation.
+
+Full suite **799 passed / 1 skipped**; new tests cover the fast multiplier
+(6× / 4.8-2× / unknown-1×), advisor-exclusion, cost/no-cache parity, web_search
+billing (and web_fetch *not* charged), both new insights' fire/hide gates, the
+steering guard, and the predicate-error path.
+
 ## v1.63.1 — 2026-06-02
 
 ### Fix: instance JSON export leaked a `tool_use_names` dict into `totals`

@@ -76,6 +76,27 @@ def _pricing_for(model: str) -> dict[str, float]:
     return _sm()._DEFAULT_PRICING
 
 
+def _fast_multiplier_for(model: str) -> float:
+    """Per-model fast-mode (``usage.speed == "fast"``) cost multiplier.
+
+    Fast mode (research preview) is Opus-only and prices every token category
+    at a uniform premium over standard rates (prompt-caching multipliers apply
+    on top of the fast base), so multiplying the computed token cost by a single
+    per-model factor is exact. Resolution mirrors ``_pricing_for``'s silent
+    chain: exact key → prefix sweep (catches ``[1m]`` and date suffixes) →
+    default ``1.0`` (never invent a premium for an unmapped model). No regex /
+    family-fallback tier is needed — fast mode is bounded to the three Opus
+    minors in ``_FAST_MODE_MULTIPLIERS``, whose ids are non-colliding prefixes.
+    """
+    table = _sm()._FAST_MODE_MULTIPLIERS
+    if model in table:
+        return table[model]
+    for prefix, factor in table.items():
+        if model.startswith(prefix):
+            return factor
+    return 1.0
+
+
 # ---------------------------------------------------------------------------
 # JSONL parsing
 # ---------------------------------------------------------------------------
@@ -534,7 +555,13 @@ def _totals_from_turns(turn_records: list[dict]) -> dict:
         tokens_1h = r.get("cache_write_1h_tokens", 0)
         if tokens_1h:
             rates = _pricing_for(r["model"])
-            t["extra_1h_cost"] += tokens_1h * (rates["cache_write_1h"] - rates["cache_write"]) / 1_000_000
+            extra = tokens_1h * (rates["cache_write_1h"] - rates["cache_write"]) / 1_000_000
+            # Fast mode scales every rate uniformly, so the 1h-vs-5m premium
+            # delta scales too — mirror _cost's per-turn multiplier or this KPI
+            # under-reports on fast turns (the headline cost stays correct).
+            if r.get("speed") == "fast" and not _sm()._FAST_PREMIUM_DISABLED:
+                extra *= _fast_multiplier_for(r["model"])
+            t["extra_1h_cost"] += extra
         cb = r.get("content_blocks") or {}
         for k in content_block_totals:
             content_block_totals[k] += cb.get(k, 0)

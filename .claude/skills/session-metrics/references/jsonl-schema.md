@@ -129,8 +129,8 @@ The parser (`scripts/session-metrics.py`) reads token data only from
 | `cache_creation_input_tokens`                 | **Yes** — cache_write rate         | Tokens written into the cache. **Sum** of the 5m and 1h ephemeral buckets.                           | **tracked** (CacheWr column). Currently all priced at 5m rate — see Proposal A. |
 | `cache_creation.ephemeral_5m_input_tokens`    | **Yes** — 1.25× input (5m rate)    | Portion of the cache write landing in the 5-minute TTL tier.                                         | **available-not-shown** — Proposal A                              |
 | `cache_creation.ephemeral_1h_input_tokens`    | **Yes** — 2× input (1h rate)       | Portion of the cache write landing in the 1-hour TTL tier. **Currently under-costed.**               | **available-not-shown** — Proposal A                              |
-| `server_tool_use.web_search_requests`         | **Yes** — per-request charge       | Count of web-search requests Claude made server-side this turn.                                      | **available-not-shown** — see Adjacent                            |
-| `server_tool_use.web_fetch_requests`          | **Yes** — per-request charge       | Count of web-fetch requests Claude made server-side this turn.                                       | **available-not-shown** — see Adjacent                            |
+| `server_tool_use.web_search_requests`         | **Yes** — $0.01/request            | Count of web-search requests Claude made server-side this turn.                                      | **Billed since v1.64.0** — `_cost` adds requests × $0.01 (after any fast mult) |
+| `server_tool_use.web_fetch_requests`          | No — token-only                    | Count of web-fetch requests Claude made server-side this turn.                                       | No per-request charge (Anthropic pricing) — intentionally not billed |
 | `service_tier`                                | Metadata                           | `"standard"` observed; priority tier is a possible other value.                                      | N/A                                                               |
 | `speed`                                       | Metadata (drives multiplier)       | `"standard"` or `"fast"` (Claude Code `/fast` mode).                                                 | **tracked** (Mode column). 6× fast-mode multiplier is **not** applied in cost math — known limitation, see `references/pricing.md`. |
 | `inference_geo`                               | Multiplier (1.0× or 1.1×)          | Empty string in observed data. Anthropic documents US-only inference at 1.1× (data-residency surcharge). | available-not-shown                                               |
@@ -393,8 +393,8 @@ first. Each row is a candidate for a future report-expansion plan.
 | Cache-break events (single turns >100 k uncached) + `by_skill` + `by_subagent_type` aggregation + UUID-based cross-file dedup | **Proposal D** *(implemented v1.6.0)*. Inspired by Anthropic's `session-report` skill. Three new cross-cutting sections auto-hide when empty and render at every scope (session / project / instance): Cache breaks (configurable threshold via `--cache-break-threshold`, with ±2 user-prompt context), Skills & slash commands (invocations / turns / cost / % cached), and Subagent types (spawn count always; token cost when `--include-subagents`). UUID-based seen-set dedup runs at project + instance scope to prevent resumed-session replays from double-counting. No cost-math change for single-session reports; instance reports gain a correctness fix. |
 | `toolUseResult.agentId` (top-level on user entries) + Agent/Task `tool_use.id` + filename-derived subagent agentId | **Proposal E** *(implemented v1.7.0)*. Subagent → parent-prompt token attribution via three-stage linkage (mirrors Anthropic's `session-report` model): Stage 1 maps `tool_use.id → prompt_anchor_index`, Stage 2 maps `agentId → anchor` via `toolUseResult.agentId` paired with the tool_result block's `tool_use_id`, Stage 3 walks the chain (with cycle guard) to roll subagent tokens onto the **root** user prompt. New per-turn fields `attributed_subagent_tokens / _cost / _count` are purely additive — `cost_usd` and `total_tokens` on every turn are unchanged so existing aggregators see identical numbers. HTML prompts table sorts by `cost_usd + attributed_subagent_cost` by default (toggleable via `--sort-prompts-by`); CSV/JSON keep `self` ordering. Disable with `--no-subagent-attribution`. |
 | `advisorModel` (entry field) + `server_tool_use` / `advisor_tool_result` content blocks + `usage.iterations[type=="advisor_message"]` | **Implemented v1.25.0.** Advisor cost correction (up to 6.6× previously hidden cost per call), new content block classification letters `v` / `R`, per-turn advisor fields (`advisor_calls`, `advisor_cost_usd`, `advisor_model`, `advisor_input_tokens`, `advisor_output_tokens`), session-level `advisor_configured_model`, "Advisor calls" dashboard card, advisor annotation on project-cost session rows, and schema documentation for 4 new fields. Graceful degradation: sessions without advisor activity are unaffected. |
-| `server_tool_use.{web_search,web_fetch}_requests`                 | Separate per-request billing currently not applied; sessions that touch server-side web tools silently under-report cost. See **Adjacent**. |
-| `usage.speed == "fast"` cost multiplier                           | Fast-mode turns under-costed 6×. Already in `references/pricing.md` as a known limitation.                                                  |
+| `server_tool_use.{web_search,web_fetch}_requests`                 | **Implemented v1.64.0** (web_search): `_cost` adds `web_search_requests × $0.01` after any fast multiplier. `web_fetch` confirmed token-only (no per-request charge). See **Adjacent**. |
+| `usage.speed == "fast"` cost multiplier                           | **Implemented v1.64.0.** Per-model fast tier (Opus 4.6/4.7 6×, 4.8 2×) scales the primary token cost; advisor sub-cost excluded; `--no-fast-premium` disables. See `references/pricing.md` § Fast mode. |
 | `usage.inference_geo`                                             | 1.1× multiplier for US-only inference. Untracked; no non-empty values observed yet.                                                         |
 | `message.stop_reason`, `message.stop_details`                     | Flag truncated-response turns (`max_tokens`), surface non-standard stops in a "Notes" column.                                               |
 | `message.content[].tool_use.name`                                 | Top-N called tools in the dashboard. Cheap to extract.                                                                                      |
@@ -517,9 +517,11 @@ columns/cards.
 
 ## Adjacent — server-side tool billing
 
-`server_tool_use.web_search_requests` and
-`server_tool_use.web_fetch_requests` are billed **per request** by
-Anthropic, outside the token rate. `_cost()` today ignores them. When
-they become non-zero on real sessions, the reported cost silently
-under-reports by (request_count × per-request price). Worth tracking
-before the first session that uses the server-side web tools lands.
+`server_tool_use.web_search_requests` is billed **$0.01 per request**
+($10 / 1,000 searches) by Anthropic, outside the token rate. **Since
+v1.64.0** `_cost` / `_no_cache_cost` add `web_search_requests × $0.01`
+**after** any fast-mode multiplier (a flat per-request charge is not
+tier-scaled). `server_tool_use.web_fetch_requests` carries **no
+per-request charge** — it is token-only (the fetched content bills as
+ordinary input tokens) — so it is intentionally **not** counted.
+Source: Anthropic pricing § "Web search tool" / "Web fetch tool".

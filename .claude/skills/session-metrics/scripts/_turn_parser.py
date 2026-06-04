@@ -589,10 +589,6 @@ def _cache_write_split(u: dict) -> tuple[int, int]:
 
 
 def _cost(u: dict, model: str) -> float:
-    # Known limitation: fast-mode turns (Opus 4.6 research preview, usage.speed
-    # == "fast") bill at 6x standard base rates. Not multiplied here — fast-mode
-    # cost is therefore underestimated by 6x for those turns. See
-    # references/pricing.md § "Fast mode" for the full note.
     r = _sm()._pricing_for(model)
     tokens_5m, tokens_1h = _cache_write_split(u)
     primary = (
@@ -602,6 +598,15 @@ def _cost(u: dict, model: str) -> float:
         + tokens_5m                           * r["cache_write"]     / 1_000_000
         + tokens_1h                           * r["cache_write_1h"]  / 1_000_000
     )
+    # Fast mode (Opus 4.6/4.7/4.8 research preview, usage.speed == "fast") is a
+    # premium rate tier that scales EVERY token category uniformly — prompt-
+    # caching multipliers apply on top of the fast base — so multiplying the
+    # computed ``primary`` token cost by the per-model factor is exact. Parent
+    # turn ONLY: the advisor sub-cost below is a separate model invocation whose
+    # speed tier is not recorded on its iteration, so it must NOT be scaled.
+    # Suppressed by --no-fast-premium for parity with pre-fast-premium exports.
+    if u.get("speed") == "fast" and not _sm()._FAST_PREMIUM_DISABLED:
+        primary *= _sm()._fast_multiplier_for(model)
     # Advisor turns carry their own token counts in usage.iterations entries of
     # type "advisor_message". These are billed at the advisor model's list rates
     # with no prompt caching, and are NOT reflected in the top-level usage
@@ -620,7 +625,12 @@ def _cost(u: dict, model: str) -> float:
                 it.get("input_tokens", 0)  * adv_rates["input"]  / 1_000_000
               + it.get("output_tokens", 0) * adv_rates["output"] / 1_000_000
             )
-    return primary + advisor
+    # Server-side web_search is billed per request ($0.01/search) OUTSIDE the
+    # token rate — a flat charge, NOT a token cost — so it is added here AFTER
+    # the fast multiplier (never scaled by it). web_fetch carries no per-request
+    # charge (token-only), so it is intentionally not counted.
+    web_search = (u.get("server_tool_use") or {}).get("web_search_requests", 0) or 0
+    return primary + advisor + web_search * _sm()._WEB_SEARCH_REQUEST_USD
 
 
 def _advisor_info(u: dict, model: str) -> tuple[int, float, str | None, int, int]:
@@ -674,6 +684,12 @@ def _no_cache_cost(u: dict, model: str) -> float:
         total_input * r["input"] / 1_000_000
         + u.get("output_tokens", 0) * r["output"] / 1_000_000
     )
+    # Fast-mode multiplier on ``primary`` only — same rule as ``_cost`` (parent
+    # turn scaled, advisor unscaled). Required for parity: the cache-savings
+    # delta (no_cache_cost − cost) stays correct on fast turns only if both
+    # sides scale their primary identically.
+    if u.get("speed") == "fast" and not _sm()._FAST_PREMIUM_DISABLED:
+        primary *= _sm()._fast_multiplier_for(model)
     # Mirror the advisor loop in ``_cost``: advisor iterations carry their
     # own token counts and are NOT reflected in the top-level usage fields,
     # so they must be added to the no-cache baseline as well — otherwise
@@ -688,7 +704,11 @@ def _no_cache_cost(u: dict, model: str) -> float:
                 it.get("input_tokens", 0)  * adv_rates["input"]  / 1_000_000
               + it.get("output_tokens", 0) * adv_rates["output"] / 1_000_000
             )
-    return primary + advisor
+    # web_search per-request charge (see _cost) — identical in the no-cache
+    # counterfactual (server-tool billing is unaffected by prompt caching), so
+    # it cancels in the savings delta. Added after the fast multiplier.
+    web_search = (u.get("server_tool_use") or {}).get("web_search_requests", 0) or 0
+    return primary + advisor + web_search * _sm()._WEB_SEARCH_REQUEST_USD
 
 
 # ---------------------------------------------------------------------------

@@ -1033,6 +1033,11 @@ def _build_compare_report(
     b_rec_by_raw = {id(t): r for t, r in zip(side_b_turns, b_turn_records)}
 
     paired: list[dict] = []
+    # P2.5: accumulate (prompt_name, "ExcType: msg") for predicates that RAISE
+    # during evaluation (vs genuinely returning False). _run_predicate swallows
+    # the exception to a False "fail"; this list lets us emit a [warn] after the
+    # loop so a broken suite predicate isn't an invisible 0%-pass anomaly.
+    predicate_errors: list[tuple[str, str]] = []
     for a_raw, b_raw in pairing["paired"]:
         a_rec = a_rec_by_raw[id(a_raw)]
         b_rec = b_rec_by_raw[id(b_raw)]
@@ -1059,9 +1064,11 @@ def _build_compare_report(
             if prompt_entry is not None:
                 check_fn = prompt_entry.get("check")
                 instruction_pass_a = _run_predicate(
-                    check_fn, _assistant_text(a_raw))
+                    check_fn, _assistant_text(a_raw),
+                    prompt_name=suite_prompt_name, errors=predicate_errors)
                 instruction_pass_b = _run_predicate(
-                    check_fn, _assistant_text(b_raw))
+                    check_fn, _assistant_text(b_raw),
+                    prompt_name=suite_prompt_name, errors=predicate_errors)
 
         paired.append({
             "a":                   a_rec,
@@ -1085,6 +1092,16 @@ def _build_compare_report(
         b_turn_records, tz_offset_hours,
         effort=effort_b,
     )
+    # P2.5: surface predicates that raised (scored as False fails) once, de-duped
+    # by (prompt, error) so one broken check doesn't spam per turn. Mirrors the
+    # unknown-model / fast-mode stderr advisories — a 0%-pass anomaly is now
+    # attributable to a broken suite predicate instead of looking like a model fail.
+    if predicate_errors:
+        seen_pe = sorted(set(predicate_errors))
+        details = "; ".join(f"{name} ({err})" for name, err in seen_pe)
+        print(f"[warn] {len(seen_pe)} IFEval predicate(s) raised during evaluation and "
+              f"were scored as failures (not genuine fails): {details}. "
+              f"Check the suite file.", file=sys.stderr)
     advisories = _build_advisories(side_a_info, side_b_info, pairing)
     advisories.extend(suite_advisories)
     summary = _build_compare_summary(
@@ -1573,18 +1590,27 @@ def _detect_suite_versions(raw_turns: list[dict]) -> set[int]:
     return versions
 
 
-def _run_predicate(check_fn, text: str) -> bool | None:
+def _run_predicate(check_fn, text: str, *, prompt_name: str | None = None,
+                   errors: list | None = None) -> bool | None:
     """Evaluate a predicate safely — any exception collapses to ``False``.
 
     Returns ``None`` when ``check_fn`` is ``None`` (prompt has no predicate,
     e.g. the tool-heavy task). A predicate that raises is treated as a
     fail, not a crash, so one broken check doesn't sink a whole compare run.
+
+    When ``errors`` is supplied, a predicate that *raises* also records
+    ``(prompt_name, "<ExcType>: <msg>")`` into it. That lets the caller surface
+    a [warn] distinguishing a genuine fail (predicate returned False) from a
+    broken suite predicate (predicate raised) — otherwise a typo'd or import-
+    broken check silently scores 0% across every model with no diagnostic.
     """
     if check_fn is None:
         return None
     try:
         return bool(check_fn(text))
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        if errors is not None:
+            errors.append((prompt_name or "<unknown>", f"{type(exc).__name__}: {exc}"))
         return False
 
 
