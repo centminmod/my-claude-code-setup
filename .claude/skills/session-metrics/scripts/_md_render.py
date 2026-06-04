@@ -612,6 +612,9 @@ def render_md(report: dict) -> str:
         _adv_n = totals["advisor_call_count"]
         _adv_c = totals.get("advisor_cost_usd", 0.0)
         p(f"| Advisor calls | {_adv_n} call{'s' if _adv_n != 1 else ''} · +${_adv_c:.4f} |")
+    subagent_share_line = _build_subagent_share_md(report.get("subagent_share_stats") or {})
+    if subagent_share_line:
+        p(subagent_share_line)
     p()
 
     # Usage Insights — derived from `_compute_usage_insights`. Renders only
@@ -995,6 +998,14 @@ def _build_subagent_share_md(stats: dict) -> str:
         return ("| Subagent share of cost | attribution disabled "
                 "(re-run with `--include-subagents`) |")
     if not stats.get("has_attribution"):
+        spawns = int(stats.get("spawn_count", 0) or 0)
+        if spawns:
+            plural = "" if spawns == 1 else "s"
+            return (
+                "| Subagent share of cost | "
+                f"0% — {spawns} subagent{plural} spawned, but no child turns "
+                "were attributed in this report |"
+            )
         return "| Subagent share of cost | 0% — no subagent activity |"
     pct = float(stats.get("share_pct", 0.0))
     cost = float(stats.get("attributed_cost", 0.0))
@@ -1310,4 +1321,3 @@ def _build_waste_analysis_md(wa: dict) -> str:
 #   _theme_bootstrap_head_js()   — pre-paint hash/localStorage read (in <head>)
 #   _theme_bootstrap_body_js()   — click handler + nav-forward (end of <body>)
 # ---------------------------------------------------------------------------
-

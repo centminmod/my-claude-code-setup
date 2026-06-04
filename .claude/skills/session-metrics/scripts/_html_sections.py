@@ -1509,6 +1509,18 @@ def _build_subagent_share_card_html(stats: dict) -> str:
             '&middot; pass <code>--include-subagents</code></div></div>'
         )
     if not stats.get("has_attribution"):
+        spawns = int(stats.get("spawn_count", 0) or 0)
+        if spawns:
+            plural = "" if spawns == 1 else "s"
+            return (
+                '<div class="kpi" title="Subagents were spawned, but no child '
+                'subagent turns were attributed inside this report. Their '
+                'transcripts may belong to a prior resumed or compacted session.">'
+                '<div class="kpi-label">Subagent share of cost</div>'
+                '<div class="kpi-val">0%</div>'
+                f'<div class="kpi-sub">{spawns} subagent{plural} spawned '
+                '&middot; no attributed child turns</div></div>'
+            )
         return (
             '<div class="kpi" title="No subagent turns were attributed to '
             'parent prompts in this report.">'

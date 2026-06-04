@@ -3,6 +3,24 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.65.0 — 2026-06-05
+
+### Subagent share card — disclose spawned-but-unattributed subagents (+ Markdown parity)
+
+When `--include-subagents` is on and a report spawned subagents but attributed
+**zero** child turns to them, the dashboard previously showed "0% — no subagent
+activity", which read as *nothing happened*. It now discloses the real
+situation: "**N subagents spawned · no attributed child turns**" (HTML card with
+a tooltip noting the child transcripts may belong to a prior resumed or
+compacted session), so the missing attribution is visible rather than silently
+flattened to zero.
+
+The same disclosure now also appears in **Markdown** exports: the `Subagent
+share of cost` row — previously built but never emitted by `render_md` — is
+wired in, giving Markdown parity with the HTML card (the no-data case stays
+suppressed, so no misleading 0% line appears). Display only — no change to cost
+or token math. Suite **800 passed / 1 skipped**.
+
 ## v1.64.0 — 2026-06-05
 
 ### Fast-mode pricing premium — `/fast` turns are now priced correctly (was under-reported 2×–6×)
