@@ -3,6 +3,27 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.66.0 — 2026-06-10
+
+### Recognise Claude Fable 5 — new premium model family ($10/$50)
+
+Fable 5 (shipped 2026-06, Claude Code CLI first) is a new Anthropic model family
+on its **own premium tier** — $10 input / $50 output, distinct from Opus,
+Sonnet, and Haiku. Before this release a Fable 5 session priced at the Sonnet
+`_DEFAULT_PRICING` ($3/$15) fallback and emitted the at-exit unknown-model
+advisory on every run (a ~70% cost under-count).
+
+`claude-fable-5` is now a first-class **bare-major** key in `_PRICING`: as a
+prefix it catches every `5.x` minor + `[1m]` context tag + date suffix in one
+entry. Cache columns follow the standard Anthropic ratios off the $10 base
+(read 0.1× = $1, 5m-write 1.25× = $12.50, 1h-write 2× = $20). A dedicated
+family fallback holds the Fable 5 tier for un-keyed future majors
+(`claude-fable-6`+) rather than letting them default to Sonnet. The
+audit-session-metrics input-rate table gains a matching `claude-fable-5` entry
+so cache-break impact estimates stay in parity. New `test_pricing.py` coverage:
+explicit/silent resolution, minor/date/`[1m]` variants, and the future-major
+fallback.
+
 ## v1.65.0 — 2026-06-05
 
 ### Subagent share card — disclose spawned-but-unattributed subagents (+ Markdown parity)

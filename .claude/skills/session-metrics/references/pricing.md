@@ -30,6 +30,7 @@ of TTL.
 | `claude-sonnet-4-5`         | sonnet-4-5 |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
 | `claude-haiku-4-5-20251001` | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
 | `claude-haiku-4-5`          | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
+| `claude-fable-5`            | fable-5    | 10.00 |  50.00 |       1.00 |          12.50 |          20.00 |
 
 > **Important — pricing tier change at Opus 4.5**: Opus 4.5 / 4.6 / 4.7 / 4.8
 > moved to a new cheaper tier ($5 input / $25 output). Opus 4 and 4.1 retain the
@@ -44,6 +45,14 @@ of TTL.
 > bare-major future keys (`claude-opus-5` / `claude-sonnet-5` / `claude-haiku-5`,
 > see below) likewise catch every `5.x` minor plus its `[1m]` and date-suffixed
 > forms through the same prefix sweep.
+>
+> **Fable 5** (shipped 2026-06, Claude Code CLI first) is a new model family on
+> its **own premium tier** ($10 input / $50 output) — distinct from Opus, Sonnet,
+> and Haiku. `claude-fable-5` is a **bare-major** key, so it catches every `5.x`
+> minor + `[1m]` + date suffix through the prefix sweep. Cache columns follow the
+> standard ratios off the $10 base (read 0.1× = $1, 5m-write 1.25× = $12.50,
+> 1h-write 2× = $20). A future un-keyed `claude-fable-6` routes to a dedicated
+> family fallback at the Fable 5 tier (flagged), not to the Sonnet default.
 
 ## Future / pre-provisioned models
 

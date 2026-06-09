@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.65.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.66.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -109,6 +109,14 @@ _PRICING: dict[str, dict[str, float]] = {
     "claude-3-5-haiku":          {"input":  0.80, "output":  4.00, "cache_read": 0.08,  "cache_write":  1.00, "cache_write_1h":  1.60},
     # --- Opus 3 (deprecated; old-tier rates) ---
     "claude-3-opus":             {"input": 15.00, "output": 75.00, "cache_read": 1.50,  "cache_write": 18.75, "cache_write_1h": 30.00},
+    # --- Fable 5 (own premium tier: $10 input / $50 output) ---
+    # New model family shipped 2026-06 (Claude Code CLI first; desktop later).
+    # `claude-fable-5` is a bare-major key: as a prefix it catches every `5.x`
+    # minor + `[1m]` + date suffix in one entry (same pattern as the bare-major
+    # Opus/Sonnet/Haiku keys above). Cache columns follow the standard Anthropic
+    # ratios off the $10 base input: read 0.1x = $1, 5m-write 1.25x = $12.50,
+    # 1h-write 2x = $20. Review if Anthropic re-tiers at a future Fable major.
+    "claude-fable-5":            {"input": 10.00, "output": 50.00, "cache_read": 1.00,  "cache_write": 12.50, "cache_write_1h": 20.00},
     # --- Non-Anthropic models (OpenRouter rates, 2026-04-25; no prompt caching) ---
     # GLM models — Z.ai / Zhipu AI
     "glm-4.7":                   {"input":  0.38, "output":  1.74, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -279,6 +287,12 @@ _PRICING_FAMILY_FALLBACKS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # Future Haiku majors (6+). `claude-haiku-5` is an explicit bare-major key,
     # so this back-stops 6+. Same conservative-bet reasoning as Opus.
     (re.compile(r"^claude-haiku-(?:[5-9]|\d{2,})(?:-|\[|$)", re.I), _PRICING["claude-haiku-4-5"]),
+    # Future Fable majors (6+). `claude-fable-5` is an explicit bare-major key
+    # (catches all 5.x), so this back-stops 6+. Fable is a non-default premium
+    # family, so — like Opus/Haiku and unlike Sonnet — it needs an explicit
+    # fallback; without it a future `claude-fable-6` would default to Sonnet $3
+    # (a ~70% under-count on a $10 model). Holds the Fable 5 tier as the bet.
+    (re.compile(r"^claude-fable-(?:[6-9]|\d{2,})(?:-|\[|$)", re.I), _PRICING["claude-fable-5"]),
 ]
 
 # Module-level advisory state — populated during parsing, printed via atexit.
