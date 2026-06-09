@@ -1153,8 +1153,14 @@ def _build_workflow_companion_html(report: dict,
             'onclick="if(history.length>1){history.back();return false}">'
             '&larr; Back</a>')
     if nav_sibling:
-        back = (f'<a class="navlink" data-sm-nav '
-                f'href="{html_mod.escape(nav_sibling)}">&larr; Back</a>')
+        # Real href so the link works when the page is opened directly
+        # (fresh tab, history.length <= 1); the onclick still prefers
+        # history.back() so in-flow navigation returns to whichever page
+        # (dashboard or detail) linked in. Not data-sm-nav: the onclick
+        # must win over any href rewrite.
+        back = (f'<a class="navlink" href="{html_mod.escape(nav_sibling)}" '
+                'onclick="if(history.length>1){history.back();return false}">'
+                '&larr; Back</a>')
     gen = html_mod.escape(report.get("generated_at", "") or "")
     ver = html_mod.escape(str(report.get("skill_version", "") or ""))
     scope = html_mod.escape(report.get("slug", "") or report.get("mode", "") or "")
@@ -1379,8 +1385,14 @@ def _build_tasks_companion_html(report: dict, tasks_data: dict,
             'onclick="if(history.length>1){history.back();return false}">'
             '&larr; Back</a>')
     if nav_sibling:
-        back = (f'<a class="navlink" data-sm-nav '
-                f'href="{html_mod.escape(nav_sibling)}">&larr; Back</a>')
+        # Real href so the link works when the page is opened directly
+        # (fresh tab, history.length <= 1); the onclick still prefers
+        # history.back() so in-flow navigation returns to whichever page
+        # (dashboard or detail) linked in. Not data-sm-nav: the onclick
+        # must win over any href rewrite.
+        back = (f'<a class="navlink" href="{html_mod.escape(nav_sibling)}" '
+                'onclick="if(history.length>1){history.back();return false}">'
+                '&larr; Back</a>')
     gen = html_mod.escape(report.get("generated_at", "") or "")
     ver = html_mod.escape(str(report.get("skill_version", "") or ""))
     scope = html_mod.escape(tasks_data.get("scope_label")
@@ -1440,6 +1452,186 @@ with a verdict. Click a task to see its requests.</p>
   }});
 }})();
 </script>
+{_theme_bootstrap_body_js()}
+</body>
+</html>"""
+
+
+def _build_tasks_placeholder_html(report: dict, dashboard_href: str) -> str:
+    """Minimal stand-in written at export time at the Tasks-companion path.
+
+    ``--task-companion-nav`` makes the dashboard/detail nav point at
+    ``<stem>_tasks.html`` before that page exists (it is generated later by
+    the task-breakdown flow). This placeholder keeps the button from 404ing
+    when the flow is skipped — e.g. the 2-40 request-unit gate fails — and
+    is overwritten by ``--render-tasks`` when the real page lands.
+    """
+    ver = html_mod.escape(str(report.get("skill_version", "") or ""))
+    gen = html_mod.escape(report.get("generated_at", "") or "")
+    back = (f'<a class="navlink" href="{html_mod.escape(dashboard_href)}" '
+            'onclick="if(history.length>1){history.back();return false}">'
+            '&larr; Back</a>')
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="session-metrics {ver}">
+<title>Tasks — pending</title>
+{_theme_css()}
+{_theme_bootstrap_head_js()}
+</head>
+<body class="theme-console">
+<div class="shell">
+<header class="topbar">
+<div class="brand"><span class="dot"></span><span>session-metrics</span></div>
+<nav class="nav">{back}{_theme_picker_markup()}</nav>
+</header>
+<header class="page-header">
+<h1>Tasks companion not generated yet</h1>
+<p class="meta">Generated {gen} &nbsp;·&nbsp; skill v{ver}</p>
+</header>
+<section class="section">
+<p class="muted">This file is a placeholder written at export time so the
+Tasks nav button always resolves. The actual Tasks page is produced by the
+task-breakdown flow after the export (<code>--prepare-tasks</code> &rarr;
+edit the grouping &rarr; <code>--render-tasks</code>) and overwrites this
+file. If you keep seeing this page, the grouping step was skipped — most
+commonly because the session had fewer than 2 or more than 40 request
+units.</p>
+</section>
+<footer class="foot"><span class="muted">session-metrics · {gen}</span></footer>
+</div>
+{_theme_bootstrap_body_js()}
+</body>
+</html>"""
+
+
+def _manifest_file_label(name: str, stem: str) -> str:
+    """Short link label for a run file: suffix when present, else extension.
+
+    Non-HTML companions keep their extension so e.g. ``_tasks.html`` and
+    ``_tasks.md`` don't both render as "tasks".
+    """
+    rest = name[len(stem):]
+    if rest.startswith("_"):
+        suffix, ext = rest.lstrip("_").split(".", 1)
+        label = suffix.replace("_", " ")
+        return label if ext == "html" else f"{label} ({ext})"
+    return rest.lstrip(".")
+
+
+def _build_export_manifest_html(inv: dict) -> str:
+    """Render the export-root ``index.html`` from a ``_scan_export_runs``
+    inventory: a "latest run per scope" strip, then every run newest-first
+    with per-file links. Audit sidecars list next to their session run.
+    All hrefs are relative so the directory stays portable.
+    """
+    runs = inv.get("runs") or []
+    audits = inv.get("audits") or {}
+    other = int(inv.get("other") or 0)
+    ver = html_mod.escape(str(sys.modules["session_metrics"]._SKILL_VERSION))
+
+    def _pretty_ts(ts: str) -> str:
+        digits = "".join(ch for ch in ts if ch.isdigit())
+        if len(digits) >= 14:
+            return (f"{digits[0:4]}-{digits[4:6]}-{digits[6:8]} "
+                    f"{digits[8:10]}:{digits[10:12]}:{digits[12:14]} UTC")
+        return ts
+
+    def _run_href(r: dict) -> str | None:
+        if r["dir"] is not None:
+            idx = r["dir"] / "index.html"
+            return f"instance/{r['dir'].name}/index.html" if idx.is_file() \
+                else f"instance/{r['dir'].name}"
+        for cand in (f"{r['stem']}_dashboard.html", f"{r['stem']}.html"):
+            if any(f.name == cand for f in r["files"]):
+                return cand
+        return r["files"][0].name if r["files"] else None
+
+    latest: dict[str, dict] = {}
+    for r in runs:   # newest-first
+        latest.setdefault(r["scope"], r)
+    cards = []
+    for scope in ("session", "project", "instance", "compare"):
+        r = latest.get(scope)
+        if not r:
+            continue
+        href = _run_href(r)
+        label = html_mod.escape(r["key"] if scope != "instance" else "instance")
+        val = (f'<a href="{html_mod.escape(href)}">{label}</a>'
+               if href else label)
+        cards.append(f'<div class="card"><div class="val">{val}</div>'
+                     f'<div class="lbl">Latest {scope} · '
+                     f'{_pretty_ts(r["ts"])}</div></div>')
+    latest_html = (f'<div class="cards">{"".join(cards)}</div>'
+                   if cards else "")
+
+    body_rows = []
+    for r in runs:
+        if r["dir"] is not None:
+            href = _run_href(r)
+            files_html = (f'<a href="{html_mod.escape(href)}">bundle</a>'
+                          if href else "&mdash;")
+        else:
+            links = []
+            for f in sorted(r["files"], key=lambda p: p.name):
+                lbl = _manifest_file_label(f.name, r["stem"]) or f.name
+                links.append(f'<a href="{html_mod.escape(f.name)}">'
+                             f'{html_mod.escape(lbl)}</a>')
+            for a in sorted(audits.get(r["stem"], []), key=lambda p: p.name):
+                links.append(f'<a href="{html_mod.escape(a.name)}" '
+                             f'class="muted">audit ({a.suffix.lstrip(".")})</a>')
+            files_html = " &middot; ".join(links) or "&mdash;"
+        body_rows.append(
+            f'<tr><td>{html_mod.escape(r["scope"])}</td>'
+            f'<td>{html_mod.escape(r["key"])}</td>'
+            f'<td>{_pretty_ts(r["ts"])}</td>'
+            f'<td>{files_html}</td>'
+            f'<td class="num">{r["bytes"] / 1e6:.1f} MB</td></tr>')
+    other_html = (f'<p class="muted">{other} file(s) in this directory are '
+                  f'not part of a recognised run and are not listed.</p>'
+                  if other else "")
+    run_word = "run" if len(runs) == 1 else "runs"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="session-metrics {ver}">
+<title>session-metrics exports</title>
+{_theme_css()}
+{_theme_bootstrap_head_js()}
+<style>
+.manifest td, .manifest th {{ padding: 6px 10px; text-align: left; }}
+.manifest td.num {{ text-align: right; }}
+.manifest tr:nth-child(even) {{ background: rgba(127,127,127,.06); }}
+</style>
+</head>
+<body class="theme-console">
+<div class="shell">
+<header class="topbar">
+<div class="brand"><span class="dot"></span><span>session-metrics</span></div>
+<nav class="nav">{_theme_picker_markup()}</nav>
+</header>
+<header class="page-header">
+<h1>Exports</h1>
+<p class="meta">{len(runs):,} {run_word} &nbsp;·&nbsp; refreshed after every
+export &nbsp;·&nbsp; skill v{ver}</p>
+</header>
+{latest_html}
+<section class="section">
+<div class="section-title"><h2>All runs</h2>
+<span class="hint">newest first</span></div>
+<table class="manifest">
+<thead><tr><th>Scope</th><th>Run</th><th>When</th><th>Files</th>
+<th>Size</th></tr></thead>
+<tbody>{"".join(body_rows)}</tbody>
+</table>
+</section>
+{other_html}
+<footer class="foot"><span class="muted">session-metrics exports index</span></footer>
+</div>
 {_theme_bootstrap_body_js()}
 </body>
 </html>"""

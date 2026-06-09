@@ -166,9 +166,10 @@ def project_filename_parts(path: str) -> tuple[str, str]:
 def instance_filename_parts(path: str) -> tuple[str, str]:
     """Return ("instance", ts_str) from instance/<datedir>/index.json.
 
-    The parent directory is typically named YYYY-MM-DD-HHMMSS."""
+    The parent directory is named YYYYMMDDTHHMMSSZ (session-metrics
+    v1.67.0+) or YYYY-MM-DD-HHMMSS (earlier); both remain on disk."""
     parent = os.path.basename(os.path.dirname(os.path.abspath(path)))
-    m = re.match(r"^(\d{4}-\d{2}-\d{2}-\d{6})$", parent)
+    m = re.match(r"^(\d{4}-\d{2}-\d{2}-\d{6}|\d{8}T\d{6}Z)$", parent)
     if m:
         return "instance", m.group(1)
     return "instance", "unknown"

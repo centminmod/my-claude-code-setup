@@ -3,6 +3,58 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.67.0 — 2026-06-10
+
+### Export-audit Phase 3 — export-dir hygiene, index manifest, `--prune-exports` (minor)
+
+The export directory had grown to 6 GB / ~390 flat files in the dev repo with
+no way to browse or reclaim it, plus four latent path bugs. All from the
+2026-06-10 export audit:
+
+- **`index.html` manifest at the export root** — refreshed after every
+  export (session/project/instance and `--render-tasks`). Groups every file
+  by run stem, newest first, with per-file links (`dashboard · detail ·
+  json · tasks …`), per-run sizes, a latest-run-per-scope strip, and audit
+  sidecars listed beside their session run. Relative hrefs only, so the
+  directory stays portable. Failure-tolerant: a manifest error warns and
+  never breaks the export. A text-only run writes nothing and creates no
+  directories.
+- **`--prune-exports N`** — keeps the newest N runs per retention group
+  (each session id, the `project` series, each compare pair, the dated
+  instance dirs) and deletes older runs' files. **Dry run by default**;
+  add `--yes` to actually delete (the existing flag, help text extended).
+  `audit_*` sidecars and unrecognised files are never touched. On the dev
+  repo's real export dir, `--prune-exports 3` reports 5.3 GB reclaimable
+  across 147 runs.
+- **Same-second collision guards** — a run timestamp that would collide
+  with existing files (`_unique_run_ts`) or an existing instance dated dir
+  advances one second instead of silently overwriting the earlier run
+  (back-to-back A/B exports hit this).
+- **`_export_dir` self-nesting guard** — running from inside an
+  `exports/session-metrics` directory no longer creates a nested
+  `exports/session-metrics/exports/session-metrics` (one such stray empty
+  dir existed on disk).
+- **Instance dated dirs unified onto the `YYYYMMDDTHHMMSSZ` grammar**
+  (was `YYYY-MM-DD-HHMMSS`). The audit companion's `audit-extract.py` and
+  the manifest/prune scanners accept both, so pre-existing dirs keep
+  working.
+- **Tasks nav can no longer dangle** — `--task-companion-nav` now writes a
+  themed placeholder page at `<stem>_tasks.html` at export time, so the
+  nav button resolves even when the task-breakdown flow is skipped (e.g.
+  the 2-40 request-unit gate fails); `--render-tasks` overwrites it.
+- **Companion Back links got real hrefs** — the workflows and Tasks
+  companion pages' `← Back` anchor now carries the dashboard filename as a
+  real `href` (kept the `history.back()` onclick for in-flow navigation),
+  so the link works when the page is opened directly in a fresh tab.
+- **Docs**: SKILL.md/README filename grammar fixed
+  (`<YYYYMMDD_HHMMSS>` → the actual `<YYYYMMDD>T<HHMMSS>Z`), new flag and
+  manifest documented.
+
+Tests: +9 (export-dir guard, unique-ts, scanner grouping, prune dry-run/yes
+semantics, manifest content, placeholder, companion Back href); one
+existing compare test's `*.html` glob tightened to `compare_*.html` (it
+was picking up the new manifest). **821 passed, 1 skipped.**
+
 ## v1.66.2 — 2026-06-10
 
 ### Export-audit Phase 2 — Markdown share-line dedup + render/instance performance (patch)

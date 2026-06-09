@@ -127,8 +127,10 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/session-metrics.py --project-cost --qu
 `--output` accepts one or more of: `json` `csv` `md` `html`
 
 Text is always printed to stdout. Exports go to `exports/session-metrics/` in the
-project root, named `session_<id8>_<YYYYMMDD_HHMMSS>.<ext>` (single) or
-`project_<YYYYMMDD_HHMMSS>.<ext>` (project mode).
+project root, named `session_<id8>_<YYYYMMDD>T<HHMMSS>Z.<ext>` (single) or
+`project_<YYYYMMDD>T<HHMMSS>Z.<ext>` (project mode). An `index.html`
+manifest at the export root is refreshed after every export — open it to
+browse all runs (newest first, with a latest-run-per-scope strip).
 
 | Format | Contents |
 |--------|----------|
@@ -153,6 +155,7 @@ project root, named `session_<id8>_<YYYYMMDD_HHMMSS>.<ext>` (single) or
 | `--tz <IANA>`                | IANA timezone for time-of-day bucketing **and timeline/export timestamps**. Defaults to the system local tz (auto-detected via `TZ` env var or the OS setting). |
 | `--utc-offset <H>`           | Fixed UTC offset, DST-naive. Use `--tz` for DST-aware. |
 | `--no-cache`                 | Skip `~/.cache/session-metrics/parse/` and always re-parse from scratch. |
+| `--prune-exports <N>`        | Prune the export directory: keep the newest N runs per retention group (each session id, the project series, each compare pair, the instance dated dirs) and delete older runs' files. `audit_*` sidecars and unrecognised files are never touched. **Dry run by default** — add `--yes` to actually delete. |
 | `--quiet` / `-q`             | Suppress the per-turn timeline on stdout — print only the legend, scope header, grand-total subtotal, and footer (the `[export]` path lines still print). Keeps stdout small on large session/project exports so the export paths aren't buried under an overflow-sized dump; the full per-turn detail still lands in the written HTML/JSON. Session and project scopes only (no effect on `--all-projects`). |
 | `--no-self-cost`             | Suppress the self-cost meta-metric (stderr `[self-cost]` line, HTML KPI card, and JSON `self_cost` key). |
 | `--redact-user-prompts`      | Replace freeform `prompt_text` / `prompt_snippet` / `assistant_text` / `assistant_snippet` with `[redacted]` on every turn of single-session and project **JSON** exports, plus compare HTML. Tool inputs, slash-command names, and structured cost / token fields stay visible. HTML / MD / CSV / text are NOT redacted. |

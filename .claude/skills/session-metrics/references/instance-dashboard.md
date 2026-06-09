@@ -37,7 +37,7 @@ each other and the whole bundle stays portable (zip it, move it, serve
 it as static files — relative drilldown links keep working):
 
 ```
-exports/session-metrics/instance/YYYY-MM-DD-HHMMSS/
+exports/session-metrics/instance/YYYYMMDDTHHMMSSZ/   # pre-v1.67.0 runs: YYYY-MM-DD-HHMMSS
   index.html    # entry point — instance dashboard
   index.md
   index.csv     # one row per session, with a project_slug column

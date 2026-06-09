@@ -5,9 +5,10 @@ import io
 import json
 import os
 import re
+import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from _constants import _CACHE_BREAK_DEFAULT_THRESHOLD
@@ -63,7 +64,12 @@ def _export_dir() -> Path:
     env = os.environ.get("CLAUDE_SESSION_METRICS_EXPORT_DIR")
     if env:
         return Path(env).expanduser()
-    return Path(os.getcwd()) / "exports" / "session-metrics"
+    cwd = Path(os.getcwd())
+    # Self-nesting guard: a run started from inside an export directory
+    # would otherwise create exports/session-metrics/exports/session-metrics.
+    if cwd.name == "session-metrics" and cwd.parent.name == "exports":
+        return cwd
+    return cwd / "exports" / "session-metrics"
 
 
 def _run_render_tasks(export_json: str, grouping_json: str,
@@ -110,9 +116,18 @@ def _run_render_tasks(export_json: str, grouping_json: str,
     stem = exp_path.stem  # e.g. session_2b74cec9_20260530T...
     out_dir = exp_path.parent
     written: list[Path] = []
+    # Real Back href when the run's main HTML sits next to the export JSON
+    # (split-page dashboard preferred, then single-page). None keeps the
+    # history.back()-only anchor.
+    nav_sibling = None
+    for cand in (f"{stem}_dashboard.html", f"{stem}.html"):
+        if (out_dir / cand).is_file():
+            nav_sibling = cand
+            break
     try:
         if "html" in fmts:
-            html = _sm()._build_tasks_companion_html(report, assembled)
+            html = _sm()._build_tasks_companion_html(report, assembled,
+                                                     nav_sibling=nav_sibling)
             hp = out_dir / f"{stem}_tasks.html"
             hp.write_text(html, encoding="utf-8")
             written.append(hp)
@@ -134,6 +149,12 @@ def _run_render_tasks(export_json: str, grouping_json: str,
           f"${assembled['total_cost_usd']:.4f} total.", file=sys.stderr)
     for w in written:
         print(str(w))
+    # The Tasks page replaced its export-time placeholder — refresh the
+    # manifest only when the companions landed in the canonical export root
+    # (a custom-located export JSON shouldn't touch the default dir).
+    # resolve() both sides: exp_path is often given relative to cwd.
+    if written and out_dir.resolve() == _export_dir().resolve():
+        _write_export_manifest()
     return 0
 
 
@@ -215,6 +236,179 @@ def _write_output(fmt: str, content: str, report: dict,
     if share_safe:
         path.chmod(0o600)
     return path
+
+
+def _unique_run_ts() -> str:
+    """Filename timestamp for this run, advanced past same-second collisions.
+
+    Two runs landing in the same wall-clock second would share a ``<stem>``
+    and silently overwrite each other's files (seen with back-to-back A/B
+    export runs). If any file in the export dir already carries this
+    second's stamp, advance one second and re-check (bounded — gives up
+    after 5 tries and accepts the overwrite rather than spinning).
+    """
+    now = datetime.now(UTC)
+    ts = now.strftime("%Y%m%dT%H%M%SZ")
+    d = _export_dir()
+    if not d.is_dir():
+        return ts
+    for _ in range(5):
+        if not any(d.glob(f"*_{ts}*")):
+            return ts
+        now += timedelta(seconds=1)
+        ts = now.strftime("%Y%m%dT%H%M%SZ")
+    return ts
+
+
+# Run-grammar for files in the export root. ``id8`` is permissive
+# ([0-9a-zA-Z]) because the session-id fallback can produce non-hex stems
+# (e.g. ``session_workflow_...`` from synthetic fixtures).
+_RUN_FILE_RE = re.compile(
+    r"^(?P<stem>(?:session_[0-9a-zA-Z]{1,8}|project"
+    r"|compare_[0-9a-zA-Z]{1,8}_vs_[0-9a-zA-Z]{1,8})"
+    r"_(?P<ts>\d{8}T\d{6}Z))"
+    r"(?P<suffix>(?:_[a-z0-9_]+)?)\.(?P<ext>[a-z0-9.]+)$")
+# Audit sidecars written by the audit-session-metrics companion skill.
+# Listed on the manifest next to their run; never pruned.
+_AUDIT_FILE_RE = re.compile(
+    r"^audit_(?P<id8>[0-9a-zA-Z]{1,8})_(?P<ts>\d{8}T\d{6}Z)"
+    r"_(?:quick|detailed)\.(?:json|md)$")
+# Instance dated dirs: both the pre-v1.67.0 grammar (2026-06-09-211444)
+# and the unified one (20260609T211444Z) remain on disk side by side.
+_INSTANCE_DIR_RE = re.compile(r"^(?:\d{4}-\d{2}-\d{2}-\d{6}|\d{8}T\d{6}Z)$")
+
+
+def _ts_sort_key(ts: str) -> str:
+    """Digits-only normalisation so both timestamp grammars sort together."""
+    return "".join(ch for ch in ts if ch.isdigit())
+
+
+def _scan_export_runs(root: Path) -> dict:
+    """Inventory the export root into run groups.
+
+    Returns ``{"runs": [...], "audits": {stem: [Path,...]}, "other": int}``.
+    Each run is ``{"key", "scope", "stem", "ts", "files", "bytes", "dir"}``
+    where ``key`` is the retention-group identity (``session_<id8>`` /
+    ``project`` / ``compare_<a>_vs_<b>`` / ``instance``) and ``dir`` is set
+    only for instance runs (the dated subfolder itself).
+    """
+    runs: dict[str, dict] = {}
+    audits: dict[str, list[Path]] = {}
+    other = 0
+    if root.is_dir():
+        for entry in sorted(root.iterdir()):
+            if entry.name in ("index.html", "instance") or entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                other += 1
+                continue
+            m = _RUN_FILE_RE.match(entry.name)
+            if m:
+                stem = m.group("stem")
+                r = runs.setdefault(stem, {
+                    "key": stem[: -(len(m.group("ts")) + 1)],
+                    "scope": stem.split("_", 1)[0],
+                    "stem": stem, "ts": m.group("ts"),
+                    "files": [], "bytes": 0, "dir": None,
+                })
+                r["files"].append(entry)
+                r["bytes"] += entry.stat().st_size
+                continue
+            am = _AUDIT_FILE_RE.match(entry.name)
+            if am:
+                audits.setdefault(
+                    f"session_{am.group('id8')}_{am.group('ts')}", []
+                ).append(entry)
+                continue
+            other += 1
+    inst_root = root / "instance"
+    if inst_root.is_dir():
+        for entry in sorted(inst_root.iterdir()):
+            if not (entry.is_dir() and _INSTANCE_DIR_RE.match(entry.name)):
+                continue
+            size = sum(f.stat().st_size
+                       for f in entry.rglob("*") if f.is_file())
+            runs[f"instance/{entry.name}"] = {
+                "key": "instance", "scope": "instance",
+                "stem": entry.name, "ts": entry.name,
+                "files": [], "bytes": size, "dir": entry,
+            }
+    ordered = sorted(runs.values(),
+                     key=lambda r: _ts_sort_key(r["ts"]), reverse=True)
+    return {"runs": ordered, "audits": audits, "other": other}
+
+
+def _write_export_manifest(share_safe: bool = False) -> None:
+    """Refresh ``index.html`` at the export root after a run.
+
+    Best-effort convenience: a scan/write failure must never break the
+    export that triggered it, so OS errors degrade to a warning.
+    """
+    root = _export_dir()
+    try:
+        inv = _scan_export_runs(root)
+        html = _sm()._build_export_manifest_html(inv)
+        path = root / "index.html"
+        path.write_text(html, encoding="utf-8")
+        if share_safe:
+            path.chmod(0o600)
+        print(f"[export] INDEX → {path}", file=sys.stderr)
+    except OSError as exc:
+        print(f"[warn] export manifest refresh failed: {exc}", file=sys.stderr)
+
+
+def _run_prune_exports(keep: int, assume_yes: bool = False) -> int:
+    """``--prune-exports N``: keep the newest N runs per retention group.
+
+    Groups are per scope identity — each ``session_<id8>`` series, the
+    ``project`` series, each ``compare_<a>_vs_<b>`` pair, and the
+    ``instance`` dated dirs — so pruning repeated re-exports of one
+    session never deletes the only export of another. ``audit_*``
+    sidecars and unrecognised files are never touched. Without ``--yes``
+    this is a dry run that prints the deletion plan.
+    """
+    if keep < 1:
+        print("error: --prune-exports requires N >= 1", file=sys.stderr)
+        return 2
+    root = _export_dir()
+    if not root.is_dir():
+        print(f"[prune] nothing to do — {root} does not exist",
+              file=sys.stderr)
+        return 0
+    inv = _scan_export_runs(root)
+    by_key: dict[str, list[dict]] = {}
+    for r in inv["runs"]:   # already newest-first
+        by_key.setdefault(r["key"], []).append(r)
+    doomed = [r for series in by_key.values() for r in series[keep:]]
+    if not doomed:
+        print(f"[prune] nothing to prune — no group exceeds {keep} run(s)",
+              file=sys.stderr)
+        return 0
+    total_bytes = 0
+    for r in doomed:
+        total_bytes += r["bytes"]
+        kind = "dir " if r["dir"] else "run "
+        verb = "delete" if assume_yes else "would delete"
+        n_files = len(r["files"]) if r["files"] else "all"
+        print(f"[prune] {verb} {kind}{r['key']}/{r['ts']} "
+              f"({n_files} files, {r['bytes'] / 1e6:.1f} MB)",
+              file=sys.stderr)
+    print(f"[prune] {'freed' if assume_yes else 'would free'} "
+          f"{total_bytes / 1e6:.1f} MB across {len(doomed)} run(s); "
+          f"audit_* sidecars and unrecognised files are kept",
+          file=sys.stderr)
+    if not assume_yes:
+        print("[prune] dry run — re-run with --yes to delete",
+              file=sys.stderr)
+        return 0
+    for r in doomed:
+        if r["dir"]:
+            shutil.rmtree(r["dir"], ignore_errors=True)
+        else:
+            for f in r["files"]:
+                f.unlink(missing_ok=True)
+    _write_export_manifest()
+    return 0
 # Pattern for resolving subagent type from its filename when a meta sidecar
 # is missing. Matches the Anthropic session-report convention
 # ``agent-a<label>-<hash>.jsonl`` — we peel off the label as the agent type.
@@ -817,10 +1011,22 @@ def _run_all_projects(formats: list[str],
 
 
 def _instance_export_root(now: datetime | None = None) -> Path:
-    """Dated subfolder under ``exports/session-metrics/instance/`` for one run."""
+    """Dated subfolder under ``exports/session-metrics/instance/`` for one run.
+
+    v1.67.0 unifies the dir name onto the same ``YYYYMMDDTHHMMSSZ`` grammar
+    the file stems use (was ``YYYY-MM-DD-HHMMSS``; consumers accept both).
+    A same-second collision with an existing dir advances one second so
+    back-to-back runs never merge into (and overwrite) one bundle.
+    """
     now = now or datetime.now(UTC)
-    stamp = now.strftime("%Y-%m-%d-%H%M%S")
-    return _export_dir() / "instance" / stamp
+    base = _export_dir() / "instance"
+    root = base / now.strftime("%Y%m%dT%H%M%SZ")
+    for _ in range(4):
+        if not root.exists():
+            break
+        now += timedelta(seconds=1)
+        root = base / now.strftime("%Y%m%dT%H%M%SZ")
+    return root
 
 
 def _dispatch_instance(instance_report: dict,
@@ -909,6 +1115,9 @@ def _dispatch_instance(instance_report: dict,
             drilldown_slugs.add(slug)
         print(f"[export] per-project drilldowns → {root / 'projects'}",
               file=sys.stderr)
+
+    if written or drilldown_slugs:
+        _write_export_manifest(share_safe=share_safe)
 
 
 def _render_instance_text(report: dict) -> str:
@@ -1555,8 +1764,9 @@ def _dispatch(report: dict, formats: list[str],
     # One timestamp for the whole run, shared by dashboard / detail / the
     # workflow companion AND every _write_output format (json/md/csv/single
     # HTML), so all files for a run carry the same ``<stem>`` and sort
-    # together in the export directory.
-    run_ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    # together in the export directory. Advanced past same-second
+    # collisions with files from a previous run.
+    run_ts = _unique_run_ts()
 
     # Dynamic-workflow companion deep-dive: when an HTML (or Markdown) export
     # contains ≥1 workflow run, write a standalone ``<stem>_workflows.{html,md}``
@@ -1578,7 +1788,11 @@ def _dispatch(report: dict, formats: list[str],
         if "html" in formats:
             companion_name = f"{stem}_workflows.html"
             report["_workflow_companion_href"] = companion_name
-            companion_html = _sm()._build_workflow_companion_html(report)
+            # Real Back href (falls back when the page is opened directly
+            # and history.back() has nowhere to go).
+            sibling = f"{stem}.html" if single_page else f"{stem}_dashboard.html"
+            companion_html = _sm()._build_workflow_companion_html(
+                report, nav_sibling=sibling)
             if companion_html:
                 cp = _export_dir() / companion_name
                 cp.write_text(companion_html, encoding="utf-8")
@@ -1607,6 +1821,18 @@ def _dispatch(report: dict, formats: list[str],
         _stem = (f"project_{run_ts}" if _mode == "project"
                  else f"session_{str((report.get('sessions') or [{}])[0].get('session_id', 'session'))[:8]}_{run_ts}")
         report["_tasks_companion_href"] = f"{_stem}_tasks.html"
+        # The real Tasks page is written later by --render-tasks (it needs
+        # an LLM to group request units). Drop a placeholder at the same
+        # filename now so the nav button never 404s if that flow is skipped
+        # (e.g. the 2-40 request-unit gate fails); --render-tasks overwrites.
+        _dash = f"{_stem}.html" if single_page else f"{_stem}_dashboard.html"
+        _export_dir().mkdir(parents=True, exist_ok=True)
+        _ph = _export_dir() / f"{_stem}_tasks.html"
+        _ph.write_text(_sm()._build_tasks_placeholder_html(report, _dash),
+                       encoding="utf-8")
+        if share_safe:
+            _ph.chmod(0o600)
+        print(f"[export] HTML (tasks placeholder) → {_ph}", file=sys.stderr)
 
     for fmt in formats:
         if fmt == "text":
@@ -1671,3 +1897,8 @@ def _dispatch(report: dict, formats: list[str],
             )
             print(f"[export] EVID → {sha_p}", file=sys.stderr)
             print(f"[export] EVID → {prov_p}", file=sys.stderr)
+
+    # Refresh the export-root index.html only when this run actually wrote
+    # files (a text-only run must not create the export directory).
+    if any(f != "text" for f in formats):
+        _write_export_manifest(share_safe=share_safe)

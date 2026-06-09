@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.66.2"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.67.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -553,6 +553,11 @@ del _cl_m
 _di_m = _load_leaf("_dispatch")
 _export_dir                     = _di_m._export_dir
 _write_output                   = _di_m._write_output
+_unique_run_ts                  = _di_m._unique_run_ts
+_ts_sort_key                    = _di_m._ts_sort_key
+_scan_export_runs               = _di_m._scan_export_runs
+_write_export_manifest          = _di_m._write_export_manifest
+_run_prune_exports              = _di_m._run_prune_exports
 _SUBAGENT_FILENAME_RE           = _di_m._SUBAGENT_FILENAME_RE
 _resolve_subagent_type          = _di_m._resolve_subagent_type
 _load_session                   = _di_m._load_session
@@ -593,6 +598,8 @@ _build_by_subagent_type_html    = _hs_m._build_by_subagent_type_html
 _build_by_workflow_html         = _hs_m._build_by_workflow_html
 _build_workflow_companion_html  = _hs_m._build_workflow_companion_html
 _build_tasks_companion_html     = _hs_m._build_tasks_companion_html
+_build_tasks_placeholder_html   = _hs_m._build_tasks_placeholder_html
+_build_export_manifest_html     = _hs_m._build_export_manifest_html
 _build_subagent_share_card_html = _hs_m._build_subagent_share_card_html
 _build_subagent_turn_share_card_html = _hs_m._build_subagent_turn_share_card_html
 _build_plan_leverage_card_html  = _hs_m._build_plan_leverage_card_html

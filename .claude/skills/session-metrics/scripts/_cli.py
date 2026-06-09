@@ -302,9 +302,9 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Render a 'Tasks' nav button on the dashboard/detail "
                         "pages pointing to the deterministic <stem>_tasks.html. "
                         "Set by the task-breakdown flow, which generates that "
-                        "companion right after the export; without that "
-                        "follow-up the link would dangle, so it is off by "
-                        "default for raw-script runs.")
+                        "companion right after the export. A placeholder page "
+                        "is written at the target path so the button resolves "
+                        "even if that follow-up is skipped.")
     p.add_argument("--cache-break-threshold", type=int,
                    default=_sm()._CACHE_BREAK_DEFAULT_THRESHOLD, metavar="TOKENS",
                    help=(f"Turns whose input + cache_creation exceed TOKENS are "
@@ -478,8 +478,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", "-y", action="store_true",
                    help="Auto-accept confirmation prompts for expensive "
                         "compare paths (Phase 3: 'all-<family>' rollups, "
-                        "count-tokens API mode, multi-trial runs). Accepted "
-                        "now for CLI-shape stability.")
+                        "count-tokens API mode, multi-trial runs). Also turns "
+                        "--prune-exports from a dry run into actual deletion.")
     # --- Compare capture-protocol helper (Phase 4) -----------------------
     _mode.add_argument("--compare-prep", nargs="*", metavar="MODEL",
                    default=None,
@@ -584,6 +584,14 @@ def _build_parser() -> argparse.ArgumentParser:
                         "grouping from scratch; a zero-edit skeleton still "
                         "renders a correct, non-collapsed Tasks page. Pairs "
                         "with --render-tasks.")
+    _mode.add_argument("--prune-exports", type=int, metavar="N",
+                   help="Prune the export directory: keep the newest N runs "
+                        "per retention group (each session id, the project "
+                        "series, each compare pair, and the instance dated "
+                        "dirs) and delete older runs' files. audit_* sidecars "
+                        "and unrecognised files are never touched. Dry run by "
+                        "default — add --yes to actually delete. Honours "
+                        "--export-dir / CLAUDE_SESSION_METRICS_EXPORT_DIR.")
     # --- Phase 10 — Automated headless capture ---------------------------
     _mode.add_argument("--compare-run", nargs="*", metavar="MODEL",
                    default=None,
@@ -806,6 +814,10 @@ def main() -> None:
         _sm()._EXPORT_DIR_OVERRIDE = Path(args.export_dir).expanduser()
     if not args.no_cache:
         _sm()._prune_cache_global(_sm()._parse_cache_dir())
+
+    if args.prune_exports is not None:
+        sys.exit(_sm()._run_prune_exports(args.prune_exports,
+                                          assume_yes=args.yes))
 
     if args.list:
         _list_sessions(slug)
