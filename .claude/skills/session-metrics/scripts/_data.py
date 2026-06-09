@@ -410,7 +410,12 @@ def _build_session_blocks(
             b["input"]       += u.get("input_tokens", 0)
             b["output"]      += u.get("output_tokens", 0)
             b["cache_read"]  += u.get("cache_read_input_tokens", 0)
-            b["cache_write"] += u.get("cache_creation_input_tokens", 0)
+            # Mirror _cache_write_split: the nested ephemeral split is the
+            # primary source and the flat field only a legacy fallback —
+            # reading the flat field alone would silently zero this column
+            # if transcripts ever stop dual-populating it.
+            cwr_5m, cwr_1h = _sm()._cache_write_split(u)
+            b["cache_write"] += cwr_5m + cwr_1h
             b["cost_usd"]    += _sm()._cost(u, model)
             b["models"][model] = b["models"].get(model, 0) + 1
 
@@ -1311,6 +1316,7 @@ def _build_by_skill(sessions: list[dict], total_cost: float) -> list[dict]:
                 continue
             prompt_text = (t.get("prompt_text") or "").strip()
             boundary_hit = bool(prompt_text) and prompt_text != last_prompt_text
+            boundary_skill = ""
             if boundary_hit:
                 last_prompt_text = prompt_text
                 raw_slash = t.get("slash_command") or ""
@@ -1322,6 +1328,7 @@ def _build_by_skill(sessions: list[dict], total_cost: float) -> list[dict]:
                 current_skill = new_skill or None
                 if new_skill:
                     rows.setdefault(new_skill, _empty_skill_row(new_skill))["invocations"] += 1
+                    boundary_skill = new_skill
             # Turn-scope override: Skill tool-use invocation attributes this
             # turn to the invoked skill name regardless of current_skill.
             invoked = t.get("skill_invocations") or []
@@ -1330,7 +1337,15 @@ def _build_by_skill(sessions: list[dict], total_cost: float) -> list[dict]:
                 row = rows.setdefault(skill_here, _empty_skill_row(skill_here))
                 _accumulate_bucket(row, t)
                 row["_sessions"].add(sid)
-                row["invocations"] += len(invoked)
+                # A slash command answered by a Skill tool_use for the SAME
+                # skill on the SAME turn is one user invocation, not two —
+                # the boundary branch above already counted it. Subtract the
+                # overlap rather than skipping the whole increment so extra
+                # Skill calls in the same turn still count individually.
+                n_invoked = len(invoked)
+                if boundary_skill and boundary_skill == skill_here:
+                    n_invoked -= 1
+                row["invocations"] += n_invoked
             elif current_skill:
                 row = rows.setdefault(current_skill, _empty_skill_row(current_skill))
                 _accumulate_bucket(row, t)

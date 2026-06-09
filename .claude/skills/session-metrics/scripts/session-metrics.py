@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.66.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.66.2"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -556,6 +556,7 @@ _write_output                   = _di_m._write_output
 _SUBAGENT_FILENAME_RE           = _di_m._SUBAGENT_FILENAME_RE
 _resolve_subagent_type          = _di_m._resolve_subagent_type
 _load_session                   = _di_m._load_session
+_slim_blocks_turn               = _di_m._slim_blocks_turn
 _run_single_session             = _di_m._run_single_session
 _run_render_tasks               = _di_m._run_render_tasks
 _run_prepare_tasks              = _di_m._run_prepare_tasks
@@ -580,6 +581,7 @@ _build_session_duration_html    = _hs_m._build_session_duration_html
 _fmt_delta_pct                  = _hs_m._fmt_delta_pct
 _build_weekly_rollup_html       = _hs_m._build_weekly_rollup_html
 _build_session_blocks_html      = _hs_m._build_session_blocks_html
+_build_tod_epoch_blob           = _hs_m._build_tod_epoch_blob
 _build_hour_of_day_html         = _hs_m._build_hour_of_day_html
 _build_punchcard_html           = _hs_m._build_punchcard_html
 _tz_dropdown_options            = _hs_m._tz_dropdown_options

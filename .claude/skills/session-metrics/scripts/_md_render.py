@@ -568,7 +568,12 @@ def render_md(report: dict) -> str:
         _mean_lat = sum(_turn_lats) / len(_turn_lats)
         p(f"| Mean turn latency | {_mean_lat:.2f}s ({len(_turn_lats)} turns) |")
     p(f"| Total cost | ${totals['cost']:.4f} |")
-    _share_line = _build_subagent_share_md(_sm()._compute_subagent_share(report))
+    # Prefer the stats stamped by ``_build_report`` (same guard pattern as
+    # the instance renderers in _dispatch.py); recompute only for callers
+    # that hand-build a report without the key.
+    _share_line = _build_subagent_share_md(
+        report.get("subagent_share_stats")
+        or _sm()._compute_subagent_share(report))
     if _share_line:
         p(_share_line)
     p(f"| Cache savings | ${totals['cache_savings']:.4f} |")
@@ -612,9 +617,10 @@ def render_md(report: dict) -> str:
         _adv_n = totals["advisor_call_count"]
         _adv_c = totals.get("advisor_cost_usd", 0.0)
         p(f"| Advisor calls | {_adv_n} call{'s' if _adv_n != 1 else ''} · +${_adv_c:.4f} |")
-    subagent_share_line = _build_subagent_share_md(report.get("subagent_share_stats") or {})
-    if subagent_share_line:
-        p(subagent_share_line)
+    # NB: the subagent-share row is emitted once, right after Total cost
+    # above. A second emission here (added in v1.65.0 believing the row was
+    # "never emitted") duplicated it in every export with subagent data;
+    # removed in v1.66.2.
     p()
 
     # Usage Insights — derived from `_compute_usage_insights`. Renders only
@@ -845,7 +851,8 @@ def render_md(report: dict) -> str:
     # Within-session spawning split — descriptive contrast that holds
     # task / model / context constant. Only renders for sessions with
     # ≥3 spawning AND ≥3 non-spawning turns (median needs a floor).
-    _ws_split = _sm()._compute_within_session_split(report.get("sessions") or [])
+    _ws_split = (report.get("subagent_within_session_split")
+                 or _sm()._compute_within_session_split(report.get("sessions") or []))
     _ws_split_md = _build_within_session_split_md(_ws_split)
     if _ws_split_md:
         p(_ws_split_md)
@@ -1247,6 +1254,9 @@ def _build_usage_insights_md(insights: list[dict]) -> str:
     shown = [i for i in (insights or []) if i.get("shown")]
     if not shown:
         return ""
+    # Safe to compare .value across insights only because every
+    # always_on:False insight is a 0-100 percentage — see the matching
+    # comment in _html_sections._build_usage_insights_html.
     threshold_bearing = [i for i in shown if not i.get("always_on")]
     top = max(threshold_bearing, key=lambda i: i.get("value", 0)) if threshold_bearing else shown[0]
     ordered = [top] + [i for i in shown if i is not top]

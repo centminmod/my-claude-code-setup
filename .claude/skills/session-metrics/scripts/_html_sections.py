@@ -363,6 +363,34 @@ def _build_session_blocks_html(
     )
 
 
+def _build_tod_epoch_blob(tod: dict) -> str:
+    """Serialize ``time_of_day.epoch_secs`` once as a shared JSON blob.
+
+    The hour-of-day, punchcard, and day-part heatmap sections all rebucket
+    the same epoch-seconds array client-side. Embedding it three times
+    (one ``var TS=[...]`` per section) tripled the largest data payload in
+    the page, so the array is emitted once here and each section reads it
+    via ``JSON.parse``. Callers must place this blob BEFORE the first of
+    those sections in document order — their IIFEs run at parse time.
+
+    Returns "" when there are no user timestamps, matching the three
+    sections' own empty-state behaviour (no sections ⇒ no blob needed;
+    the array is plain integers, so no HTML escaping is required).
+    """
+    epoch_secs = tod.get("epoch_secs", [])
+    if not epoch_secs:
+        return ""
+    return ('<script type="application/json" id="tod-epoch-secs">'
+            + json.dumps(epoch_secs, separators=(",", ":"))
+            + "</script>")
+
+
+# Shared JS snippet reading the blob emitted by ``_build_tod_epoch_blob``.
+_TOD_EPOCH_READ_JS = (
+    "JSON.parse(document.getElementById('tod-epoch-secs').textContent)"
+)
+
+
 def _build_hour_of_day_html(tod: dict, tz_label: str = "UTC",
                             default_offset_hours: float = 0.0,
                             peak: dict | None = None) -> str:
@@ -376,7 +404,6 @@ def _build_hour_of_day_html(tod: dict, tz_label: str = "UTC",
     epoch_secs = tod.get("epoch_secs", [])
     if not epoch_secs:
         return ""
-    ts_json = json.dumps(epoch_secs, separators=(",", ":"))
     tz_options = _tz_dropdown_options(default_offset_hours, tz_label)
 
     peak_json = "null"
@@ -429,7 +456,7 @@ def _build_hour_of_day_html(tod: dict, tz_label: str = "UTC",
 </section>
 <script>
 (function(){{
-  var TS={ts_json};
+  var TS={_TOD_EPOCH_READ_JS};
   var PEAK={peak_json};
   var bars=document.getElementById('hod-bars');
   var bs=[];
@@ -497,7 +524,6 @@ def _build_punchcard_html(tod: dict, tz_label: str = "UTC",
     epoch_secs = tod.get("epoch_secs", [])
     if not epoch_secs:
         return ""
-    ts_json = json.dumps(epoch_secs, separators=(",", ":"))
     tz_options = _tz_dropdown_options(default_offset_hours, tz_label)
     days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     cells = []
@@ -528,7 +554,7 @@ def _build_punchcard_html(tod: dict, tz_label: str = "UTC",
 </section>
 <script>
 (function(){{
-  var TS={ts_json};
+  var TS={_TOD_EPOCH_READ_JS};
   var cells=document.querySelectorAll('#punchcard .punch-cell');
   function render(off){{
     var m=[];for(var r=0;r<7;r++){{m.push(new Array(24));for(var k=0;k<24;k++)m[r][k]=0;}}
@@ -601,10 +627,11 @@ def _build_tod_heatmap_html(tod: dict, tz_label: str = "UTC",
     resolved display tz, and client-side re-bucketing via JavaScript.
 
     No Highcharts dependency — uses pure HTML/CSS bars with JS-driven width
-    updates.  The epoch-seconds array is embedded as a compact integer list;
-    bucketing uses ``(((epoch + off) % 86400) + 86400) % 86400`` (the
-    standard double-modulo idiom) to guarantee non-negative results even
-    when JS's sign-preserving ``%`` encounters negative operands.
+    updates.  The epoch-seconds array is read from the shared blob emitted
+    by ``_build_tod_epoch_blob`` (one copy serves all three time-of-day
+    sections); bucketing uses ``(((epoch + off) % 86400) + 86400) % 86400``
+    (the standard double-modulo idiom) to guarantee non-negative results
+    even when JS's sign-preserving ``%`` encounters negative operands.
 
     Args:
         tod: Report's ``time_of_day`` dict containing ``epoch_secs`` and
@@ -617,7 +644,6 @@ def _build_tod_heatmap_html(tod: dict, tz_label: str = "UTC",
     epoch_secs = tod.get("epoch_secs", [])
     if not epoch_secs:
         return ""
-    ts_json = json.dumps(epoch_secs, separators=(",", ":"))
     tz_options = _tz_dropdown_options(default_offset_hours, tz_label)
 
     return f"""\
@@ -655,7 +681,7 @@ def _build_tod_heatmap_html(tod: dict, tz_label: str = "UTC",
 </section>
 <script>
 (function(){{
-  var TS={ts_json};
+  var TS={_TOD_EPOCH_READ_JS};
   var KEYS=['night','morning','afternoon','evening'];
 
   function bucket(off){{
@@ -1957,6 +1983,12 @@ def _build_usage_insights_html(insights: list[dict]) -> str:
     shown = [i for i in (insights or []) if i.get("shown")]
     if not shown:
         return ""
+    # Comparing .value across insights is safe ONLY because every
+    # always_on:False ("threshold-bearing") insight carries a 0-100
+    # percentage value — the count-valued insights (model_mix,
+    # session_pacing, model_compare) are all always_on:True and filtered
+    # out here. Keep new threshold-bearing insights on the percentage
+    # scale (drift-guarded by test_threshold_bearing_insight_values_are_percentages).
     threshold_bearing = [i for i in shown if not i.get("always_on")]
     top = max(threshold_bearing, key=lambda i: i.get("value", 0)) if threshold_bearing else shown[0]
     rest = [i for i in shown if i is not top]
@@ -3228,7 +3260,10 @@ def render_html(report: dict, variant: str = "single",
     include_insights = variant in ("single", "dashboard", "project")
     include_chart    = variant in ("single", "detail", "project")
     include_hc_chart = variant == "single"   # Highcharts 3D for single only; detail/project use chartrail
-    slug = report["slug"]
+    # Escaped at the source: slug derives from a directory path and lands in
+    # <title>/<h1> below (parity with the instance renderer, which escapes
+    # the same field in _dispatch).
+    slug = html_mod.escape(report["slug"])
     totals = report["totals"]
     mode = report["mode"]
     generated = _sm()._fmt_generated_at(report)
@@ -3278,7 +3313,10 @@ def render_html(report: dict, variant: str = "single",
                                                   peak=report.get("peak"))
         punchcard_html = _build_punchcard_html(tod_section, tz_label, tz_offset)
         heatmap_html   = _build_tod_heatmap_html(tod_section, tz_label, tz_offset)
+        # Shared epoch-seconds blob — must precede the three sections that
+        # JSON.parse it (their IIFEs run at document parse time).
         tod_html       = (window_html + rollup_html + blocks_html + duration_html
+                          + _build_tod_epoch_blob(tod_section)
                           + hod_html + punchcard_html + heatmap_html)
 
     # ---- Table rows --------------------------------------------------------
@@ -3315,7 +3353,7 @@ def render_html(report: dict, variant: str = "single",
         title = _fmt_content_title(cb)
         if label == "-":
             return '<td class="content-blocks muted">&ndash;</td>'
-        return (f'<td class="content-blocks" title="{title}">'
+        return (f'<td class="content-blocks" title="{html_mod.escape(title)}">'
                 f'<span>{label}</span></td>')
 
     def turn_row(t: dict, session_id: str) -> str:
@@ -3679,7 +3717,7 @@ def render_html(report: dict, variant: str = "single",
             f'<span>session-metrics</span></div>'
             f'<nav class="nav">'
             f'<span class="navlink current">{label_here}</span>'
-            f'<a class="navlink" data-sm-nav href="{nav_sibling}">{label_other}</a>'
+            f'<a class="navlink" data-sm-nav href="{html_mod.escape(nav_sibling)}">{label_other}</a>'
             f'{_wf_link}'
             f'{_tasks_link}'
             f'{_sw}'
@@ -3708,7 +3746,7 @@ def render_html(report: dict, variant: str = "single",
     if include_chart and table_rows:
         legend_parts = [
             '<b>#</b> turn index (deduplicated) · ',
-            f'<b>Time</b> turn start ({tz_label}) · ',
+            f'<b>Time</b> turn start ({html_mod.escape(tz_label)}) · ',
             '<b>Model</b> short model alias · ',
         ]
         if show_mode:
@@ -3751,7 +3789,7 @@ def render_html(report: dict, variant: str = "single",
             '<div class="section-title"><h2>Timeline</h2></div>\n'
             + legend_html + '\n'
             + '<table class="timeline-table">\n<thead><tr>\n'
-            f'  <th class="num">#</th><th>Time ({tz_label})</th><th>Model</th>\n'
+            f'  <th class="num">#</th><th>Time ({html_mod.escape(tz_label)})</th><th>Model</th>\n'
             f'  {"<th>Mode</th>" if show_mode else ""}\n'
             '  <th class="num">Input (new)</th><th class="num">Output</th>\n'
             '  <th class="num">CacheRd</th><th class="num">CacheWr</th>\n'
@@ -3863,7 +3901,11 @@ def render_html(report: dict, variant: str = "single",
         # v1.26.0: subagent share KPI card. Always rendered (even in
         # the "attribution disabled" branch) so the framing question
         # stays visible.
-        _sa_stats = _sm()._compute_subagent_share(report)
+        # Prefer the stats stamped by ``_build_report`` (guard pattern shared
+        # with _dispatch.py's instance renderers); recompute only for callers
+        # that hand-build a report without the key.
+        _sa_stats = (report.get("subagent_share_stats")
+                     or _sm()._compute_subagent_share(report))
         subagent_share_card = "\n  " + _build_subagent_share_card_html(_sa_stats)
         # cognitive-claude-inspired count-basis turn-share card. Empty
         # when no subagent turns are present so it auto-hides on
@@ -3944,10 +3986,15 @@ def render_html(report: dict, variant: str = "single",
         # v1.26.0: trust gauge + within-session contrast. Both render
         # as "" when their data is empty/below-threshold, so they're
         # safe to interpolate unconditionally below.
+        # Same stamped-stats reuse as ``_sa_stats`` above — both values are
+        # precomputed by ``_build_report`` (subagent_share_stats /
+        # subagent_within_session_split); recompute is a fallback only.
         attribution_coverage_html = _build_attribution_coverage_html(
-            _sm()._compute_subagent_share(report))
+            report.get("subagent_share_stats")
+            or _sm()._compute_subagent_share(report))
         within_session_split_html = _build_within_session_split_html(
-            _sm()._compute_within_session_split(report.get("sessions") or []))
+            report.get("subagent_within_session_split")
+            or _sm()._compute_within_session_split(report.get("sessions") or []))
         request_units_html = _build_request_units_html(
             report.get("request_units", []) or [],
             float(totals.get("cost", 0.0) or 0.0))

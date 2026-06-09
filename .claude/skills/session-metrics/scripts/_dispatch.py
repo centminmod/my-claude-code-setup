@@ -627,6 +627,30 @@ def _run_project_cost(slug: str, include_subagents: bool, formats: list[str],
     _maybe_run_invariants(report, invariants_thresholds)
 
 
+def _slim_blocks_turn(t: dict) -> dict:
+    """Project a raw assistant entry down to what instance-scope consumers read.
+
+    ``all_sessions_raw`` feeds exactly two consumers in
+    ``_build_instance_report``: ``_build_session_blocks`` (reads
+    ``timestamp``, ``message.usage``, ``message.model``) and
+    ``_build_weekly_rollup`` (reads only the user-timestamp tuple element,
+    not the turns). Everything else in a raw entry — most of all the
+    message ``content`` blocks — is dead weight at this scope, and keeping
+    it for every turn of every project held full transcripts in memory
+    through the long instance rendering phase.
+
+    Field access mirrors ``_build_session_blocks`` exactly (hard keys for
+    ``message``/``usage``, soft default for ``model``) so a malformed entry
+    fails as loudly as it would have downstream.
+    """
+    msg = t["message"]
+    return {
+        "timestamp": t.get("timestamp", ""),
+        "message": {"usage": msg["usage"],
+                    "model": msg.get("model", "unknown")},
+    }
+
+
 def _run_all_projects(formats: list[str],
                       tz_offset: float, tz_label: str,
                       peak: dict | None = None,
@@ -670,11 +694,15 @@ def _run_all_projects(formats: list[str],
     # Dynamic-workflow journals for every session across every project,
     # keyed by session_id — handed to each per-project ``_build_report``.
     instance_workflows: dict = {}
-    # Raw sessions_raw tuples across every project — preserved so the
+    # Slimmed sessions_raw tuples across every project — preserved so the
     # instance-scope insights (_build_session_blocks, _build_weekly_rollup)
-    # see the same raw JSONL shape they do in project mode. Without this
-    # the post-processed turn records lack the ``message.usage`` subtree
-    # that session_blocks reads for token tallies.
+    # see the same raw-JSONL *shape* they do in project mode (the
+    # post-processed turn records lack the ``message.usage`` subtree that
+    # session_blocks reads for token tallies). Each turn is projected down
+    # to exactly the fields those consumers read (``_slim_blocks_turn``)
+    # rather than kept whole: full raw entries carry every message's
+    # content blocks, and holding them all instance-wide through the long
+    # rendering phase dominated peak memory.
     all_sessions_raw: list[tuple[str, list[dict], list[int]]] = []
     # P4.3: split per-project work into two phases. Phase 1 (this loop)
     # remains serial because `_load_session` mutates the shared
@@ -708,7 +736,10 @@ def _run_all_projects(formats: list[str],
         print(f"[{i}/{len(discovered)}] Loaded {slug} "
               f"({len(sessions_raw)} session(s))", file=sys.stderr)
         project_inputs.append((slug, sessions_raw))
-        all_sessions_raw.extend(sessions_raw)
+        all_sessions_raw.extend(
+            (sid, [_slim_blocks_turn(t) for t in turns], uts)
+            for sid, turns, uts in sessions_raw
+        )
 
     # Phase 2: build per-project reports in parallel. `_build_report` is
     # pure over its `sessions_raw` argument (no shared mutable state across
@@ -741,6 +772,12 @@ def _run_all_projects(formats: list[str],
             )
     else:
         project_reports = [_build_one_project(p) for p in project_inputs]
+
+    # The full raw entries were only needed by the per-project
+    # ``_build_report`` calls above; ``all_sessions_raw`` holds slimmed
+    # projections. Drop the originals now so the instance build + rendering
+    # below doesn't keep every transcript's message content alive.
+    project_inputs.clear()
 
     if not project_reports:
         print("[info] No projects yielded usable turns.", file=sys.stderr)
@@ -1308,7 +1345,11 @@ def _render_instance_html(report: dict, chart_lib: str = "highcharts") -> str:
     punchcard_html = _sm()._build_punchcard_html(tod_section, tz_label, tz_offset)
     heatmap_html = _sm()._build_tod_heatmap_html(tod_section, tz_label, tz_offset)
 
-    insights_html = window_html + rollup_html + blocks_html + hod_html + punchcard_html + heatmap_html
+    # Shared epoch-seconds blob — must precede the three time-of-day
+    # sections that JSON.parse it (their IIFEs run at document parse time).
+    insights_html = (window_html + rollup_html + blocks_html
+                     + _sm()._build_tod_epoch_blob(tod_section)
+                     + hod_html + punchcard_html + heatmap_html)
 
     # Phase-A instance-level sections (v1.6.0).
     inst_by_skill_html = _sm()._build_by_skill_html(report.get("by_skill", []) or [])

@@ -985,8 +985,15 @@ def _build_instance_daily(project_reports: list[dict],
     return daily, top_slugs
 
 
-def _aggregate_totals(project_reports: list[dict]) -> dict:
-    """Sum per-project ``totals`` dicts into one instance-wide total."""
+def _aggregate_totals(project_reports: list[dict],
+                       name_counts: dict[str, int] | None = None) -> dict:
+    """Sum per-project ``totals`` dicts into one instance-wide total.
+
+    ``name_counts`` optionally injects a precomputed tool-name count map
+    (``_aggregate_models`` can produce one during its own turn walk) so the
+    instance build doesn't walk every turn a second time just for
+    ``tool_names_top3``. When ``None``, the walk below runs as before.
+    """
     keys = ["input", "output", "cache_read", "cache_write",
             "cache_write_5m", "cache_write_1h", "extra_1h_cost",
             "cost", "no_cache_cost", "turns",
@@ -1000,7 +1007,9 @@ def _aggregate_totals(project_reports: list[dict]) -> dict:
     content_blocks = {"thinking": 0, "tool_use": 0, "text": 0,
                       "tool_result": 0, "image": 0}
     thinking_turn_count = 0
-    name_counts: dict[str, int] = {}
+    walk_names = name_counts is None
+    if walk_names:
+        name_counts = {}
     for pr in project_reports:
         t = pr.get("totals", {})
         for k in keys:
@@ -1012,17 +1021,22 @@ def _aggregate_totals(project_reports: list[dict]) -> dict:
         # Tool-name counts cannot be read from the per-project ``totals`` dict:
         # the per-project name map (``_tool_name_counts``) is stripped in
         # ``_build_report`` before the report is exposed, and ``tool_use_names``
-        # is a per-turn field, not a totals key. Re-walk the turns directly —
-        # same pattern as ``_aggregate_models`` — so ``tool_names_top3`` below
-        # reflects real names instead of an always-empty map.
-        for s in pr.get("sessions", []):
-            for tr in s.get("turns", []):
-                if tr.get("model") == _sm()._SYNTHETIC_MODEL:
-                    continue
-                for name in tr.get("tool_use_names", []) or []:
-                    name_counts[name] = name_counts.get(name, 0) + 1
-    if any(v for v in content_blocks.values()):
-        out["content_blocks"] = content_blocks
+        # is a per-turn field, not a totals key. Walk the turns directly —
+        # same loop as ``_aggregate_models`` (which is why the instance build
+        # injects that walk's result via ``name_counts`` instead of repeating
+        # it here) — so ``tool_names_top3`` below reflects real names.
+        if walk_names:
+            for s in pr.get("sessions", []):
+                for tr in s.get("turns", []):
+                    if tr.get("model") == _sm()._SYNTHETIC_MODEL:
+                        continue
+                    for name in tr.get("tool_use_names", []) or []:
+                        name_counts[name] = name_counts.get(name, 0) + 1
+    # Store unconditionally (parity with ``_totals_from_turns`` /
+    # ``_add_totals``, which always carry the key) so instance JSON exports
+    # keep the same totals schema as session/project scope even when every
+    # content-block count is zero.
+    out["content_blocks"] = content_blocks
     # Store unconditionally (not gated on a truthy count) so the derived
     # ``thinking_turn_pct`` below never KeyErrors on a thinking-free instance.
     out["thinking_turn_count"] = thinking_turn_count
@@ -1054,7 +1068,8 @@ def _aggregate_totals(project_reports: list[dict]) -> dict:
     return out
 
 
-def _aggregate_models(project_reports: list[dict]) -> dict:
+def _aggregate_models(project_reports: list[dict],
+                       name_counts_out: dict[str, int] | None = None) -> dict:
     """Build a per-model breakdown across every project in the instance.
 
     Per-project ``models`` dicts produced by ``_build_report`` are simple
@@ -1064,6 +1079,11 @@ def _aggregate_models(project_reports: list[dict]) -> dict:
     and accumulate the breakdown here. Pricing rates are attached via
     ``_pricing_for`` so the HTML models table can render rate columns
     without needing to re-run cost math.
+
+    ``name_counts_out``, when supplied, is filled with per-tool-name use
+    counts during the same walk (identical guards to the standalone walk in
+    ``_aggregate_totals``) so the instance build pays for one turn pass
+    instead of two — pass it on to ``_aggregate_totals(name_counts=...)``.
     """
     merged: dict[str, dict] = {}
     for pr in project_reports:
@@ -1075,6 +1095,10 @@ def _aggregate_models(project_reports: list[dict]) -> dict:
                 # the exclusion in `_model_breakdown` / `_build_by_workflow`.
                 if name == _sm()._SYNTHETIC_MODEL:
                     continue
+                if name_counts_out is not None:
+                    for tool_name in t.get("tool_use_names", []) or []:
+                        name_counts_out[tool_name] = \
+                            name_counts_out.get(tool_name, 0) + 1
                 m = merged.setdefault(name, {
                     "turns":              0,
                     "input_tokens":       0,
@@ -1191,9 +1215,12 @@ def _build_instance_report(
 
     ``all_sessions_raw`` is the concatenation of the ``sessions_raw`` tuples
     loaded per-project — shape ``(session_id, raw_turns, user_ts)``, same
-    as what ``_build_report`` consumes. We need the raw JSONL entries (not
-    the post-processed turn records) because ``_build_session_blocks``
-    reaches into each raw turn's ``message.usage`` for token tallies.
+    as what ``_build_report`` consumes, except each turn is slimmed by
+    ``_slim_blocks_turn`` to just ``timestamp`` + ``message.{usage,model}``.
+    That raw-JSONL shape (not the post-processed turn records) is required
+    because ``_build_session_blocks`` reaches into each turn's
+    ``message.usage`` for token tallies; the slimming drops the message
+    content payloads that dominated instance-scope memory.
     """
     # Collect per-project summaries (no turns)
     projects: list[dict] = []
@@ -1218,8 +1245,14 @@ def _build_instance_report(
     )
 
     blocks = _sm()._build_session_blocks(all_sessions_raw)
-    totals = _aggregate_totals(project_reports)
-    models = _aggregate_models(project_reports)
+    # One turn walk serves both aggregations: _aggregate_models fills
+    # ``inst_name_counts`` while building the per-model breakdown, and
+    # _aggregate_totals consumes it instead of re-walking every turn.
+    inst_name_counts: dict[str, int] = {}
+    models = _aggregate_models(project_reports,
+                                name_counts_out=inst_name_counts)
+    totals = _aggregate_totals(project_reports,
+                                name_counts=inst_name_counts)
     # Re-price models with a rates key if missing, using _pricing_for
     for model, info in models.items():
         if "rates" not in info:
