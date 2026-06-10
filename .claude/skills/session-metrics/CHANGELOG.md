@@ -3,6 +3,35 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.69.0 — 2026-06-11
+
+### Refusal-aware IFEval scoring + effort-support reference (minor)
+
+Preparation for cross-model benchmarks against `claude-fable-5[1m]`
+(whose model-side safety classifiers can decline a prompt with
+`stop_reason: "refusal"`, HTTP 200, empty text):
+
+- **Refused runs are excluded from IFEval, not failed.** Previously a
+  refusal produced empty assistant text that scored `✗` against the
+  predicate — logging an instruction-following failure for a run where
+  no instruction was ever attempted, and biasing pass-rate deltas
+  against classifier-bearing models. A turn whose `stop_reason` is
+  `refusal` now scores `None` (rendered `—`, same as no-predicate
+  prompts), drops its pair from the pass-rate/McNemar denominator, and
+  surfaces a `refused-runs` advisory in the report header plus a
+  `[warn]` on stderr naming the prompt and side.
+- **Paired aggregate now requires both sides evaluated.** The IFEval
+  denominator previously filtered on side A only; a one-sided `None`
+  (now possible via refusal) would have counted side B's exclusion as
+  a fail. For all pre-refusal data both sides were always `None`
+  together, so historical numbers are unchanged.
+- **New `references/pricing.md` § "Effort support by model".** Verified
+  table (Anthropic effort docs, 2026-06-11) of supported effort rungs,
+  API defaults, and recommended coding efforts: opus-4-7 / opus-4-8 /
+  fable-5 all expose the full `low/medium/high/xhigh/max` ladder; every
+  current model defaults to `high`; Anthropic recommends `xhigh` for
+  opus-4-7/4-8 coding work but `high` for fable-5.
+
 ## v1.68.0 — 2026-06-10
 
 ### Accuracy + perf batch — shared derived-field helper, synthetic-turn consistency, parse-cache prune fix (minor)

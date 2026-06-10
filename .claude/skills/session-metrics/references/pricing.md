@@ -54,6 +54,24 @@ of TTL.
 > 1h-write 2× = $20). A future un-keyed `claude-fable-6` routes to a dedicated
 > family fallback at the Fable 5 tier (flagged), not to the Sonnet default.
 
+## Effort support by model
+
+Pricing is effort-independent (effort changes token *counts*, not rates),
+but the compare/benchmark harnesses pass `--effort` rungs through to
+headless `claude -p` runs, so the supported ladder per model matters
+there. Verified against the Anthropic effort docs, 2026-06-11
+(https://platform.claude.com/docs/en/build-with-claude/effort):
+
+| Model family            | Supported efforts                  | API default | Anthropic-recommended for coding/agentic |
+|-------------------------|------------------------------------|-------------|------------------------------------------|
+| `claude-opus-4-5` / `-4-6` | low / medium / high / max       | high        | high                                      |
+| `claude-opus-4-7` / `-4-8` | low / medium / high / xhigh / max | high      | xhigh                                     |
+| `claude-fable-5`        | low / medium / high / xhigh / max  | high        | high (xhigh only for the most capability-sensitive work) |
+| `claude-sonnet-4-6`+    | low / medium / high / max          | high        | medium                                    |
+
+Note: Opus 4.8's default is `high` on all surfaces including Claude
+Code — `xhigh` is the *recommended* setting for coding, not the default.
+
 ## Future / pre-provisioned models
 
 These keys were added **proactively** (v1.44.0) so the next wave of Anthropic

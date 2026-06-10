@@ -826,15 +826,27 @@ def _build_compare_summary(
     Mean-of-ratios is skewed by low-input turns; side-total is the
     bottom-line number users care about (total cost delta).
 
-    Instruction-pass rates are computed over the subset of paired turns that
-    actually carry a predicate (``instruction_pass_a is not None``) so the
-    denominator reflects "suite turns evaluated", not "all paired turns".
+    Instruction-pass rates are computed over the subset of paired turns
+    where a predicate ran on both sides (neither ``instruction_pass_a``
+    nor ``instruction_pass_b`` is ``None``) so the denominator reflects
+    "suite turns evaluated", not "all paired turns". A refused run
+    (stop_reason="refusal") leaves its side ``None`` and drops the pair
+    from the aggregate.
     """
     a_t = side_a["totals"]
     b_t = side_b["totals"]
 
-    # IFEval aggregate: only count turns where a predicate ran.
-    evaluated = [p for p in paired if p.get("instruction_pass_a") is not None]
+    # IFEval aggregate: only count turns where a predicate ran on BOTH
+    # sides. One-sided None happens when a model-side safety classifier
+    # refused that run (stop_reason="refusal" → excluded, not failed);
+    # paired statistics (McNemar) are only defined over complete pairs.
+    # For no-predicate prompts both sides are None, so this also keeps
+    # the historical "suite turns evaluated" denominator unchanged.
+    evaluated = [
+        p for p in paired
+        if p.get("instruction_pass_a") is not None
+        and p.get("instruction_pass_b") is not None
+    ]
     if evaluated:
         pass_a = sum(1 for p in evaluated if p["instruction_pass_a"])
         pass_b = sum(1 for p in evaluated if p["instruction_pass_b"])
@@ -1038,6 +1050,13 @@ def _build_compare_report(
     # the exception to a False "fail"; this list lets us emit a [warn] after the
     # loop so a broken suite predicate isn't an invisible 0%-pass anomaly.
     predicate_errors: list[tuple[str, str]] = []
+    # Fable-5+ safety classifiers can decline a prompt mid-suite
+    # (stop_reason="refusal", HTTP 200, empty text). Scoring that empty
+    # output through the predicate would log a ✗ instruction-following
+    # fail against the model when no instruction was ever attempted, so
+    # refused runs are excluded from IFEval (None → "—") and surfaced
+    # as an advisory instead. (prompt_name, side_label) per refusal.
+    refused_runs: list[tuple[str, str]] = []
     for a_raw, b_raw in pairing["paired"]:
         a_rec = a_rec_by_raw[id(a_raw)]
         b_rec = b_rec_by_raw[id(b_raw)]
@@ -1063,12 +1082,18 @@ def _build_compare_report(
             prompt_entry = prompt_suite.get(suite_prompt_name)
             if prompt_entry is not None:
                 check_fn = prompt_entry.get("check")
-                instruction_pass_a = _run_predicate(
-                    check_fn, _assistant_text(a_raw),
-                    prompt_name=suite_prompt_name, errors=predicate_errors)
-                instruction_pass_b = _run_predicate(
-                    check_fn, _assistant_text(b_raw),
-                    prompt_name=suite_prompt_name, errors=predicate_errors)
+                if a_rec.get("stop_reason") == "refusal":
+                    refused_runs.append((suite_prompt_name, "A"))
+                else:
+                    instruction_pass_a = _run_predicate(
+                        check_fn, _assistant_text(a_raw),
+                        prompt_name=suite_prompt_name, errors=predicate_errors)
+                if b_rec.get("stop_reason") == "refusal":
+                    refused_runs.append((suite_prompt_name, "B"))
+                else:
+                    instruction_pass_b = _run_predicate(
+                        check_fn, _assistant_text(b_raw),
+                        prompt_name=suite_prompt_name, errors=predicate_errors)
 
         paired.append({
             "a":                   a_rec,
@@ -1104,6 +1129,20 @@ def _build_compare_report(
               f"Check the suite file.", file=sys.stderr)
     advisories = _build_advisories(side_a_info, side_b_info, pairing)
     advisories.extend(suite_advisories)
+    if refused_runs:
+        details = "; ".join(f"{name} (side {side})" for name, side in refused_runs)
+        refusal_msg = (
+            f"{len(refused_runs)} prompt run(s) ended with stop_reason=refusal "
+            f"and were excluded from IFEval scoring (shown as —, not ✗): "
+            f"{details}. Refusals come from model-side safety classifiers "
+            f"(e.g. fable-5), not instruction-following failures."
+        )
+        advisories.append({
+            "kind":     "refused-runs",
+            "severity": "warn",
+            "message":  refusal_msg,
+        })
+        print(f"[warn] {refusal_msg}", file=sys.stderr)
     summary = _build_compare_summary(
         side_a_info, side_b_info, paired, unmatched_a_recs, unmatched_b_recs,
     )
