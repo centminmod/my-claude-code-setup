@@ -5,7 +5,7 @@ reference_tokens_per_char: 0.26
 description: Review a Python diff and list issues as an unordered list with exactly three items.
 ---
 
-[session-metrics:compare-suite:v1:prompt=code_review]
+[session-metrics:compare-suite:v2:prompt=code_review]
 
 Review the Python diff below. Output your findings as a Markdown unordered list (lines starting with `- `) with EXACTLY three items. No preamble, no closing remarks, no headings — just the three bullet points. Each item should name a concrete issue in one sentence.
 

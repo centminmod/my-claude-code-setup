@@ -5,7 +5,7 @@ reference_tokens_per_char: 0.28
 description: Rewrite a paragraph of English prose with no commas anywhere in the output.
 ---
 
-[session-metrics:compare-suite:v1:prompt=english_prose]
+[session-metrics:compare-suite:v2:prompt=english_prose]
 
 Rewrite the paragraph below so that it contains zero commas. You may restructure sentences and use other punctuation (periods, semicolons, em-dashes, colons) but the output must contain no comma characters at all. Preserve the meaning. Output only the rewritten paragraph — no preamble, no trailing commentary.
 

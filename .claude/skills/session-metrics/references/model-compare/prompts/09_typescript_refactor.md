@@ -5,7 +5,7 @@ reference_tokens_per_char: 0.26
 description: Refactor a TypeScript function for readability; must include the word "refactor" exactly twice.
 ---
 
-[session-metrics:compare-suite:v1:prompt=typescript_refactor]
+[session-metrics:compare-suite:v2:prompt=typescript_refactor]
 
 Refactor the TypeScript function below for readability (extract helpers, rename variables, simplify logic — anything that helps). Output the refactored code inside a single fenced ```ts code block, followed by a brief explanation paragraph.
 

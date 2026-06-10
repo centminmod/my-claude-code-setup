@@ -5,7 +5,7 @@ reference_tokens_per_char: 0.25
 description: IFEval-style stacked constraints — exactly 50 words, no commas, "foo" appears exactly twice, all lowercase.
 ---
 
-[session-metrics:compare-suite:v1:prompt=instruction_stress]
+[session-metrics:compare-suite:v2:prompt=instruction_stress]
 
 Write a short description of a fictional coffee shop. The description MUST satisfy ALL of the following constraints simultaneously:
 

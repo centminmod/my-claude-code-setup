@@ -5,7 +5,7 @@ reference_tokens_per_char: 0.35
 description: Reshape a JSON sample per a rubric, outputting valid JSON only.
 ---
 
-[session-metrics:compare-suite:v1:prompt=json_reshape]
+[session-metrics:compare-suite:v2:prompt=json_reshape]
 
 Reshape the JSON below so that:
 

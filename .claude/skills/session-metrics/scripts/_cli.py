@@ -635,6 +635,16 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Wall-clock timeout for each 'claude -p' subprocess "
                         "in --compare-run. Default 900s (15 min); the "
                         "tool-heavy prompt is the usual slowest.")
+    p.add_argument("--compare-run-max-turns", type=int, default=None,
+                   metavar="N",
+                   help="Agentic-loop ceiling threaded as 'claude -p "
+                        "--max-turns <N>' to each --compare-run subprocess. "
+                        "Default 100 — far above any legitimate suite "
+                        "usage (the tool-heavy prompt needs ~5 turns) so "
+                        "the cap never clips models that choose to do more "
+                        "work, while still bounding infinite retry loops. "
+                        "Pass 0 to omit the flag entirely (unbounded "
+                        "turns).")
     p.add_argument("--compare-run-effort", nargs="*", metavar="LEVEL",
                    default=None,
                    help="Reasoning effort level threaded as 'claude -p "
@@ -926,6 +936,11 @@ def main() -> None:
         allowed_tools = args.compare_run_allowed_tools \
             or "Bash,Read,Write,Edit,Glob,Grep"
         timeout = args.compare_run_per_call_timeout or 900.0
+        # None → module default (12); 0 → no --max-turns flag (unbounded).
+        if args.compare_run_max_turns is None:
+            max_turns = smc._DEFAULT_COMPARE_RUN_MAX_TURNS
+        else:
+            max_turns = args.compare_run_max_turns or None
         # Resolve 0/1/2 positional effort values. None or empty list means
         # "let each model use its Claude Code default" (Opus 4.6 → high,
         # Opus 4.7 → xhigh). One value pins both sides; two values map
@@ -963,6 +978,7 @@ def main() -> None:
             permission_mode=permission_mode,
             max_budget_usd=args.compare_run_max_budget_usd,
             per_call_timeout=timeout,
+            max_turns=max_turns,
             formats=compare_run_formats,
             single_page=args.single_page,
             chart_lib=chart_lib,

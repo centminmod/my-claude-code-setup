@@ -5,7 +5,7 @@ reference_tokens_per_char: 0.95
 description: Translate a short Japanese paragraph to English. Serves as a near-zero-delta control — CJK is roughly 1 token per character in both tokenizers.
 ---
 
-[session-metrics:compare-suite:v1:prompt=cjk_prose]
+[session-metrics:compare-suite:v2:prompt=cjk_prose]
 
 Translate the following Japanese paragraph into natural English prose. Output the English translation only — no preamble, no romaji, no Japanese text in the output.
 

@@ -24,6 +24,7 @@ import hashlib
 import io
 import json
 import math
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -1338,7 +1339,11 @@ def _build_compare_aggregate_report(
 # prompt bodies or predicates change in a way that would skew ratios across
 # older vs newer captures — the suite-version-mismatch refusal keys off this
 # integer so old captures don't get silently averaged against new ones.
-_SUITE_VERSION = 1
+# v2 (2026-06): tool_heavy_task rewritten to read staged fixture files
+# instead of repo-relative paths that don't exist in the scratch cwd —
+# v1 measured failed-Read recovery loops, not clean tool fan-out, and
+# wedged opus-4-8 at high effort in a filesystem-wide `find /`.
+_SUITE_VERSION = 2
 
 # Directory the prompt files live in. Resolved relative to this script so the
 # suite loads correctly whether the skill is running from the dev repo, the
@@ -1347,6 +1352,38 @@ _PROMPT_SUITE_DIR = (
     Path(__file__).resolve().parent.parent
     / "references" / "model-compare" / "prompts"
 )
+
+# Frozen fixture files staged into the --compare-run scratch directory
+# before any subprocess fires, so suite prompts can reference files by
+# relative path and have them resolve in the otherwise-empty scratch cwd
+# (tool_heavy_task reads three of these). Content is byte-frozen: editing
+# a fixture changes token counts across runs, so any edit requires a
+# _SUITE_VERSION bump.
+_COMPARE_RUN_FIXTURES_DIR = (
+    Path(__file__).resolve().parent.parent
+    / "references" / "model-compare" / "fixtures"
+)
+
+
+def _stage_compare_run_fixtures(scratch_dir: Path) -> list[str]:
+    """Copy every packaged fixture file into ``scratch_dir``.
+
+    Returns the staged filenames (sorted) for progress reporting. Missing
+    fixtures dir is tolerated (older payloads / custom suite layouts) —
+    the suite then behaves as before, prompts referencing fixtures will
+    get Read errors, which is the pre-v2 status quo rather than a crash.
+    """
+    if not _COMPARE_RUN_FIXTURES_DIR.is_dir():
+        return []
+    staged: list[str] = []
+    for src in sorted(_COMPARE_RUN_FIXTURES_DIR.iterdir()):
+        if not src.is_file() or src.name.startswith("."):
+            continue
+        (scratch_dir / src.name).write_text(
+            src.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        staged.append(src.name)
+    return staged
 
 # User-supplied extra prompts directory. Files here are merged on top of the
 # packaged suite automatically — no CLI flags required. Supports "lite" format
@@ -3865,6 +3902,26 @@ _DEFAULT_COMPARE_RUN_ALLOWED_TOOLS = "Bash,Read,Write,Edit,Glob,Grep"
 _DEFAULT_COMPARE_RUN_PERMISSION_MODE = "bypassPermissions"
 _DEFAULT_COMPARE_RUN_TIMEOUT_SEC = 900.0  # 15 min / prompt; tool-heavy #5 is slowest
 
+# Agentic-loop ceiling per ``claude -p`` call, threaded as ``--max-turns``.
+# Deliberately far above any legitimate suite usage (the heaviest prompt,
+# tool_heavy_task, needs ~5 turns) so the cap NEVER binds on real model
+# behaviour — compare-run exists to measure how much work each model
+# chooses to do, and a tight cap would censor that signal asymmetrically.
+# It is pure insurance against infinite retry loops (a model endlessly
+# retrying missing files — observed with opus-4-8 at high effort on
+# suite v1); single stuck tool calls are bounded by the Bash timeout env
+# caps + per-call timeout instead, which a turn cap cannot help with.
+_DEFAULT_COMPARE_RUN_MAX_TURNS = 100
+
+# Bash-tool timeout env for compare-run subprocesses. Belt-and-braces:
+# the suite v1 wedge showed a tool-level `find /` outliving expectations
+# in headless mode, so cap individual Bash tool calls well below the
+# per-prompt timeout. Only applied when the user hasn't set their own.
+_COMPARE_RUN_BASH_ENV = {
+    "BASH_DEFAULT_TIMEOUT_MS": "300000",   # 5 min default per Bash call
+    "BASH_MAX_TIMEOUT_MS":     "600000",   # 10 min hard ceiling
+}
+
 # Valid ``claude -p --effort`` values. Kept in sync with Claude Code's own
 # enum — mismatches would cause a cryptic subprocess error mid-capture. Opus
 # 4.6 defaults to ``high`` and Opus 4.7 defaults to ``xhigh`` when the flag
@@ -3992,6 +4049,7 @@ def _claude_headless_call(
     timeout: float,
     subprocess_run,
     effort: str | None = None,
+    max_turns: int | None = _DEFAULT_COMPARE_RUN_MAX_TURNS,
 ) -> dict:
     """Shell out to ``claude -p`` for one prompt and return the parsed JSON result.
 
@@ -4026,6 +4084,13 @@ def _claude_headless_call(
         cmd += ["--max-budget-usd", str(max_budget_usd)]
     if effort:
         cmd += ["--effort", effort]
+    if max_turns:
+        cmd += ["--max-turns", str(max_turns)]
+    env = {
+        **os.environ,
+        **{k: v for k, v in _COMPARE_RUN_BASH_ENV.items()
+           if k not in os.environ},
+    }
     try:
         result = subprocess_run(
             cmd,
@@ -4034,6 +4099,7 @@ def _claude_headless_call(
             text=True,
             timeout=timeout,
             check=False,
+            env=env,
         )
     except FileNotFoundError as exc:
         raise CompareRunError(
@@ -4070,6 +4136,7 @@ def _run_compare_side(
     effort: str | None = None,
     steering_variant: str | None = None,
     steering_position: str = "prefix",
+    max_turns: int | None = _DEFAULT_COMPARE_RUN_MAX_TURNS,
 ) -> list[dict]:
     """Feed the full prompt suite into one model via ``claude -p``.
 
@@ -4111,6 +4178,7 @@ def _run_compare_side(
             timeout=timeout,
             subprocess_run=subprocess_run,
             effort=effort,
+            max_turns=max_turns,
         )
         results.append({"name": name, "response": out_json})
     return results
@@ -4203,6 +4271,7 @@ def _run_compare_run(
     permission_mode: str | None = _DEFAULT_COMPARE_RUN_PERMISSION_MODE,
     max_budget_usd: float | None = None,
     per_call_timeout: float = _DEFAULT_COMPARE_RUN_TIMEOUT_SEC,
+    max_turns: int | None = _DEFAULT_COMPARE_RUN_MAX_TURNS,
     formats: list[str] | None = None,
     single_page: bool = False,
     chart_lib: str = "highcharts",
@@ -4315,6 +4384,16 @@ def _run_compare_run(
         scratch_dir = Path(scratch_dir).expanduser().resolve()
         scratch_dir.mkdir(parents=True, exist_ok=True)
 
+    # Stage frozen fixture files so suite prompts that Read relative paths
+    # (tool_heavy_task) resolve inside the otherwise-empty scratch cwd.
+    staged_fixtures = _stage_compare_run_fixtures(scratch_dir)
+    if staged_fixtures:
+        print(
+            f"[info] staged {len(staged_fixtures)} fixture file(s) into "
+            f"scratch dir: {', '.join(staged_fixtures)}",
+            file=progress_out,
+        )
+
     # Step 2: prompt suite + confirmation gate
     try:
         suite = _load_prompt_suite(suite_dir)
@@ -4363,6 +4442,7 @@ def _run_compare_run(
                 effort=side_effort,
                 steering_variant=steering_variant,
                 steering_position=steering_position,
+                max_turns=max_turns,
             )
         except CompareRunError as exc:
             print(f"[error] side {side_label} ({model}): {exc}", file=sys.stderr)

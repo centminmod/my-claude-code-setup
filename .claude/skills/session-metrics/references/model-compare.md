@@ -138,6 +138,15 @@ Optional safety belts:
 - `--compare-run-per-call-timeout SECONDS` — wall-clock timeout per
   prompt; default 900 (15 min) because the `tool_heavy_task` prompt
   can fan out.
+- `--compare-run-max-turns N` — agentic-loop ceiling threaded as
+  `claude -p --max-turns <N>` to every subprocess; default 100 —
+  deliberately far above any legitimate suite usage (the heaviest
+  prompt, `tool_heavy_task`, needs ~5 turns) so the cap never binds
+  on real behaviour and never censors the how-much-work-does-each-
+  model-do signal the comparison measures. It is pure insurance
+  against infinite retry loops; single stuck tool calls are bounded
+  by the Bash timeout env caps + per-call timeout instead. Pass 0
+  for unbounded turns.
 - `--compare-run-effort [LEVEL [LEVEL]]` — pin `claude -p --effort`
   (`low | medium | high | xhigh | max`). Takes 0, 1, or 2 values:
   zero omits the flag entirely so each model keeps its shipping
@@ -355,7 +364,7 @@ second terminal tab, an editor buffer, or:
 ```
 
 Each prompt body begins with a sentinel like
-`[session-metrics:compare-suite:v1:prompt=claudemd_summarise]`. **Do
+`[session-metrics:compare-suite:v2:prompt=claudemd_summarise]`. **Do
 not strip it** when pasting — the compare report uses the sentinel to
 pair A-side and B-side turns back to their source prompt and to run
 the IFEval predicate.
@@ -506,10 +515,19 @@ Located at `.claude/skills/session-metrics/references/model-compare/prompts/`. E
 Every prompt body starts with a sentinel:
 
 ```
-[session-metrics:compare-suite:v1:prompt=<name>]
+[session-metrics:compare-suite:v2:prompt=<name>]
 ```
 
 The skill detects this sentinel in user prompts to (a) identify which suite prompt a turn corresponds to, (b) run the IFEval predicate against the assistant's text output, and (c) refuse when the two compared sessions carry different suite versions.
+
+Suite **v2** (2026-06) rewrote `tool_heavy_task` to read three frozen
+fixture files that `--compare-run` stages into the scratch directory
+(`references/model-compare/fixtures/`), replacing v1's repo-relative
+paths that never resolved in the scratch cwd. v1 therefore measured
+failed-Read *recovery* behaviour on that prompt (and could wedge
+high-effort models in filesystem-wide `find` escalations); v2 measures
+clean three-Read fan-out. The two versions' `tool_heavy_task` numbers
+are not comparable — which is exactly what the version checker guards.
 
 | # | Name | Content shape | Predicate |
 |--:|------|---------------|-----------|

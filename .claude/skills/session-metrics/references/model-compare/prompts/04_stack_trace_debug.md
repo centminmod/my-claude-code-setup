@@ -5,7 +5,7 @@ reference_tokens_per_char: 0.30
 description: Diagnose a Python stack trace in at most 200 output tokens (~800 chars).
 ---
 
-[session-metrics:compare-suite:v1:prompt=stack_trace_debug]
+[session-metrics:compare-suite:v2:prompt=stack_trace_debug]
 
 Diagnose the root cause of the Python stack trace below in 200 OUTPUT TOKENS OR FEWER. Prefer one tight paragraph. State the cause, point at the offending call, and suggest the fix. No code blocks, no lists, no preamble.
 

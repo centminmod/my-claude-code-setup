@@ -5,7 +5,7 @@ reference_tokens_per_char: 0.23
 description: Summarise a CLAUDE.md-shaped doc in exactly 120 words.
 ---
 
-[session-metrics:compare-suite:v1:prompt=claudemd_summarise]
+[session-metrics:compare-suite:v2:prompt=claudemd_summarise]
 
 Summarise the following project CLAUDE.md in EXACTLY 120 words. Do not write more or fewer. No headings, no lists — one continuous paragraph.
 

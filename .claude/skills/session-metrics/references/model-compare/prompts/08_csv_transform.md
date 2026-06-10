@@ -5,7 +5,7 @@ reference_tokens_per_char: 0.38
 description: Transform a CSV and output CSV only, with no prose preamble.
 ---
 
-[session-metrics:compare-suite:v1:prompt=csv_transform]
+[session-metrics:compare-suite:v2:prompt=csv_transform]
 
 Take the CSV below and output a new CSV with two columns: `customer` and `total_usd`. `total_usd` is `sum(amount_cents) / 100` rounded to 2 decimals for each customer. The first row must be the header `customer,total_usd`. Sort by `total_usd` descending. Output ONLY CSV — no code fences, no preamble, no trailing commentary.
 

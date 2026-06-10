@@ -3,6 +3,43 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.70.0 — 2026-06-11
+
+### Compare-suite v2 — fix `tool_heavy_task` hang + agentic-loop bounds (minor)
+
+Root cause of a reproducible benchmark wedge: the `tool_heavy_task`
+prompt asked the model to Read three repo-relative paths
+(`.claude/skills/session-metrics/SKILL.md` etc.) that can never resolve
+inside the empty `sm-compare-run-*` scratch cwd every `--compare-run`
+subprocess runs in. Low/medium-effort models gave up and wrote a
+degraded summary (silently measuring failed-Read *recovery*, not tool
+fan-out); opus-4-8 at `high` escalated to a filesystem-wide
+`find / -path …` that wedged the cell until the per-call timeout
+(observed: 90 min per wedge in benchmark-effort-prompt sweeps).
+
+- **Compare-suite v1 → v2.** `tool_heavy_task` now reads three frozen
+  fixture files (`references/model-compare/fixtures/compare-fixture-*.md`)
+  that `--compare-run` stages into the scratch dir before any subprocess
+  fires. Sentinels bumped in all 10 prompts; `_SUITE_VERSION = 2`.
+  v1 and v2 `tool_heavy_task` numbers are **not comparable** — the
+  existing suite-version checker refuses mixed comparisons by design.
+- **New flag `--compare-run-max-turns N`** (default 100, `0` = unbounded),
+  threaded as `claude -p --max-turns` to every subprocess. Set far
+  above legitimate usage (the heaviest suite prompt needs ~5 turns) so
+  it never censors the work-volume signal the comparison measures —
+  it is pure insurance against infinite retry loops, independent of
+  the prompt fix.
+- **Bash-tool timeout env caps** for compare-run subprocesses
+  (`BASH_DEFAULT_TIMEOUT_MS=300000`, `BASH_MAX_TIMEOUT_MS=600000`,
+  user-set values win) — belt-and-braces after the wedged `find /`
+  outlived tool-level expectations in headless mode.
+- **benchmark-effort-prompt orchestrator** default `--per-call-timeout`
+  lowered 5400 s → 1800 s; with `--max-turns` bounding stuck cells the
+  90-min ceiling only prolonged genuinely-wedged cells.
+
+Suite: 830 passed, 1 skipped. New tests cover fixture staging,
+`--max-turns` threading/opt-out, and the env caps.
+
 ## v1.69.1 — 2026-06-11
 
 ### Fix crashing `--help` (patch)
