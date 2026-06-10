@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.67.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.68.0"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -659,6 +659,7 @@ _parse_iso_epoch            = _da_m._parse_iso_epoch
 _build_session_blocks       = _da_m._build_session_blocks
 _build_weekly_rollup        = _da_m._build_weekly_rollup
 _weekly_block_counts        = _da_m._weekly_block_counts
+_derive_total_fields        = _da_m._derive_total_fields
 _totals_from_turns          = _da_m._totals_from_turns
 _add_totals                 = _da_m._add_totals
 _model_breakdown            = _da_m._model_breakdown

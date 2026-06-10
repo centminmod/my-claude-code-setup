@@ -996,7 +996,7 @@ def _aggregate_totals(project_reports: list[dict],
     """
     keys = ["input", "output", "cache_read", "cache_write",
             "cache_write_5m", "cache_write_1h", "extra_1h_cost",
-            "cost", "no_cache_cost", "turns",
+            "cost", "no_cache_cost", "turns", "synthetic_turns",
             "advisor_call_count", "advisor_cost_usd",
             "partial_hit_turns", "total_cache_turns"]
     out: dict = {k: 0 for k in keys}
@@ -1050,22 +1050,11 @@ def _aggregate_totals(project_reports: list[dict],
     # absent) and a type collision with the per-turn ``tool_use_names`` list.
     # The only consumer is ``tool_names_top3`` below, derived from the local
     # ``name_counts`` directly, so nothing needs the field on ``out``.
-    # ---- Derived-field pass (parity with ``_totals_from_turns`` /
-    # ``_add_totals``). All inputs are sums of additive fields, so deriving
+    # ---- Derived-field pass: delegated to the shared helper so the
+    # formulas are identical at session, project, and instance scope by
+    # construction. All inputs are sums of additive fields, so deriving
     # here matches a single linear pass to within a float ULP. ----
-    out["total"]         = out["input"] + out["output"] + out["cache_read"] + out["cache_write"]
-    out["total_input"]   = out["input"] + out["cache_read"] + out["cache_write"]
-    out["cache_savings"] = out["no_cache_cost"] - out["cost"]
-    out["cache_hit_pct"] = 100 * out["cache_read"] / max(1, out["total_input"])
-    out["partial_hit_rate"] = round(
-        100.0 * out["partial_hit_turns"] / max(1, out["total_cache_turns"]), 1)
-    n = out["turns"]
-    out["thinking_turn_pct"]      = 100 * thinking_turn_count / n if n else 0.0
-    out["tool_call_total"]        = content_blocks.get("tool_use", 0)
-    out["tool_call_avg_per_turn"] = out["tool_call_total"] / n if n else 0.0
-    ranked = sorted(name_counts.items(), key=lambda x: (-x[1], x[0]))
-    out["tool_names_top3"] = [name for name, _ in ranked[:3]]
-    return out
+    return _sm()._derive_total_fields(out, name_counts)
 
 
 def _aggregate_models(project_reports: list[dict],

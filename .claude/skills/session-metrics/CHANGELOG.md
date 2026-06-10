@@ -3,6 +3,37 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.68.0 — 2026-06-10
+
+### Accuracy + perf batch — shared derived-field helper, synthetic-turn consistency, parse-cache prune fix (minor)
+
+From the 2026-06-10 export-accuracy verification (project export recomputed
+independently against 524 raw JSONLs; totals matched to 0.12%):
+
+- **`totals.turns` now equals the per-model table sum at every scope.**
+  Non-billable `<synthetic>` placeholder turns (orchestrator/resume markers,
+  zero tokens, zero cost) were counted in the headline `turns` but skipped by
+  the model breakdown, leaving an unexplained gap (49 turns on the dev-repo
+  project export). They are now excluded from `turns` and surfaced in a new
+  additive `synthetic_turns` totals field (session, project, and instance
+  scope). `thinking_turn_pct` / `tool_call_avg_per_turn` use the billable-turn
+  denominator.
+- **Shared `_derive_total_fields` helper** — `_totals_from_turns`,
+  `_add_totals`, and the instance-scope `_aggregate_totals` previously
+  implemented the same eight derived fields (`total`, `total_input`,
+  `cache_savings`, `cache_hit_pct`, `partial_hit_rate`, `thinking_turn_pct`,
+  `tool_call_*`, `tool_names_top3`) independently — the three-way drift that
+  caused the v1.63.0 instance-parity bug. All three now delegate to one
+  helper in `_data.py`, so the formulas cannot diverge across scopes.
+  Guarded by a fold-vs-single-pass parity test.
+- **Parse-cache prune no longer deletes live subagent/workflow blobs.**
+  `_prune_cache_global`'s orphan check globbed `*/subagents/*.jsonl`, which
+  matches no real layout — subagent transcripts live at
+  `<slug>/<session>/subagents/*.jsonl` and dynamic-workflow agents one tier
+  deeper (`.../subagents/workflows/<runId>/*.jsonl`). Every subagent blob was
+  therefore deleted as "orphaned" on each daily prune and cold-parsed again on
+  the next project run. Both real depths are now indexed (legacy depth kept).
+
 ## v1.67.0 — 2026-06-10
 
 ### Export-audit Phase 3 — export-dir hygiene, index manifest, `--prune-exports` (minor)

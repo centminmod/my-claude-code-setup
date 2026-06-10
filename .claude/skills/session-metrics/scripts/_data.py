@@ -295,7 +295,18 @@ def _prune_cache_global(cache_dir: Path) -> None:
         projects_root = _sm()._projects_dir()
         for _j in projects_root.glob("*/*.jsonl"):
             jsonl_by_stem[_j.stem] = _j
+        # Subagent transcripts live one level under the SESSION dir, not the
+        # slug dir: <slug>/<session-uuid>/subagents/agent-*.jsonl. The old
+        # depth-3 glob ("*/subagents/*.jsonl") matched nothing, so every
+        # subagent blob was deleted as "orphaned" on each daily prune and
+        # cold-parsed again on the next project run. Keep the depth-3 glob
+        # for any legacy layout; add the real depth-4 path and the dynamic-
+        # workflow tier (<...>/subagents/workflows/<runId>/agent-*.jsonl).
         for _j in projects_root.glob("*/subagents/*.jsonl"):
+            jsonl_by_stem[_j.stem] = _j
+        for _j in projects_root.glob("*/*/subagents/*.jsonl"):
+            jsonl_by_stem[_j.stem] = _j
+        for _j in projects_root.glob("*/*/subagents/workflows/*/*.jsonl"):
             jsonl_by_stem[_j.stem] = _j
     except OSError:
         return  # can't scan — skip this cycle
@@ -527,10 +538,39 @@ def _weekly_block_counts(blocks: list[dict], now_epoch: int | None = None) -> di
 # Data model — build structured report from raw turns
 # ---------------------------------------------------------------------------
 
+def _derive_total_fields(t: dict, name_counts: dict[str, int]) -> dict:
+    """Set every derived field on a totals dict from its additive fields.
+
+    Single source of truth shared by `_totals_from_turns`, `_add_totals`,
+    and `_aggregate_totals` (instance scope) so the formulas cannot drift
+    between scopes — the v1.63.0 instance-parity bug was caused by exactly
+    that three-way duplication. Expects the additive fields to be final
+    before the call: input/output/cache_read/cache_write, cost,
+    no_cache_cost, turns, thinking_turn_count, partial_hit_turns,
+    total_cache_turns, and content_blocks. Mutates and returns ``t``.
+    """
+    t["total"] = t["input"] + t["output"] + t["cache_read"] + t["cache_write"]
+    t["total_input"] = t["input"] + t["cache_read"] + t["cache_write"]
+    t["cache_savings"] = t["no_cache_cost"] - t["cost"]
+    t["cache_hit_pct"] = 100 * t["cache_read"] / max(1, t["total_input"])
+    t["partial_hit_rate"] = round(
+        100.0 * t["partial_hit_turns"] / max(1, t["total_cache_turns"]), 1)
+    n = t["turns"]
+    t["thinking_turn_pct"] = 100 * t["thinking_turn_count"] / n if n else 0.0
+    cb = t.get("content_blocks") or {}
+    t["tool_call_total"] = cb.get("tool_use", 0)
+    t["tool_call_avg_per_turn"] = t["tool_call_total"] / n if n else 0.0
+    # Stable ordering: count desc, then name asc so ties are deterministic.
+    ranked = sorted(name_counts.items(), key=lambda x: (-x[1], x[0]))
+    t["tool_names_top3"] = [name for name, _ in ranked[:3]]
+    return t
+
+
 def _totals_from_turns(turn_records: list[dict]) -> dict:
     t = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
          "cache_write_5m": 0, "cache_write_1h": 0, "extra_1h_cost": 0.0,
-         "cost": 0.0, "no_cache_cost": 0.0, "turns": len(turn_records),
+         "cost": 0.0, "no_cache_cost": 0.0, "turns": 0,
+         "synthetic_turns": 0,
          "advisor_call_count": 0, "advisor_cost_usd": 0.0,
          "partial_hit_turns": 0, "total_cache_turns": 0}
     content_block_totals = {"thinking": 0, "tool_use": 0, "text": 0,
@@ -539,6 +579,14 @@ def _totals_from_turns(turn_records: list[dict]) -> dict:
     thinking_turn_count = 0
     name_counts: dict[str, int] = {}
     for r in turn_records:
+        # Non-billable ``<synthetic>`` orchestrator/resume placeholders carry
+        # zero tokens and zero cost. Excluding them from ``turns`` keeps the
+        # headline count equal to the per-model table sum (`_model_breakdown`
+        # skips them too); they are still surfaced via ``synthetic_turns``.
+        if r["model"] == _sm()._SYNTHETIC_MODEL:
+            t["synthetic_turns"] += 1
+            continue
+        t["turns"]        += 1
         t["input"]        += r["input_tokens"]
         t["output"]       += r["output_tokens"]
         t["cache_read"]   += r["cache_read_tokens"]
@@ -574,24 +622,9 @@ def _totals_from_turns(turn_records: list[dict]) -> dict:
             thinking_turn_count += 1
         for name in r.get("tool_use_names", []) or []:
             name_counts[name] = name_counts.get(name, 0) + 1
-    n_turns = len(turn_records)
-    t["total"] = t["input"] + t["output"] + t["cache_read"] + t["cache_write"]
-    t["total_input"] = t["input"] + t["cache_read"] + t["cache_write"]
-    t["cache_savings"] = t["no_cache_cost"] - t["cost"]
-    t["cache_hit_pct"] = 100 * t["cache_read"] / max(1, t["total_input"])
-    t["partial_hit_rate"] = round(100.0 * t["partial_hit_turns"] / max(1, t["total_cache_turns"]), 1)
     t["content_blocks"] = content_block_totals
     t["thinking_turn_count"] = thinking_turn_count
-    t["thinking_turn_pct"] = (
-        100 * thinking_turn_count / n_turns if n_turns else 0.0
-    )
-    t["tool_call_total"] = content_block_totals["tool_use"]
-    t["tool_call_avg_per_turn"] = (
-        content_block_totals["tool_use"] / n_turns if n_turns else 0.0
-    )
-    # Stable ordering: count desc, then name asc so ties are deterministic.
-    ranked = sorted(name_counts.items(), key=lambda x: (-x[1], x[0]))
-    t["tool_names_top3"] = [name for name, _ in ranked[:3]]
+    _derive_total_fields(t, name_counts)
     # Internal field carried so `_add_totals` (P4.4) can fold per-session
     # subtotals into a project-wide total without re-iterating turns. Stripped
     # off the top-level project totals + each session subtotal in
@@ -624,6 +657,7 @@ def _add_totals(a: dict, b: dict) -> dict:
         "cost":                a["cost"]                + b["cost"],
         "no_cache_cost":       a["no_cache_cost"]       + b["no_cache_cost"],
         "turns":               a["turns"]               + b["turns"],
+        "synthetic_turns":     a.get("synthetic_turns", 0) + b.get("synthetic_turns", 0),
         "advisor_call_count":  a["advisor_call_count"]  + b["advisor_call_count"],
         "advisor_cost_usd":    a["advisor_cost_usd"]    + b["advisor_cost_usd"],
         "thinking_turn_count": a["thinking_turn_count"] + b["thinking_turn_count"],
@@ -642,18 +676,7 @@ def _add_totals(a: dict, b: dict) -> dict:
     for k, v in nc_b.items():
         nc[k] = nc.get(k, 0) + v
     out["_tool_name_counts"] = nc
-    out["total"]         = out["input"] + out["output"] + out["cache_read"] + out["cache_write"]
-    out["total_input"]   = out["input"] + out["cache_read"] + out["cache_write"]
-    out["cache_savings"] = out["no_cache_cost"] - out["cost"]
-    out["cache_hit_pct"] = 100 * out["cache_read"] / max(1, out["total_input"])
-    out["partial_hit_rate"] = round(100.0 * out["partial_hit_turns"] / max(1, out["total_cache_turns"]), 1)
-    n = out["turns"]
-    out["thinking_turn_pct"]      = 100 * out["thinking_turn_count"] / n if n else 0.0
-    out["tool_call_total"]        = cb.get("tool_use", 0)
-    out["tool_call_avg_per_turn"] = out["tool_call_total"] / n if n else 0.0
-    ranked = sorted(nc.items(), key=lambda x: (-x[1], x[0]))
-    out["tool_names_top3"] = [name for name, _ in ranked[:3]]
-    return out
+    return _derive_total_fields(out, nc)
 
 
 def _model_breakdown(turn_records: list[dict]) -> dict[str, dict]:
