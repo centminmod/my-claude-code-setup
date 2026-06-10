@@ -408,7 +408,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- Invariants (CI mode) ----------------------------------------------
     p.add_argument("--invariants", action="store_true",
                    help="CI-friendly check mode. After the report is built, "
-                        "evaluate metric-contract predicates (cache hit %, "
+                        "evaluate metric-contract predicates (cache hit %%, "
                         "cost per turn, sub-agent turn share, 1h cache "
                         "share, tool calls per turn) and exit with code 4 "
                         "if any predicate is violated. Pair with --output to "

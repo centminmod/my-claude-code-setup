@@ -3,6 +3,19 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.69.1 — 2026-06-11
+
+### Fix crashing `--help` (patch)
+
+`session-metrics --help` crashed with `ValueError: unsupported format
+character ','` — the `--invariants` help string contained an unescaped
+`%` ("cache hit %, …"), which argparse expands as an old-style format
+specifier. Escaped to `%%` (matching the two already-correct
+`--invariants-*` strings in the same file). AST-scanned every argparse
+`help=` string across the skill payload for other unescaped `%`: none
+remain. No behaviour change beyond `--help` now printing; suite 826
+passed.
+
 ## v1.69.0 — 2026-06-11
 
 ### Refusal-aware IFEval scoring + effort-support reference (minor)
