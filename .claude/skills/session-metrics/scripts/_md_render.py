@@ -597,6 +597,91 @@ def _build_session_behavior_md(behavior: dict) -> str:
     return "\n".join(out)
 
 
+def _build_cache_efficiency_md(totals: dict) -> str:
+    """Markdown mirror of the D.1 cache-efficiency section. "" when no cache."""
+    if int(totals.get("cache_read", 0) or 0) <= 0:
+        return ""
+    cr = int(totals.get("cache_read", 0) or 0)
+    cw = int(totals.get("cache_write", 0) or 0)
+    ip = int(totals.get("input", 0) or 0)
+    op = int(totals.get("output", 0) or 0)
+    hit = float(totals.get("cache_hit_pct", 0.0) or 0.0)
+    saved = float(totals.get("cache_savings", 0.0) or 0.0)
+    # Mirror C.3 reframe: a net-negative cache shows as a cost, never $0 saved.
+    saved_row = (f"| Cache net cost | ${-saved:,.4f} |" if saved < 0
+                 else f"| Cache savings | ${saved:,.4f} |")
+    return "\n".join([
+        "## Cache efficiency",
+        "",
+        "| Metric | Value |",
+        "|--------|------:|",
+        f"| Cache-read tokens | {cr:,} |",
+        f"| Cache-write tokens | {cw:,} |",
+        f"| New-input tokens | {ip:,} |",
+        f"| Output tokens | {op:,} |",
+        f"| Cache-read ratio | {hit:.1f}% |",
+        saved_row,
+    ])
+
+
+def _build_velocity_md(report: dict) -> str:
+    """Markdown mirror of the D.2 velocity cards (reads ``report['velocity']``)."""
+    v = report.get("velocity") or {}
+    if not v or not v.get("filtered_unit_count"):
+        return ""
+    return "\n".join([
+        "## Velocity",
+        "",
+        "| Metric | Value |",
+        "|--------|------:|",
+        f"| Cost / active min | ${float(v.get('cost_per_active_min', 0.0)):,.4f} |",
+        f"| Tokens / active min | {float(v.get('tokens_per_active_min', 0.0)):,.0f} |",
+        f"| p50 request cycle | {v.get('p50_cycle_s', 0)}s |",
+        f"| p90 request cycle | {v.get('p90_cycle_s', 0)}s |",
+        f"| Active minutes | {float(v.get('active_minutes', 0.0)):,.1f} |",
+    ])
+
+
+def _build_cost_over_time_md(report: dict, top_n: int = 5) -> str:
+    """Markdown mirror of D.4. Defined + re-exported for parity/testability but
+    intentionally NOT wired into ``render_md`` this phase — the running-total
+    table grows unwieldy for long sessions. Session scope only; samples every
+    10th turn. "" for non-session mode or when no turn carries cost."""
+    if report.get("mode") != "session":
+        return ""
+    turns: list[dict] = []
+    for s in report.get("sessions") or []:
+        for t in s.get("turns", []):
+            if not t.get("is_resume_marker"):
+                turns.append(t)
+    if not turns:
+        return ""
+    model_cost: dict[str, float] = {}
+    for t in turns:
+        m = t.get("model") or "unknown"
+        model_cost[m] = model_cost.get(m, 0.0) + float(t.get("cost_usd", 0.0) or 0.0)
+    if not model_cost or sum(model_cost.values()) <= 0:
+        return ""
+    ranked = sorted(model_cost.items(), key=lambda kv: (-kv[1], kv[0]))
+    top = [m for m, _ in ranked[:top_n]]
+    top_set = set(top)
+    keys = top + (["Other"] if len(ranked) > top_n else [])
+    running = {k: 0.0 for k in keys}
+    rows = [
+        "| Turn | " + " | ".join(k[:18] for k in keys) + " |",
+        "|----:|" + "|".join(["------:"] * len(keys)) + "|",
+    ]
+    last = len(turns) - 1
+    for i, t in enumerate(turns):
+        m = t.get("model") or "unknown"
+        key = m if m in top_set else "Other"
+        running[key] += float(t.get("cost_usd", 0.0) or 0.0)
+        if i % 10 == 0 or i == last:
+            cells = " | ".join(f"${running[k]:,.4f}" for k in keys)
+            rows.append(f"| {i} | {cells} |")
+    return "## Cost by model (running total)\n\n" + "\n".join(rows)
+
+
 def render_md(report: dict) -> str:
     """Render the full report as GitHub-flavored Markdown.
 
@@ -721,6 +806,15 @@ def render_md(report: dict) -> str:
     md_waste = _build_waste_analysis_md(report.get("waste_analysis") or {})
     if md_waste:
         p(md_waste)
+
+    # Phase D mirrors — cache-efficiency table + velocity table. Both auto-hide
+    # when their data is absent (no cache-read / no usable velocity).
+    md_cache_eff = _build_cache_efficiency_md(report.get("totals") or {})
+    if md_cache_eff:
+        p(md_cache_eff)
+    md_velocity = _build_velocity_md(report)
+    if md_velocity:
+        p(md_velocity)
 
     # Time-of-day section
     tod = report.get("time_of_day", {})

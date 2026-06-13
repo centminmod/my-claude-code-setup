@@ -2624,6 +2624,402 @@ def _build_waste_analysis_html(wa: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Phase D — static visualizations (no new chart-library dependency). All
+# builders are pure functions of their input dicts: no timestamps, no dict/set
+# iteration in the emitted bytes, every coordinate routed through
+# ``_svg_scale`` or rounded to 2 dp, so the byte-stable golden test holds. Each
+# section auto-hides when its data is absent so the minimal test fixture (and a
+# zero-cache / single-session report) renders unchanged.
+# ---------------------------------------------------------------------------
+
+def _build_cache_efficiency_html(totals: dict) -> str:
+    """Cache-efficiency 4-segment token bar + savings callout (D.1).
+
+    Auto-hides when there is no cache-read activity (a no-cache session has
+    nothing to say here). Negative net savings are reframed as a cost — same
+    discipline as the C.3 footer/KPI — never clamped to a misleading "$0 saved".
+    Pure read of ``totals``; never mutates the report.
+    """
+    if int(totals.get("cache_read", 0) or 0) <= 0:
+        return ""
+    bar = _sm()._build_cache_efficiency_svg(totals)
+    if not bar:
+        return ""
+    hit = float(totals.get("cache_hit_pct", 0.0) or 0.0)
+    saved = float(totals.get("cache_savings", 0.0) or 0.0)
+    if saved < 0:
+        saved_txt = (f'<span style="color:#d29922">Cache net cost '
+                     f'${-saved:,.4f} vs no-cache baseline</span>')
+    else:
+        saved_txt = f'${saved:,.4f} saved vs no-cache baseline'
+    swatches = (
+        ("cache-read",  "var(--accent)"),
+        ("cache-write", "var(--accent-soft)"),
+        ("new-input",   "var(--fg-dim)"),
+        ("output",      "var(--border)"),
+    )
+    legend = "".join(
+        f'<span style="display:inline-flex;align-items:center;gap:6px">'
+        f'<span style="width:11px;height:11px;border-radius:3px;'
+        f'display:inline-block;background:{c}"></span>{lbl}</span>'
+        for lbl, c in swatches
+    )
+    return (
+        '<section class="section" id="cache-efficiency-section">\n'
+        '  <div class="section-title"><h2>Cache efficiency</h2>'
+        '<span class="hint">token composition &amp; cache savings</span></div>\n'
+        '  <div class="health-panel">\n'
+        f'    {bar}\n'
+        f'    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;'
+        f"font-family:'JetBrains Mono',monospace;font-size:11px\">{legend}</div>\n"
+        f'    <div style="margin-top:12px;font-size:13px">{hit:.1f}% cache-read '
+        f'ratio &middot; {saved_txt}</div>\n'
+        '  </div>\n</section>'
+    )
+
+
+def _build_velocity_html(report: dict) -> str:
+    """Velocity KPI cards (D.2) — surfaces the C.5 ``report['velocity']`` stats
+    (cost/active-min, tokens/active-min, p50/p90 request-cycle time) as a 2x2
+    card grid. Auto-hides when velocity is empty (no request unit had a usable
+    wall-clock). Reads precomputed values only — no recompute, no mutation, so
+    the page never shows two divergent velocity numbers.
+    """
+    v = report.get("velocity") or {}
+    if not v or not v.get("filtered_unit_count"):
+        return ""
+    cpm = float(v.get("cost_per_active_min", 0.0) or 0.0)
+    tpm = float(v.get("tokens_per_active_min", 0.0) or 0.0)
+    p50 = v.get("p50_cycle_s", 0)
+    p90 = v.get("p90_cycle_s", 0)
+    n = int(v.get("filtered_unit_count", 0))
+    total_n = int(v.get("unit_count", 0))
+    active = float(v.get("active_minutes", 0.0) or 0.0)
+    cap = _sm()._VELOCITY_CYCLE_CAP_S
+    sub = f'{n} of {total_n} request unit{"s" if total_n != 1 else ""}'
+    cards = (
+        f'<div class="kpi cat-time"><div class="kpi-label">Cost / active min</div>'
+        f'<div class="kpi-val">${cpm:,.4f}</div>'
+        f'<div class="kpi-sub">{active:,.1f} active min</div></div>'
+        f'<div class="kpi cat-time"><div class="kpi-label">Tokens / active min</div>'
+        f'<div class="kpi-val">{tpm:,.0f}</div>'
+        f'<div class="kpi-sub">{sub}</div></div>'
+        f'<div class="kpi cat-time"><div class="kpi-label">p50 cycle</div>'
+        f'<div class="kpi-val">{p50}s</div>'
+        f'<div class="kpi-sub">median request cycle</div></div>'
+        f'<div class="kpi cat-time"><div class="kpi-label">p90 cycle</div>'
+        f'<div class="kpi-val">{p90}s</div>'
+        f'<div class="kpi-sub">each cycle capped at {cap}s</div></div>'
+    )
+    return (
+        '<section class="section" id="velocity-section">\n'
+        '  <div class="section-title"><h2>Velocity</h2>'
+        '<span class="hint">cost &amp; token throughput per active minute</span></div>\n'
+        f'  <div class="kpi-grid">{cards}</div>\n</section>'
+    )
+
+
+# Fixed 6-colour series palette for the stacked-area chart. The first four are
+# theme-surface vars; the last two are the same semantic chart colours already
+# used elsewhere in this file (acceptable as series colours — they are not
+# theme-surface tokens).
+_COST_SERIES_COLOURS = (
+    "var(--accent)", "var(--accent-soft)", "var(--fg-dim)",
+    "var(--border)", "#d29922", "#3fb950",
+)
+
+
+def _build_cost_over_time_svg_html(report: dict, top_n: int = 5) -> str:
+    """Stacked-area chart of cumulative USD by model over the session's turn
+    sequence (D.4). Session scope only (X = turn index); returns ``''`` for
+    project/instance mode (the daily-cost rail already covers those) and when
+    there are fewer than two turns with cost. Deterministic: models ranked by
+    ``(-cost, id)``; all coordinates via ``_svg_scale`` on a shared y-max.
+    """
+    if report.get("mode") != "session":
+        return ""
+    turns: list[dict] = []
+    for s in report.get("sessions") or []:
+        for t in s.get("turns", []):
+            if not t.get("is_resume_marker"):
+                turns.append(t)
+    n = len(turns)
+    if n < 2:
+        return ""
+    model_cost: dict[str, float] = {}
+    for t in turns:
+        m = t.get("model") or "unknown"
+        model_cost[m] = model_cost.get(m, 0.0) + float(t.get("cost_usd", 0.0) or 0.0)
+    if not model_cost or sum(model_cost.values()) <= 0:
+        return ""
+    ranked = sorted(model_cost.items(), key=lambda kv: (-kv[1], kv[0]))
+    top = [m for m, _ in ranked[:top_n]]
+    top_set = set(top)
+    series_keys = top + (["Other"] if len(ranked) > top_n else [])
+    # Per-series cumulative cost over the chronological turn sequence (running
+    # sum, not per-turn) so the area rises monotonically left→right.
+    csum = {k: [0.0] * n for k in series_keys}
+    run = {k: 0.0 for k in series_keys}
+    for i, t in enumerate(turns):
+        m = t.get("model") or "unknown"
+        key = m if m in top_set else "Other"
+        run[key] += float(t.get("cost_usd", 0.0) or 0.0)
+        for k in series_keys:
+            csum[k][i] = round(run[k], 6)
+    ymax = round(sum(model_cost.values()), 6)
+    if ymax <= 0:
+        return ""
+    # Canvas with margins for axes. Uniform-scale (xMidYMid meet) so the axis
+    # text isn't stretched. ML/MB leave room for $ (y) and turn (x) tick labels;
+    # MR leaves room for the right-edge model labels.
+    VB_W, VB_H = 720, 264
+    ML, MR, MT, MB = 58, 110, 12, 30
+    PAD = 6
+    plot_w = VB_W - ML - MR
+    plot_h = VB_H - MT - MB
+    mono = "'JetBrains Mono',monospace"
+
+    def _yat(v: float) -> float:
+        # Matches _svg_scale(y_pad=PAD) within the plot area, offset by MT.
+        return round(MT + plot_h - PAD - (v / ymax) * (plot_h - 2 * PAD), 2)
+
+    x_scale = plot_w / (n - 1)
+
+    def _xat(i: int) -> float:
+        return round(ML + i * x_scale, 2)
+
+    # --- Y gridlines + dollar tick labels -------------------------------------
+    grid: list[str] = []
+    for f in (0.0, 0.25, 0.5, 0.75, 1.0):
+        gy = _yat(ymax * f)
+        grid.append(
+            f'<line x1="{ML}" y1="{gy}" x2="{ML + plot_w}" y2="{gy}" '
+            f'stroke="var(--border)" stroke-width="1" stroke-opacity="0.4"/>'
+        )
+        grid.append(
+            f'<text x="{ML - 8}" y="{round(gy + 3, 2)}" text-anchor="end" '
+            f'font-family="{mono}" font-size="10" fill="var(--fg-dim)">'
+            f'${ymax * f:,.2f}</text>'
+        )
+    # --- X axis baseline + turn-index tick labels -----------------------------
+    base_y = _yat(0)
+    axes = [
+        f'<line x1="{ML}" y1="{base_y}" x2="{ML + plot_w}" y2="{base_y}" '
+        f'stroke="var(--border)" stroke-width="1"/>'
+    ]
+    nticks = min(6, n)
+    tick_i = sorted({round(k * (n - 1) / (nticks - 1)) for k in range(nticks)})
+    xlabels = [
+        f'<text x="{_xat(i)}" y="{VB_H - 11}" text-anchor="middle" '
+        f'font-family="{mono}" font-size="10" fill="var(--fg-dim)">'
+        f'{turns[i].get("index", i)}</text>'
+        for i in tick_i
+    ]
+    xlabels.append(
+        f'<text x="{ML + plot_w / 2}" y="{VB_H - 1}" text-anchor="middle" '
+        f'font-family="{mono}" font-size="9" fill="var(--fg-dim)" '
+        f'opacity="0.7">turn</text>'
+    )
+    # --- Stacked bands + top-edge stroke lines + point markers ----------------
+    acc = [0.0] * n
+    bands: list[str] = []
+    lines: list[str] = []
+    markers: list[str] = []
+    label_data: list[tuple[float, str, str]] = []
+    for ci, k in enumerate(series_keys):
+        base = list(acc)
+        for i in range(n):
+            acc[i] = round(acc[i] + csum[k][i], 6)
+        top_pairs, _, _ = _sm()._svg_scale(acc, plot_w, plot_h, y_pad=PAD,
+                                           max_v=ymax)
+        base_pairs, _, _ = _sm()._svg_scale(base, plot_w, plot_h, y_pad=PAD,
+                                            max_v=ymax)
+        if not top_pairs:
+            continue
+        tp = [(round(x + ML, 2), round(y + MT, 2)) for x, y in top_pairs]
+        bp = [(round(x + ML, 2), round(y + MT, 2)) for x, y in base_pairs]
+        colour = _COST_SERIES_COLOURS[ci % len(_COST_SERIES_COLOURS)]
+        pts = ([f"{x},{y}" for x, y in tp]
+               + [f"{x},{y}" for x, y in reversed(bp)])
+        bands.append(f'<polygon fill="{colour}" fill-opacity="0.5" '
+                     f'points="{" ".join(pts)}"/>')
+        lines.append(f'<polyline fill="none" stroke="{colour}" '
+                     f'stroke-width="1.5" points="{" ".join(f"{x},{y}" for x, y in tp)}"/>')
+        # Data-point markers at the x-tick positions on this series' top edge.
+        for i in tick_i:
+            mx, my = tp[i]
+            markers.append(
+                f'<circle cx="{mx}" cy="{my}" r="2.2" fill="{colour}" '
+                f'stroke="var(--bg)" stroke-width="1"><title>'
+                f'{html_mod.escape(k[:18])} @ turn {turns[i].get("index", i)}: '
+                f'${acc[i]:,.4f}</title></circle>'
+            )
+        label_data.append((tp[-1][1], html_mod.escape(k[:18]), colour))
+    if not bands:
+        return ""
+    # Right-edge model labels, nudged apart so similar-height bands don't collide.
+    label_data.sort()
+    labels: list[str] = []
+    last_y = -1e9
+    for y, text, colour in label_data:
+        y = max(y, last_y + 12)
+        last_y = y
+        labels.append(
+            f'<text x="{ML + plot_w + 6}" y="{round(y + 3, 2)}" '
+            f'font-family="{mono}" font-size="10" fill="{colour}">{text}</text>'
+        )
+    return (
+        '<section class="section" id="cost-over-time-section">\n'
+        '  <div class="section-title"><h2>Cost over time</h2>'
+        f'<span class="hint">cumulative USD by model (top {top_n} + Other)</span></div>\n'
+        '  <div class="chart-card">\n'
+        f'    <svg class="cost-over-time" width="100%" viewBox="0 0 {VB_W} {VB_H}" '
+        f'preserveAspectRatio="xMidYMid meet" role="img" '
+        f'aria-label="Cumulative cost by model over turns">'
+        f'{"".join(grid)}{"".join(bands)}{"".join(lines)}'
+        f'{"".join(axes)}{"".join(markers)}{"".join(xlabels)}'
+        f'{"".join(labels)}</svg>\n'
+        '  </div>\n</section>'
+    )
+
+
+def _squarify(items: list[tuple[str, float]], W: int, H: int) -> list[dict]:
+    """Bruls squarified treemap (D.5 helper).
+
+    ``items`` MUST be pre-sorted descending by value (ties broken by label) so
+    the layout is deterministic. Returns one ``{label, value, x, y, w, h}`` per
+    positive-valued item, tiling the ``W``x``H`` canvas; coordinates are rounded
+    to 2 dp for byte-stable output. Layout order matches input order, so callers
+    can read rank from list position.
+    """
+    pos = [(lbl, float(val)) for lbl, val in items if val > 0]
+    if not pos:
+        return []
+    total = sum(v for _, v in pos)
+    sizes = [v / total * (W * H) for _, v in pos]  # value → area
+
+    def _worst(row: list[float], length: float) -> float:
+        if not row or length <= 0:
+            return float("inf")
+        s = sum(row)
+        side = s / length
+        rmax, rmin = max(row), min(row)
+        return max((side * side) / rmin, rmax / (side * side)) if rmin else float("inf")
+
+    rects: list[dict] = []
+    x, y, dx, dy = 0.0, 0.0, float(W), float(H)
+    idx = 0
+    row: list[float] = []
+    while idx < len(sizes):
+        length = dy if dx >= dy else dx
+        cand = sizes[idx]
+        if not row or _worst(row, length) >= _worst(row + [cand], length):
+            row.append(cand)
+            idx += 1
+            continue
+        x, y, dx, dy = _layout_row(rects, row, x, y, dx, dy)
+        row = []
+    if row:
+        _layout_row(rects, row, x, y, dx, dy)
+    out: list[dict] = []
+    for (lbl, val), r in zip(pos, rects, strict=False):
+        out.append({"label": lbl, "value": round(val, 6),
+                    "x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"]})
+    return out
+
+
+def _layout_row(rects: list[dict], row: list[float],
+                x: float, y: float, dx: float, dy: float
+                ) -> tuple[float, float, float, float]:
+    """Lay one squarify row along the shorter side; append rects, return the
+    remaining free rectangle. Mutates ``rects`` in place (append-only)."""
+    covered = sum(row)
+    if dx >= dy:  # horizontal free space → stack the row vertically
+        w = covered / dy if dy else 0.0
+        cy = y
+        for size in row:
+            h = size / w if w else 0.0
+            rects.append({"x": round(x, 2), "y": round(cy, 2),
+                          "w": round(w, 2), "h": round(h, 2)})
+            cy += h
+        return (x + w, y, dx - w, dy)
+    # vertical free space → stack the row horizontally
+    h = covered / dx if dx else 0.0
+    cx = x
+    for size in row:
+        w = size / h if h else 0.0
+        rects.append({"x": round(cx, 2), "y": round(y, 2),
+                      "w": round(w, 2), "h": round(h, 2)})
+        cx += w
+    return (x, y + h, dx, dy - h)
+
+
+def _build_cost_treemap_html(report: dict, top_n: int = 20) -> str:
+    """Squarified treemap of cost per session (D.5) — one tile per session,
+    sized by ``subtotal.cost``. Auto-hides for single-session reports (fewer
+    than two non-zero-cost sessions). Pure read of the report; no mutation.
+    """
+    sessions = report.get("sessions") or []
+    costed = [(s.get("session_id", "")[:8],
+               float(s.get("subtotal", {}).get("cost", 0.0) or 0.0))
+              for s in sessions]
+    costed = [(lbl, c) for lbl, c in costed if c > 0]
+    if len(costed) < 2:
+        return ""
+    costed.sort(key=lambda x: (-x[1], x[0]))
+    items = costed[:top_n]
+    rest = costed[top_n:]
+    if rest:
+        items = items + [("Other", round(sum(c for _, c in rest), 6))]
+        items.sort(key=lambda x: (-x[1], x[0]))
+    W, H = 560, 260
+    tiles = _sm()._squarify(items, W, H)
+    if not tiles:
+        return ""
+    nt = len(tiles)
+    parts: list[str] = []
+    for rank, t in enumerate(tiles):
+        opacity = round(0.9 - 0.6 * rank / max(1, nt - 1), 3)
+        x, y, w, h = t["x"], t["y"], t["w"], t["h"]
+        lbl, cost = t["label"], t["value"]
+        parts.append(
+            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="var(--accent)" '
+            f'fill-opacity="{opacity}" stroke="var(--bg)" stroke-width="1">'
+            f'<title>{html_mod.escape(lbl)}: ${cost:,.4f}</title></rect>'
+        )
+        if w >= 40 and h >= 18:
+            maxchars = max(1, int(w / 7))
+            parts.append(
+                f'<text x="{round(x + 4, 2)}" y="{round(y + 14, 2)}" '
+                f'font-family="\'JetBrains Mono\',monospace" font-size="11" '
+                f'fill="var(--fg)">{html_mod.escape(lbl[:maxchars])}</text>'
+            )
+    return (
+        '<section class="section" id="cost-treemap-section">\n'
+        '  <div class="section-title"><h2>Cost by session</h2>'
+        f'<span class="hint">squarified by cost &middot; top {top_n} sessions</span></div>\n'
+        '  <div class="health-panel">\n'
+        f'    <svg class="cost-treemap" width="100%" viewBox="0 0 {W} {H}" '
+        f'preserveAspectRatio="xMidYMid meet" role="img" '
+        f'aria-label="Cost by session treemap">{"".join(parts)}</svg>\n'
+        '  </div>\n</section>'
+    )
+
+
+def _build_vital_signs_html(report: dict) -> str:
+    """Session vital-signs timeline lanes — DEFERRED (D.6).
+
+    The existing chart-rail section already shows the per-turn token-stack
+    distribution at session scope; a second lane view of the same data would add
+    page weight without a distinct analytical signal. The name is reserved here
+    so a future implementer can add a concrete per-metric lane (e.g. latency,
+    context pressure, or stop-reason over time) that the chart-rail does not
+    already cover. Until then this is an intentional no-op.
+    """
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Theme layer — 4 themes (Beacon / Console / Lattice / Pulse) bundled in
 # every HTML export, with a top-right picker. Ported from
 # examples/claude-design-html-templates/variants-v1/{dashboard,detail}.html
@@ -4473,6 +4869,13 @@ def render_html(report: dict, variant: str = "single",
         request_units_html = _build_request_units_html(
             report.get("request_units", []) or [],
             float(totals.get("cost", 0.0) or 0.0))
+        # Phase D insight sections (dashboard/single). Each auto-hides when its
+        # data is absent: no cache-read → cache-efficiency hidden; no usable
+        # velocity → velocity hidden; <2 costed sessions → treemap hidden.
+        cache_efficiency_html = _build_cache_efficiency_html(totals)
+        velocity_html = _build_velocity_html(report)
+        cost_treemap_html = _build_cost_treemap_html(report)
+        _build_vital_signs_html(report)  # D.6 stub — reserved no-op
     else:
         by_skill_html = ""
         by_subagent_type_html = ""
@@ -4481,6 +4884,9 @@ def render_html(report: dict, variant: str = "single",
         request_units_html = ""
         attribution_coverage_html = ""
         within_session_split_html = ""
+        cache_efficiency_html = ""
+        velocity_html = ""
+        cost_treemap_html = ""
 
     toggle_script_html = ""
     if include_chart and mode == "project":
@@ -4505,7 +4911,9 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
     prompts_section_html = ""
     drawer_script_html   = ""
     chartrail_section_html = ""
+    cost_over_time_html  = ""  # D.4: session-scope stacked area (detail/single)
     if include_chart:
+        cost_over_time_html = _build_cost_over_time_svg_html(report)
         turn_data: dict[str, dict] = {}
         prompts_rows: list[dict]   = []
         # Chart-rail data — one row per turn in document order.
@@ -5122,6 +5530,8 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
 {behavior_section_html}
 {usage_insights_html}
 {waste_analysis_html}
+{cache_efficiency_html}
+{velocity_html}
 {cache_breaks_html}
 {by_skill_html}
 {by_subagent_type_html}
@@ -5129,7 +5539,9 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
 {attribution_coverage_html}
 {within_session_split_html}
 {tod_html}
+{cost_treemap_html}
 {chart_section_html}
+{cost_over_time_html}
 {chartrail_section_html}
 {table_section_html}
 {request_units_html}

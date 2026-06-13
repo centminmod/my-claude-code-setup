@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.74.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.75.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -475,6 +475,8 @@ _render_chart_chartjs         = _ch_m._render_chart_chartjs
 _render_chart_none            = _ch_m._render_chart_none
 CHART_RENDERERS               = _ch_m.CHART_RENDERERS
 _build_chart_html             = _ch_m._build_chart_html
+_svg_scale                    = _ch_m._svg_scale
+_build_cache_efficiency_svg   = _ch_m._build_cache_efficiency_svg
 del _ch_m
 
 _tp_m = _load_leaf("_turn_parser")
@@ -539,6 +541,9 @@ _build_workflow_companion_md    = _mr_m._build_workflow_companion_md
 _build_tasks_companion_md       = _mr_m._build_tasks_companion_md
 _build_usage_insights_md        = _mr_m._build_usage_insights_md
 _build_waste_analysis_md        = _mr_m._build_waste_analysis_md
+_build_cache_efficiency_md      = _mr_m._build_cache_efficiency_md
+_build_velocity_md              = _mr_m._build_velocity_md
+_build_cost_over_time_md        = _mr_m._build_cost_over_time_md
 del _mr_m
 
 _cl_m = _load_leaf("_cli")
@@ -635,6 +640,12 @@ _build_chartrail_section_html   = _hs_m._build_chartrail_section_html
 _chartrail_script               = _hs_m._chartrail_script
 _build_daily_cost_rail_html     = _hs_m._build_daily_cost_rail_html
 _daily_cost_rail_script         = _hs_m._daily_cost_rail_script
+_build_cache_efficiency_html    = _hs_m._build_cache_efficiency_html
+_build_velocity_html            = _hs_m._build_velocity_html
+_build_cost_over_time_svg_html  = _hs_m._build_cost_over_time_svg_html
+_squarify                       = _hs_m._squarify
+_build_cost_treemap_html        = _hs_m._build_cost_treemap_html
+_build_vital_signs_html         = _hs_m._build_vital_signs_html
 render_html                     = _hs_m.render_html
 del _hs_m
 

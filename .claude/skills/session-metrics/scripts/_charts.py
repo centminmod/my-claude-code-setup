@@ -761,6 +761,87 @@ def _build_cache_trend_sparkline_svg(turns: list[dict],
     )
 
 
+def _svg_scale(values: list[float], width: int, height: int,
+               x_pad: int = 0, y_pad: int = 4,
+               max_v: float | None = None
+               ) -> tuple[list[tuple[float, float]], float, float]:
+    """Coordinate-transform kernel for the static SVG charts (Phase D).
+
+    Maps ``N`` numeric ``values`` onto an SVG canvas of ``width``x``height``,
+    returning ``(xy_pairs, x_scale, y_scale)``. Each pair is
+    ``(x_pad + i*x_scale, height - y_pad - v/max_v*(height-2*y_pad))`` so y grows
+    upward (SVG's origin is top-left). Every coordinate is rounded to 2 dp so the
+    emitted string is byte-stable across runs and platforms — no float drift, no
+    timestamps, no dict iteration.
+
+    ``max_v`` overrides the per-call maximum. Stacked charts pass a shared
+    ``max_v`` so every layer is plotted on one common y-scale; single-series
+    callers leave it ``None`` to auto-scale to their own peak.
+
+    Returns ``([], 0.0, 0.0)`` when ``values`` is empty or the effective maximum
+    is non-positive (nothing meaningful to plot).
+    """
+    n = len(values)
+    if n == 0:
+        return ([], 0.0, 0.0)
+    m = max(values) if max_v is None else max_v
+    if m <= 0:
+        return ([], 0.0, 0.0)
+    plot_h = height - 2 * y_pad
+    x_scale = (width - 2 * x_pad) / (n - 1) if n > 1 else 0.0
+    y_scale = plot_h / m
+    pairs = [
+        (round(x_pad + i * x_scale, 2),
+         round(height - y_pad - (v / m) * plot_h, 2))
+        for i, v in enumerate(values)
+    ]
+    return (pairs, round(x_scale, 6), round(y_scale, 6))
+
+
+def _build_cache_efficiency_svg(totals: dict, width: int = 480,
+                                height: int = 32) -> str:
+    """4-segment proportional token bar (Phase D consumer of the totals dict).
+
+    Segments — cache-read / cache-write / new-input / output — with pixel widths
+    proportional to token counts. Token counts are integers; only the final
+    per-segment pixel width uses float division, each rounded to 2 dp. The
+    denominator is the local sum of the four buckets (identical to
+    ``totals['total']`` today, but recomputed here so a future fifth token type
+    can't silently break the proportion). Colours are theme CSS vars only — no
+    hardcoded surface greys. Returns ``''`` when there are no tokens.
+    """
+    cr = int(totals.get("cache_read", 0) or 0)
+    cw = int(totals.get("cache_write", 0) or 0)
+    ip = int(totals.get("input", 0) or 0)
+    op = int(totals.get("output", 0) or 0)
+    total = cr + cw + ip + op
+    if total <= 0:
+        return ""
+    segs = (
+        ("cache-read",  cr, "var(--accent)"),
+        ("cache-write", cw, "var(--accent-soft)"),
+        ("new-input",   ip, "var(--fg-dim)"),
+        ("output",      op, "var(--border)"),
+    )
+    rects: list[str] = []
+    x = 0.0
+    for label, tok, colour in segs:
+        if tok <= 0:
+            continue
+        w = round(tok / total * width, 2)
+        rects.append(
+            f'<rect x="{round(x, 2)}" y="0" width="{w}" height="{height}" '
+            f'fill="{colour}"><title>{label}: {tok:,} tokens '
+            f'({tok / total * 100:.1f}%)</title></rect>'
+        )
+        x = round(x + w, 2)
+    return (
+        f'<svg class="cache-eff-bar" width="100%" height="{height}" '
+        f'viewBox="0 0 {width} {height}" preserveAspectRatio="none" '
+        f'role="img" aria-label="Token composition bar">{"".join(rects)}</svg>'
+    )
+
+
 CHART_RENDERERS = {
     "highcharts": _render_chart_highcharts,
     "uplot":      _render_chart_uplot,

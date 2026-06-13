@@ -3,6 +3,38 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.75.0 — 2026-06-13
+
+### Static visualizations (minor)
+
+Five new at-a-glance charts in the HTML report, rendered as pure inline SVG —
+no new chart-library dependency, all coloured through the existing theme CSS
+vars so they adapt across the four themes (beacon / console / lattice / pulse).
+Every section auto-hides when its data is absent, so zero-cache, single-session,
+and the byte-stable golden fixtures render unchanged.
+
+- **Cache efficiency** (dashboard/single) — a 4-segment proportional token bar
+  (cache-read / cache-write / new-input / output) with a cache-read-ratio and
+  savings callout. Negative net savings are surfaced as a "Cache net cost"
+  (same discipline as v1.74.0's footer/KPI), never a misleading $0.
+- **Velocity** (dashboard/single) — KPI cards surfacing the v1.74.0
+  `report["velocity"]` throughput stats: cost/active-min, tokens/active-min, and
+  p50/p90 request-cycle time. Renders the precomputed values (no recompute), so
+  the page never shows two divergent velocity numbers.
+- **Cost over time** (detail/single, session scope) — a cumulative stacked-area
+  chart of USD by model across the chronological turn sequence (top-5 + Other),
+  with a `$`-amount Y axis + gridlines, turn-index X ticks, per-series point
+  markers, and colour-matched right-edge model labels.
+- **Cost by session** (project/instance scope) — a squarified treemap, one tile
+  per session sized by cost, dimming by rank.
+- **Markdown mirrors** for cache efficiency and velocity in `--output md`.
+
+Internals: a shared `_svg_scale` coordinate kernel and a `_squarify` treemap
+layout (both deterministic, fixed-precision output for reproducible export
+bytes). The session vital-signs lane (originally scoped here) is shipped as a
+documented no-op stub pending a concrete per-metric lane the chart-rail does not
+already cover.
+
 ## v1.74.0 — 2026-06-13
 
 ### Accuracy & correctness disciplines (minor)
