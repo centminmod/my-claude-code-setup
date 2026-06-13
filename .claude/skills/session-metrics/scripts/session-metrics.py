@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.77.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.78.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -539,6 +539,8 @@ _build_subagent_share_md        = _mr_m._build_subagent_share_md
 _build_within_session_split_md  = _mr_m._build_within_session_split_md
 _build_workflow_companion_md    = _mr_m._build_workflow_companion_md
 _build_tasks_companion_md       = _mr_m._build_tasks_companion_md
+_build_insights_companion_md    = _mr_m._build_insights_companion_md
+_md_italic_safe                 = _mr_m._md_italic_safe
 _build_usage_insights_md        = _mr_m._build_usage_insights_md
 _build_waste_analysis_md        = _mr_m._build_waste_analysis_md
 _build_cache_efficiency_md      = _mr_m._build_cache_efficiency_md
@@ -588,6 +590,8 @@ _slim_blocks_turn               = _di_m._slim_blocks_turn
 _run_single_session             = _di_m._run_single_session
 _run_render_tasks               = _di_m._run_render_tasks
 _run_prepare_tasks              = _di_m._run_prepare_tasks
+_run_prepare_insights           = _di_m._run_prepare_insights
+_run_render_insights            = _di_m._run_render_insights
 _run_project_cost               = _di_m._run_project_cost
 _run_all_projects               = _di_m._run_all_projects
 _instance_export_root           = _di_m._instance_export_root
@@ -621,6 +625,8 @@ _build_by_subagent_type_html    = _hs_m._build_by_subagent_type_html
 _build_by_workflow_html         = _hs_m._build_by_workflow_html
 _build_workflow_companion_html  = _hs_m._build_workflow_companion_html
 _build_tasks_companion_html     = _hs_m._build_tasks_companion_html
+_build_insights_companion_html  = _hs_m._build_insights_companion_html
+_md_inline_to_html              = _hs_m._md_inline_to_html
 _build_tasks_placeholder_html   = _hs_m._build_tasks_placeholder_html
 _build_export_manifest_html     = _hs_m._build_export_manifest_html
 _build_subagent_share_card_html = _hs_m._build_subagent_share_card_html
@@ -735,6 +741,16 @@ _detect_multi_intent        = _da_m._detect_multi_intent
 _assemble_tasks             = _da_m._assemble_tasks
 _build_tasks_skeleton       = _da_m._build_tasks_skeleton
 _render_tasks_worksheet     = _da_m._render_tasks_worksheet
+_assemble_insights          = _da_m._assemble_insights
+_build_insights_skeleton    = _da_m._build_insights_skeleton
+_build_insights_digest      = _da_m._build_insights_digest
+_insights_facts             = _da_m._insights_facts
+_insights_corpus_units      = _da_m._insights_corpus_units
+_INSIGHTS_SCHEMA_VERSION    = _da_m._INSIGHTS_SCHEMA_VERSION
+_INSIGHTS_LENSES            = _da_m._INSIGHTS_LENSES
+_INSIGHTS_DIGEST_UNIT_CAP   = _da_m._INSIGHTS_DIGEST_UNIT_CAP
+_INSIGHTS_SNIPPET_CAP       = _da_m._INSIGHTS_SNIPPET_CAP
+_INSIGHTS_SECTION_STUBS     = _da_m._INSIGHTS_SECTION_STUBS
 _cluster_request_units      = _da_m._cluster_request_units
 _suggest_verdict            = _da_m._suggest_verdict
 _seed_title                 = _da_m._seed_title

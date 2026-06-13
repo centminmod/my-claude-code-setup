@@ -3,7 +3,33 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
-## v1.77.0 — 2026-06-13
+## v1.78.0 — 2026-06-13
+
+### Auto-insights companion (minor)
+
+A new prose "Insights" companion page (`*_insights.html` + `*_insights.md`)
+that Claude writes over a deterministic digest — CLI-only, no new skill. Same
+contract as the Tasks companion: **Python owns every number; the LLM writes
+only prose.** Two lenses: `summary` (what got done & why) and `effectiveness`
+(waste & how to improve).
+
+- **`--prepare-insights <export.json>`** prints a bounded, truncated digest
+  (totals, session health/behaviour, velocity, top cost drivers, per-request
+  one-liners) to stdout and writes a renderable `<stem>_insights.json`
+  skeleton. The corpus excludes no-prompt and agent-continuation units so the
+  prose reflects real interactive work, and the per-request list is hard-capped
+  with an explicit "(showing N of M)" overflow note for predictable prompt size.
+- **`--insights-lens {summary,effectiveness}`** (default `summary`) and
+  **`--insights-focus "<text>"`** (optional free-text steering) shape the digest
+  and skeleton.
+- **`--render-insights <export.json> <insights.json>`** validates the prose and
+  pairs it with FACTS recomputed from the export (the prose is never trusted for
+  a figure), then writes the themed HTML + Markdown companions. A zero-edit
+  skeleton still renders a correct page (facts strip + a "prose not yet written"
+  note).
+- The HTML companion reuses the workflow-companion shell and renders a tiny,
+  safe Markdown subset (`**bold**`, `` `code` ``, paragraphs) — escaped first,
+  so prose cannot inject HTML. Theme-var-only styling.## v1.77.0 — 2026-06-13
 
 ### Multi-session & temporal analytics (minor)
 

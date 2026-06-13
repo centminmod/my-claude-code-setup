@@ -21,6 +21,7 @@ __all__ = [
     "_run_single_session", "_run_project_cost", "_run_all_projects",
     "_dispatch_instance", "_render_instance_text", "_render_instance_csv",
     "_render_instance_md", "_render_instance_html", "_run_render_tasks",
+    "_run_prepare_insights", "_run_render_insights",
 ]
 
 
@@ -198,6 +199,114 @@ def _run_prepare_tasks(export_json: str) -> int:
         print("[prepare-tasks] note: >40 units — large session; the candidate "
               "grouping will be coarse, review the clusters carefully.",
               file=sys.stderr)
+    return 0
+
+
+def _run_prepare_insights(export_json: str, lens: str = "summary",
+                          focus: str = "") -> int:
+    """``--prepare-insights`` entry point. Loads a session-metrics JSON export,
+    prints a BOUNDED, TRUNCATED digest of its already-computed numbers to stdout
+    (the corpus the running agent reads), and writes a renderable candidate
+    ``<stem>_insights.json`` skeleton next to the export for the agent to fill
+    with prose. A zero-edit skeleton still renders a correct companion (facts +
+    a "prose not yet written" note). Returns 0 ok / non-zero on hard error.
+    """
+    exp_path = Path(export_json).expanduser()
+    try:
+        report = json.loads(exp_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"error: cannot read export JSON {exp_path}: {e}", file=sys.stderr)
+        return 2
+    if not isinstance(report, dict) or "totals" not in report:
+        print("error: export JSON has no 'totals' — re-run session-metrics to "
+              "regenerate the export.", file=sys.stderr)
+        return 2
+
+    print(_sm()._build_insights_digest(report, lens=lens, focus=focus))
+    skeleton = _sm()._build_insights_skeleton(report, lens=lens, focus=focus)
+    ins_path = exp_path.with_name(f"{exp_path.stem}_insights.json")
+    try:
+        ins_path.write_text(json.dumps(skeleton, indent=2) + "\n",
+                            encoding="utf-8")
+    except OSError as e:
+        print(f"error: cannot write insights skeleton {ins_path}: {e}",
+              file=sys.stderr)
+        return 2
+    print(f"\n[prepare-insights] lens={skeleton['lens']} → "
+          f"fill headline + section bodies, then --render-insights",
+          file=sys.stderr)
+    print(f"[prepare-insights] skeleton → {ins_path}", file=sys.stderr)
+    return 0
+
+
+def _run_render_insights(export_json: str, insights_json: str,
+                         formats: list[str] | None = None) -> int:
+    """``--render-insights`` entry point. Loads a session-metrics JSON export +
+    a Claude-authored ``insights.json``, validates the prose and pairs it with
+    deterministic FACTS recomputed from the export via ``_assemble_insights``
+    (the prose is never trusted for numbers), then writes
+    ``<stem>_insights.html`` / ``<stem>_insights.md`` next to the export.
+    Returns a process exit code (0 ok, non-zero on hard error).
+    """
+    exp_path = Path(export_json).expanduser()
+    ins_path = Path(insights_json).expanduser()
+    try:
+        report = json.loads(exp_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"error: cannot read export JSON {exp_path}: {e}", file=sys.stderr)
+        return 2
+    try:
+        insights = json.loads(ins_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"error: cannot read insights JSON {ins_path}: {e}",
+              file=sys.stderr)
+        return 2
+    if not isinstance(report, dict) or "totals" not in report:
+        print("error: export JSON has no 'totals' — re-run session-metrics to "
+              "regenerate the export.", file=sys.stderr)
+        return 2
+    if not isinstance(insights, dict):
+        print("error: insights JSON must be an object with headline + sections.",
+              file=sys.stderr)
+        return 2
+
+    assembled = _sm()._assemble_insights(report, insights)
+    fmts = formats or ["html", "md"]
+    stem = exp_path.stem
+    out_dir = exp_path.parent
+    written: list[Path] = []
+    nav_sibling = None
+    for cand in (f"{stem}_dashboard.html", f"{stem}.html"):
+        if (out_dir / cand).is_file():
+            nav_sibling = cand
+            break
+    try:
+        if "html" in fmts:
+            html = _sm()._build_insights_companion_html(
+                report, assembled, nav_sibling=nav_sibling)
+            hp = out_dir / f"{stem}_insights.html"
+            hp.write_text(html, encoding="utf-8")
+            written.append(hp)
+        if "md" in fmts:
+            md = _sm()._build_insights_companion_md(report, assembled)
+            mp = out_dir / f"{stem}_insights.md"
+            mp.write_text(md, encoding="utf-8")
+            written.append(mp)
+    except OSError as e:
+        print(f"error: cannot write Insights companion next to {exp_path}: {e}",
+              file=sys.stderr)
+        return 2
+
+    for w in assembled.get("warnings") or []:
+        print(f"  ! {w}", file=sys.stderr)
+    print(f"Insights companion: {assembled['lens']} lens, "
+          f"{len(assembled['sections'])} section(s), "
+          f"{len(assembled['recommendations'])} recommendation(s).",
+          file=sys.stderr)
+    for w in written:
+        print(str(w))
+    if written and out_dir.resolve() == _export_dir().resolve():
+        _write_export_manifest()
     return 0
 
 

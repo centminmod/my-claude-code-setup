@@ -1,6 +1,7 @@
 """HTML section builders and render_html for session-metrics."""
 import html as html_mod
 import json
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -1464,6 +1465,182 @@ with a verdict. Click a task to see its requests.</p>
   }});
 }})();
 </script>
+{_overlay_js()}
+{_theme_bootstrap_body_js()}
+</body>
+</html>"""
+
+
+def _md_inline_spans(escaped: str) -> str:
+    """Apply the safe inline Markdown subset (``**bold**`` → <strong>,
+    `` `code` `` → <code>) to ALREADY-ESCAPED text. The ``**`` / `` ` `` markers
+    are not HTML-special, so running this after :func:`html.escape` cannot inject
+    markup — callers MUST escape first."""
+    out = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    return re.sub(r"`([^`]+)`", r"<code>\1</code>", out)
+
+
+def _md_inline_to_html(text: str) -> str:
+    """Render a tiny, SAFE Markdown subset to HTML for LLM-authored prose.
+
+    Escaping runs FIRST, so no markup in ``text`` can inject HTML. Supports
+    ``**bold**``, `` `code` ``, single-newline ``<br>``, and blank-line-separated
+    paragraphs. Returns "" for empty input."""
+    esc = html_mod.escape(text or "").strip()
+    if not esc:
+        return ""
+    esc = _md_inline_spans(esc)
+    paras = [p.strip() for p in re.split(r"\n\s*\n", esc) if p.strip()]
+    return "".join(f"<p>{p.replace(chr(10), '<br>')}</p>" for p in paras)
+
+
+_INSIGHTS_LENS_LABEL = {
+    "summary": "Summary lens — what got done",
+    "effectiveness": "Effectiveness lens — waste & how to improve",
+}
+
+
+def _build_insights_companion_html(report: dict, insights_data: dict,
+                                   nav_sibling: str | None = None) -> str:
+    """Standalone, theme-aware "Insights" companion page (auto-insights).
+
+    Renders the LLM-authored prose (headline + sections + recommendations)
+    produced by the insights pass over a deterministic digest. The FACTS strip
+    is recomputed by :func:`_data._assemble_insights` from the export — the
+    prose is never trusted for numbers. Reuses the workflow-companion shell +
+    CSS. Returns the page even with empty prose (the facts strip + a
+    "prose not yet written" note), so a zero-edit skeleton still renders.
+    """
+    facts = insights_data.get("facts") or {}
+    lens = insights_data.get("lens") or "summary"
+    headline = insights_data.get("headline") or ""
+    sections = insights_data.get("sections") or []
+    recs = insights_data.get("recommendations") or []
+    focus = insights_data.get("focus") or ""
+
+    def _fact_card(val: str, lbl: str, cls: str = "") -> str:
+        return (f'<div class="card {cls}"><div class="val">{val}</div>'
+                f'<div class="lbl">{html_mod.escape(lbl)}</div></div>')
+
+    cards = ['<div class="cards wf-summary-cards">']
+    cards.append(_fact_card(_fmt_cost(facts.get("total_cost_usd", 0.0)),
+                            "Total cost", "amber"))
+    cards.append(_fact_card(f'{int(facts.get("total_turns", 0)):,}', "Turns"))
+    cards.append(_fact_card(f'{int(facts.get("total_tokens", 0)):,}', "Tokens"))
+    cards.append(_fact_card(f'{float(facts.get("cache_hit_pct", 0.0)):.0f}%',
+                            "Cache hit"))
+    if facts.get("health_grade"):
+        cards.append(_fact_card(html_mod.escape(str(facts.get("health_grade"))),
+                                "Health grade"))
+    if facts.get("outcome"):
+        cards.append(_fact_card(html_mod.escape(str(facts.get("outcome"))),
+                                "Outcome"))
+    if facts.get("archetype"):
+        cards.append(_fact_card(html_mod.escape(str(facts.get("archetype"))),
+                                "Archetype"))
+    cards.append("</div>")
+    cards_html = "".join(cards)
+
+    lens_label = _INSIGHTS_LENS_LABEL.get(lens, lens)
+    headline_html = (f'<p class="wf-intro insights-headline">'
+                     f'{_md_inline_spans(html_mod.escape(headline))}</p>'
+                     if headline else
+                     '<p class="wf-intro muted">No headline yet — run the '
+                     'insights pass to write the prose.</p>')
+    focus_html = (f'<p class="wf-intro muted">Focus: '
+                  f'{html_mod.escape(focus)}</p>' if focus else "")
+
+    sec_blocks: list[str] = []
+    for s in sections:
+        heading = html_mod.escape(s.get("heading") or "")
+        body = _md_inline_to_html(s.get("body") or "")
+        if not heading and not body:
+            continue
+        body_html = body or '<p class="muted">(not written yet)</p>'
+        sec_blocks.append(
+            f'<section class="section"><div class="section-title">'
+            f'<h2>{heading}</h2></div>'
+            f'<div class="health-panel">{body_html}</div></section>')
+    sections_html = "".join(sec_blocks)
+
+    rec_html = ""
+    if recs:
+        items = []
+        for r in recs:
+            text = _md_inline_to_html(r.get("text") or "")
+            ev = html_mod.escape(r.get("evidence") or "")
+            ev_html = f'<div class="lbl">{ev}</div>' if ev else ""
+            if text:
+                items.append(f'<li>{text}{ev_html}</li>')
+        if items:
+            rec_html = (
+                f'<section class="section"><div class="section-title">'
+                f'<h2>Recommendations</h2></div>'
+                f'<ul class="rec-list health-panel">{"".join(items)}</ul>'
+                f'</section>')
+
+    warnings = insights_data.get("warnings") or []
+    warn_html = ""
+    if warnings:
+        items = "".join(f'<li>{html_mod.escape(w)}</li>' for w in warnings[:20])
+        warn_html = (f'<section class="section"><div class="section-title">'
+                     f'<h2>Notes</h2></div>'
+                     f'<ul class="muted">{items}</ul></section>')
+
+    back = ('<a class="navlink" href="#" '
+            'onclick="if(history.length>1){history.back();return false}">'
+            '&larr; Back</a>')
+    if nav_sibling:
+        back = (f'<a class="navlink" href="{html_mod.escape(nav_sibling)}" '
+                'onclick="if(history.length>1){history.back();return false}">'
+                '&larr; Back</a>')
+    gen = html_mod.escape(report.get("generated_at", "") or "")
+    ver = html_mod.escape(str(report.get("skill_version", "") or ""))
+    scope = html_mod.escape(insights_data.get("scope_label")
+                            or report.get("slug", "")
+                            or report.get("mode", "") or "")
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="session-metrics {ver}">
+<title>Insights — {scope}</title>
+{_theme_css()}
+{_overlay_css()}
+{_workflow_companion_css()}
+<style>
+.insights-headline{{font-size:1.1em;font-weight:600;color:var(--fg)}}
+.rec-list{{margin:0;padding-left:1.2em}}
+.rec-list li{{margin:0 0 .6em}}
+.rec-list .lbl{{margin-top:.15em;font-size:.85em;color:var(--fg-dim)}}
+.health-panel p{{margin:0 0 .6em}}
+.health-panel p:last-child{{margin-bottom:0}}
+</style>
+{_theme_bootstrap_head_js()}
+</head>
+<body class="theme-console">
+<div class="shell">
+<header class="topbar">
+<div class="brand"><span class="dot"></span><span>session-metrics</span></div>
+<nav class="nav">{back}{_theme_picker_markup()}</nav>
+</header>
+<header class="page-header">
+<h1>Insights</h1>
+<p class="meta">{html_mod.escape(lens_label)} &nbsp;·&nbsp; {scope}
+ &nbsp;·&nbsp; Generated {gen} &nbsp;·&nbsp; skill v{ver}</p>
+</header>
+{cards_html}
+{headline_html}
+{focus_html}
+<p class="wf-intro muted">Prose written by Claude over a deterministic digest.
+The numbers above are recomputed from the export — the prose never owns a
+figure.</p>
+{sections_html}
+{rec_html}
+{warn_html}
+<footer class="foot"><span class="muted">session-metrics · {gen}</span></footer>
+</div>
 {_overlay_js()}
 {_theme_bootstrap_body_js()}
 </body>

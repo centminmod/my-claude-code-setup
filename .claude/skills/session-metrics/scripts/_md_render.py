@@ -1546,6 +1546,95 @@ def _build_tasks_companion_md(report: dict, tasks_data: dict) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+_INSIGHTS_LENS_LABEL_MD = {
+    "summary": "Summary lens — what got done",
+    "effectiveness": "Effectiveness lens — waste & how to improve",
+}
+
+
+def _md_italic_safe(text) -> str:
+    """Escape the Markdown emphasis markers (`\\`, `_`, `*`) in user/LLM text
+    before it is wrapped in a ``_..._`` italic span, so an underscore in the
+    text (e.g. ``cache_write``) doesn't break the span. Backslash first so the
+    later escapes aren't double-escaped."""
+    return (str(text or "").replace("\\", "\\\\")
+            .replace("_", "\\_").replace("*", "\\*"))
+
+
+def _build_insights_companion_md(report: dict, insights_data: dict) -> str:
+    """Standalone Markdown "Insights" companion — the Markdown sibling of
+    :func:`_html_sections._build_insights_companion_html`.
+
+    Renders the LLM-authored prose (headline + sections + recommendations); the
+    facts line is recomputed from the export (``insights_data['facts']``), never
+    from the prose. Always returns a page (facts + note even when prose is
+    empty) so a zero-edit skeleton still renders."""
+    facts = insights_data.get("facts") or {}
+    lens = insights_data.get("lens") or "summary"
+    scope = (insights_data.get("scope_label")
+             or report.get("slug") or report.get("mode") or "")
+    gen = report.get("generated_at", "") or ""
+    ver = str(report.get("skill_version", "") or "")
+    out: list[str] = [
+        f"# Insights — {scope}",
+        "",
+        f"_{_INSIGHTS_LENS_LABEL_MD.get(lens, lens)} · Generated {gen} · "
+        f"skill v{ver}_",
+        "",
+        "Prose written by Claude over a deterministic digest. The figures below "
+        "are recomputed from the export — the prose never owns a number.",
+        "",
+        f"**${float(facts.get('total_cost_usd', 0.0)):.4f}** · "
+        f"**{int(facts.get('total_turns', 0)):,}** turns · "
+        f"**{int(facts.get('total_tokens', 0)):,}** tokens · "
+        f"**{float(facts.get('cache_hit_pct', 0.0)):.0f}%** cache hit"
+        + (f" · grade **{facts.get('health_grade')}**"
+           if facts.get("health_grade") else "")
+        + (f" · outcome **{facts.get('outcome')}**"
+           if facts.get("outcome") else ""),
+        "",
+    ]
+    headline = insights_data.get("headline") or ""
+    if headline:
+        out.append(f"> {headline}")
+    else:
+        out.append("> _No headline yet — run the insights pass to write the "
+                   "prose._")
+    out.append("")
+    if insights_data.get("focus"):
+        out.append(f"_Focus: {_md_italic_safe(insights_data.get('focus'))}_")
+        out.append("")
+    for s in insights_data.get("sections") or []:
+        heading = (s.get("heading") or "").strip()
+        body = (s.get("body") or "").strip()
+        if not heading and not body:
+            continue
+        if heading:
+            out.append(f"## {heading}")
+            out.append("")
+        out.append(body or "_(not written yet)_")
+        out.append("")
+    recs = insights_data.get("recommendations") or []
+    if recs:
+        out.append("## Recommendations")
+        out.append("")
+        for r in recs:
+            text = (r.get("text") or "").strip()
+            ev = (r.get("evidence") or "").strip()
+            if text:
+                out.append(f"- {text}"
+                           + (f" — _{_md_italic_safe(ev)}_" if ev else ""))
+        out.append("")
+    warnings = insights_data.get("warnings") or []
+    if warnings:
+        out.append("## Notes")
+        out.append("")
+        for w in warnings[:20]:
+            out.append(f"- {str(w).replace(chr(10), ' ').strip()}")
+        out.append("")
+    return "\n".join(out).rstrip() + "\n"
+
+
 def _build_usage_insights_md(insights: list[dict]) -> str:
     """Render the Usage Insights as a flat Markdown bullet list.
     Returns `""` if no insights are shown."""

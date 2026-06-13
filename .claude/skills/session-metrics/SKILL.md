@@ -386,6 +386,38 @@ session if they want one. Skip too when there is only **1** request unit, or
 `/task-breakdown`). The standalone `/task-breakdown <json>` skill remains for
 re-grouping a saved export later.
 
+## Auto-insights companion (`v1.78.0+`)
+
+A prose "Insights" companion page (`*_insights.html` + `*_insights.md`) that you
+write over a deterministic digest. **Python owns every number; you write only
+prose** — same contract as the Tasks companion. Two lenses: `summary` (what got
+done & why) and `effectiveness` (waste & how to improve). Offer this when the
+user asks "what did I get done this session", "where did my spend go", "how
+could I have been more effective", or similar — or after a JSON export when a
+prose write-up would help.
+
+Three-step flow (mirrors prepare/render-tasks):
+
+1. **`--prepare-insights <export.json>`** — prints a **bounded, truncated
+   digest** (totals, session health/behaviour, velocity, top cost drivers,
+   per-request one-liners with no-prompt/agent-continuation noise excluded) to
+   stdout and writes a candidate `<stem>_insights.json` skeleton. Shape it with
+   `--insights-lens {summary,effectiveness}` (default `summary`) and optional
+   `--insights-focus "<question>"` (free-text steering, e.g.
+   `"why was this session so expensive?"`).
+2. **Read the digest from stdout** and fill the skeleton's `headline` +
+   section `body` fields (and `recommendations` for the effectiveness lens) with
+   prose. **Quote figures from the digest verbatim — never recompute a number.**
+   You are an editor, not an author: the skeleton already renders.
+3. **`--render-insights <export.json> <insights.json>`** — validates the prose
+   and pairs it with FACTS recomputed from the export (the prose is never trusted
+   for math), then writes `<stem>_insights.html` + `<stem>_insights.md` next to
+   the export. Report the paths and offer to open the HTML.
+
+The digest excludes no-prompt and `↳` agent-continuation units so the prose
+reflects real interactive work. A zero-edit skeleton still renders a correct
+page (facts strip + a "prose not yet written" note) — graceful degradation.
+
 ## Self-cost meta-metric
 
 session-metrics tracks its own running cost in the current session.

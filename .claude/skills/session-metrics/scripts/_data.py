@@ -2179,6 +2179,304 @@ def _summarise_task(title: str, verdict: str, rationale: str,
     }
 
 
+# --- Auto-insights digest + companion (Phase G, v1.78.0) -------------------
+# The insights pass mirrors the task-breakdown contract: deterministic Python
+# owns every number, an LLM writes only prose. ``--prepare-insights`` serialises
+# a BOUNDED, TRUNCATED digest of the already-computed export (totals, health,
+# behaviour, velocity, top cost drivers, per-request one-liners) to stdout for
+# the running agent to read, plus a skeleton ``<stem>_insights.json`` the agent
+# fills with prose. ``--render-insights`` validates that prose and renders the
+# themed companion, recomputing the headline FACTS from the export — the prose
+# is never trusted for math.
+
+_INSIGHTS_SCHEMA_VERSION = "1"
+_INSIGHTS_LENSES = ("summary", "effectiveness")
+# Hard cap on per-request one-liners in the digest so the prompt stays a
+# predictable size regardless of session length (bounded digest + an explicit
+# "(showing N of M)" overflow note).
+_INSIGHTS_DIGEST_UNIT_CAP = 40
+_INSIGHTS_SNIPPET_CAP = 200
+# Section-heading stubs seeded into the prepare-insights skeleton, per lens. The
+# running agent overwrites the bodies; the headings are a starting frame only.
+_INSIGHTS_SECTION_STUBS = {
+    "summary": ("What got done", "Key decisions & patterns", "Notable moments"),
+    "effectiveness": ("Where time and cost went", "Waste & redundant work",
+                      "How to tune the setup"),
+}
+
+
+def _insights_facts(report: dict) -> dict:
+    """Curated, deterministic headline numbers for the insights companion.
+
+    Python owns every figure here — the rendered facts panel uses these, never
+    the LLM prose, so the page's numbers are always authoritative. Reads only
+    already-computed report fields; never re-derives token math. Health /
+    behaviour fields populate at single-session scope only (multi-session
+    exports have no single ``session_health``); they stay ``None`` otherwise.
+    """
+    totals = report.get("totals") or {}
+    sessions = report.get("sessions") or []
+    sess0 = sessions[0] if len(sessions) == 1 else {}
+    health = sess0.get("session_health") or {}
+    behavior = sess0.get("session_behavior") or {}
+    velocity = report.get("velocity") or {}
+    return {
+        "scope":             report.get("mode") or "",
+        "session_count":     len(sessions),
+        "total_cost_usd":    round(float(totals.get("cost", 0.0) or 0.0), 6),
+        "total_tokens":      int(totals.get("total", 0) or 0),
+        "total_turns":       int(totals.get("turns", 0) or 0),
+        "cache_hit_pct":     round(float(totals.get("cache_hit_pct", 0.0) or 0.0), 1),
+        "cache_savings_usd": round(float(totals.get("cache_savings", 0.0) or 0.0), 6),
+        "health_grade":      health.get("grade"),
+        "health_score":      health.get("score"),
+        "outcome":           health.get("outcome"),
+        "archetype":         behavior.get("archetype"),
+        "p50_cycle_s":       velocity.get("p50_cycle_s"),
+        "p90_cycle_s":       velocity.get("p90_cycle_s"),
+    }
+
+
+def _insights_corpus_units(units: list[dict]) -> list[dict]:
+    """Request units fit for the insights corpus: drops no-prompt (tool-result
+    only) and ``↳`` agent-continuation units so the prose reflects real
+    interactive work, not injected/continuation noise. Order preserved."""
+    out: list[dict] = []
+    for u in units:
+        snip = (u.get("prompt_snippet") or "").strip()
+        if not snip or _is_continuation_snippet(snip):
+            continue
+        out.append(u)
+    return out
+
+
+def _build_insights_digest(report: dict, lens: str = "summary",
+                           focus: str = "") -> str:
+    """Bounded, truncated plain-text digest of an export for the insights pass.
+
+    Serialises only ALREADY-COMPUTED numbers (totals, session health/behaviour,
+    velocity, top cost drivers, per-request one-liners) — the LLM that reads
+    this writes prose, it never recomputes math. Per-request lines exclude
+    no-prompt and agent-continuation units and are hard-capped at
+    ``_INSIGHTS_DIGEST_UNIT_CAP`` with an explicit "(showing N of M)" note, so
+    the prompt size is predictable regardless of session length.
+    """
+    lens = lens if lens in _INSIGHTS_LENSES else "summary"
+    f = _insights_facts(report)
+    sessions = report.get("sessions") or []
+    sess0 = sessions[0] if len(sessions) == 1 else {}
+    health = sess0.get("session_health") or {}
+    behavior = sess0.get("session_behavior") or {}
+    velocity = report.get("velocity") or {}
+    units = report.get("request_units") or []
+
+    lines: list[str] = []
+    a = lines.append
+    a("=== SESSION-METRICS INSIGHTS DIGEST ===")
+    a(f"lens: {lens}   (summary = what got done & why; "
+      f"effectiveness = waste & how to improve)")
+    if focus.strip():
+        a(f"focus (prioritise this in your prose): {focus.strip()[:300]}")
+    a(f"scope: {f['scope']}   sessions: {f['session_count']}   "
+      f"generated: {report.get('generated_at','')}")
+    a("")
+    a("-- TOTALS (authoritative; do not restate a different figure) --")
+    a(f"cost ${f['total_cost_usd']:.4f}   turns {f['total_turns']:,}   "
+      f"tokens {f['total_tokens']:,}")
+    a(f"cache hit {f['cache_hit_pct']:.1f}%   "
+      f"cache savings ${f['cache_savings_usd']:.4f}")
+
+    if health:
+        pen = health.get("penalties") or {}
+        pen_str = ", ".join(f"{k} {v}" for k, v in sorted(pen.items()) if v) \
+            or "none"
+        a("")
+        a("-- SESSION HEALTH --")
+        a(f"grade {health.get('grade')}  score {health.get('score')}  "
+          f"outcome {health.get('outcome')} "
+          f"({health.get('outcome_confidence')} confidence)")
+        sig = health.get("signals") or {}
+        a(f"failures {sig.get('failure_signal_count', 0)}  "
+          f"retries {sig.get('retry_count', 0)}  "
+          f"edit-churn {sig.get('edit_churn_count', 0)}  "
+          f"max-consecutive-failures {sig.get('consecutive_failure_max', 0)}")
+        cp = sig.get("context_pressure")
+        if cp is not None:
+            a(f"context pressure {cp:.0%} "
+              f"(peak {sig.get('peak_context_tokens', 0):,} / "
+              f"window {sig.get('context_window', 0):,})")
+        a(f"penalties: {pen_str}")
+
+    if behavior:
+        adopt = behavior.get("adoption") or {}
+        skills = adopt.get("distinct_skills") or []
+        a("")
+        a("-- SESSION BEHAVIOUR --")
+        a(f"archetype {behavior.get('archetype')}  "
+          f"autonomy {behavior.get('autonomy_ratio')}  "
+          f"termination {behavior.get('termination')}  "
+          f"relationship {behavior.get('relationship')}")
+        a(f"plan-mode {'yes' if adopt.get('plan_mode_used') else 'no'}  "
+          f"subagents-spawned {adopt.get('subagent_spawn_count', 0)}  "
+          f"skills [{', '.join(skills[:8])}]")
+        tax = behavior.get("tool_taxonomy") or {}
+        if tax:
+            top = sorted(tax.items(), key=lambda x: (-x[1], x[0]))[:6]
+            a("tool mix: " + ", ".join(f"{k} {v}" for k, v in top))
+
+    if velocity:
+        a("")
+        a("-- VELOCITY --")
+        a(f"per-request cycle p50 {velocity.get('p50_cycle_s', 0):.0f}s / "
+          f"p90 {velocity.get('p90_cycle_s', 0):.0f}s  "
+          f"(over {velocity.get('filtered_unit_count', 0)} timed requests)")
+        a(f"active minutes {velocity.get('active_minutes', 0):.0f}  "
+          f"${velocity.get('cost_per_active_min', 0):.4f}/min  "
+          f"{int(velocity.get('tokens_per_active_min', 0)):,} tok/min")
+
+    corpus = _insights_corpus_units(units)
+    drivers = sorted(corpus, key=lambda u: (
+        -float(u.get("combined_cost_usd", 0.0) or 0.0),
+        str(u.get("unit_id") or "")))[:10]
+    if drivers:
+        a("")
+        a("-- TOP COST DRIVERS (request units by cost) --")
+        for u in drivers:
+            snip = (u.get("prompt_snippet") or "").replace("\n", " ")
+            risk = (int(u.get("risk_turn_count", 0))
+                    + int(u.get("reread_path_count", 0))
+                    + int(u.get("cache_break_count", 0)))
+            a(f"#{u.get('anchor_index')}  ${float(u.get('combined_cost_usd', 0.0)):.4f}"
+              f"  {int(u.get('turn_count', 0))}t  "
+              f"risk{risk}  {snip[:120]}")
+
+    a("")
+    total_corpus = len(corpus)
+    shown = corpus[:_INSIGHTS_DIGEST_UNIT_CAP]
+    a(f"-- REQUESTS IN ORDER (showing {len(shown)} of {total_corpus}; "
+      f"no-prompt & agent-continuation units excluded) --")
+    for u in shown:
+        snip = (u.get("prompt_snippet") or "").replace("\n", " ")
+        a(f"#{u.get('anchor_index')}  ${float(u.get('combined_cost_usd', 0.0)):.4f}"
+          f"  {int(u.get('turn_count', 0))}t  {snip[:_INSIGHTS_SNIPPET_CAP]}")
+    if total_corpus > len(shown):
+        a(f"... ({total_corpus - len(shown)} more requests omitted for length)")
+
+    a("")
+    a("-- WHAT TO WRITE --")
+    if lens == "effectiveness":
+        a("Write the effectiveness lens: where the cost/time actually went, "
+          "redundant or wasted work (lean on risk/retry/churn signals above), "
+          "and concrete, evidence-tied recommendations to tune CLAUDE.md / "
+          "settings / workflow. Put each recommendation in `recommendations` "
+          "with a one-line `evidence` tied to a number above.")
+    else:
+        a("Write the summary lens: what got done, the key decisions and "
+          "patterns, and notable moments. Keep it factual and tied to the "
+          "requests above; do not invent work that is not in the digest.")
+    a("Rules: Python owns every number — quote figures from this digest "
+      "verbatim, never recompute. Fill the insights JSON skeleton "
+      "(headline + sections[].body, optional recommendations) and render with "
+      "--render-insights.")
+    return "\n".join(lines)
+
+
+def _build_insights_skeleton(report: dict, lens: str = "summary",
+                             focus: str = "") -> dict:
+    """Renderable candidate insights JSON for ``--prepare-insights``.
+
+    A zero-edit skeleton renders a correct companion (facts panel + a "prose
+    not yet written" note) — graceful degradation, so the running agent EDITS
+    rather than authors from scratch. Section bodies are left empty for the
+    agent to fill; headings are lens-appropriate stubs.
+    """
+    lens = lens if lens in _INSIGHTS_LENSES else "summary"
+    sessions = report.get("sessions") or []
+    scope = (f"session_{(sessions[0].get('session_id') or '')[:8]}"
+             if len(sessions) == 1 else (report.get("mode") or ""))
+    return {
+        "schema_version": _INSIGHTS_SCHEMA_VERSION,
+        "lens":           lens,
+        "scope_label":    scope,
+        "focus":          focus.strip(),
+        "headline":       "",
+        "sections":       [{"heading": h, "body": ""}
+                           for h in _INSIGHTS_SECTION_STUBS[lens]],
+        "recommendations": [],
+    }
+
+
+def _assemble_insights(report: dict, insights: dict) -> dict:
+    """Validate an LLM-authored ``insights`` object and pair it with the
+    deterministic FACTS recomputed from the export.
+
+    The prose (headline / sections / recommendations) is taken from the
+    grouping file; every NUMBER comes from :func:`_insights_facts` (the export),
+    never from the prose — an LLM must not own figures. Validation issues are
+    surfaced as ``warnings`` rather than silently dropped.
+
+    Returns ``{schema_version, lens, scope_label, focus, headline, sections,
+    recommendations, facts, warnings}``.
+    """
+    warnings: list[str] = []
+    gv = str(insights.get("schema_version") or "")
+    if not gv:
+        warnings.append(
+            f"insights has no schema_version; expected "
+            f"{_INSIGHTS_SCHEMA_VERSION!r} — rendering best-effort")
+    elif gv != _INSIGHTS_SCHEMA_VERSION:
+        warnings.append(
+            f"insights schema_version {gv!r} != expected "
+            f"{_INSIGHTS_SCHEMA_VERSION!r}; rendering best-effort")
+
+    lens = insights.get("lens") or "summary"
+    if lens not in _INSIGHTS_LENSES:
+        warnings.append(f"unknown lens {lens!r}; treating as 'summary'")
+        lens = "summary"
+
+    headline = str(insights.get("headline") or "").strip()
+    if not headline:
+        warnings.append("insights has no headline")
+
+    sections_out: list[dict] = []
+    for raw in insights.get("sections") or []:
+        if not isinstance(raw, dict):
+            warnings.append(f"ignoring non-object section entry: {raw!r}")
+            continue
+        heading = str(raw.get("heading") or "").strip()
+        body = str(raw.get("body") or "").strip()
+        if not heading and not body:
+            continue
+        sections_out.append({"heading": heading, "body": body})
+    if not any(s["body"] for s in sections_out):
+        warnings.append("no section has a body — prose not written yet")
+
+    recs_out: list[dict] = []
+    for raw in insights.get("recommendations") or []:
+        if isinstance(raw, str):
+            recs_out.append({"text": raw.strip(), "evidence": ""})
+        elif isinstance(raw, dict):
+            text = str(raw.get("text") or "").strip()
+            if text:
+                recs_out.append(
+                    {"text": text,
+                     "evidence": str(raw.get("evidence") or "").strip()})
+        else:
+            warnings.append(f"ignoring non-text recommendation: {raw!r}")
+
+    return {
+        "schema_version":  _INSIGHTS_SCHEMA_VERSION,
+        "lens":            lens,
+        "scope_label":     str(insights.get("scope_label") or ""),
+        "focus":           str(insights.get("focus") or "").strip(),
+        "headline":        headline,
+        "sections":        sections_out,
+        "recommendations": recs_out,
+        "facts":           _insights_facts(report),
+        "warnings":        warnings,
+    }
+
+
 def _empty_subagent_row(name: str) -> dict:
     return {
         "name":             name,

@@ -305,6 +305,15 @@ def _build_parser() -> argparse.ArgumentParser:
                         "companion right after the export. A placeholder page "
                         "is written at the target path so the button resolves "
                         "even if that follow-up is skipped.")
+    p.add_argument("--insights-lens", choices=("summary", "effectiveness"),
+                   default="summary",
+                   help="Lens for --prepare-insights: 'summary' (what got done "
+                        "& why; default) or 'effectiveness' (waste & how to "
+                        "improve). Shapes the digest's guidance + the skeleton.")
+    p.add_argument("--insights-focus", default="", metavar="TEXT",
+                   help="Optional free-text steering for --prepare-insights "
+                        "(e.g. \"why was this session so expensive?\"); appended "
+                        "to the digest with a 'prioritise this' instruction.")
     p.add_argument("--cache-break-threshold", type=int,
                    default=_sm()._CACHE_BREAK_DEFAULT_THRESHOLD, metavar="TOKENS",
                    help=(f"Turns whose input + cache_creation exceed TOKENS are "
@@ -593,6 +602,25 @@ def _build_parser() -> argparse.ArgumentParser:
                         "grouping from scratch; a zero-edit skeleton still "
                         "renders a correct, non-collapsed Tasks page. Pairs "
                         "with --render-tasks.")
+    # --- Auto-insights companion (Phase G) -------------------------------
+    _mode.add_argument("--prepare-insights", nargs=1, metavar="EXPORT_JSON",
+                   help="Print a bounded, truncated insights digest of a "
+                        "session-metrics JSON export to stdout (the corpus the "
+                        "running agent reads) and write a renderable candidate "
+                        "<stem>_insights.json skeleton next to it. The agent "
+                        "fills headline + section bodies (prose only — Python "
+                        "owns every number) then renders with --render-insights. "
+                        "Shape with --insights-lens / --insights-focus.")
+    _mode.add_argument("--render-insights", nargs=2,
+                   metavar=("EXPORT_JSON", "INSIGHTS_JSON"),
+                   help="Render the standalone Insights companion page "
+                        "(*_insights.html + *_insights.md) from a "
+                        "session-metrics JSON export and a Claude-authored "
+                        "insights.json (schema: {schema_version, lens, "
+                        "headline, sections:[{heading, body}], "
+                        "recommendations:[...]}). All headline figures are "
+                        "recomputed from the export — the prose never owns a "
+                        "number. Writes next to the export (or --export-dir).")
     _mode.add_argument("--prune-exports", type=int, metavar="N",
                    help="Prune the export directory: keep the newest N runs "
                         "per retention group (each session id, the project "
@@ -756,6 +784,19 @@ def main() -> None:
     if getattr(args, "compare_run_prompt_steering", None) and getattr(args, "compare_run", None) is None:
         parser.error("--compare-run-prompt-steering requires --compare-run; "
                      "it has no effect with other modes.")
+    # --insights-lens / --insights-focus are consumed ONLY by --prepare-insights
+    # (they shape the digest + skeleton). Same main-parser placement as the
+    # steering flags above, so guard them the same way: key off the
+    # distinguishable signal only — --insights-lens default "summary" can't tell
+    # "user chose summary" from the default, so only a non-default lens or a
+    # non-empty focus reliably signals deliberate misuse.
+    if getattr(args, "prepare_insights", None) is None:
+        if getattr(args, "insights_focus", ""):
+            parser.error("--insights-focus requires --prepare-insights; "
+                         "it has no effect with other modes.")
+        if getattr(args, "insights_lens", "summary") != "summary":
+            parser.error("--insights-lens requires --prepare-insights; "
+                         "it has no effect with other modes.")
     # P5.2: --export-share-safe is a one-flag bundle that implies
     # --redact-user-prompts and --no-self-cost (chmod 0600 is wired
     # separately at every export write site via the share_safe param).
@@ -899,6 +940,19 @@ def main() -> None:
 
     if args.prepare_tasks is not None:
         rc = _sm()._run_prepare_tasks(args.prepare_tasks[0])
+        sys.exit(rc)
+
+    if args.prepare_insights is not None:
+        rc = _sm()._run_prepare_insights(args.prepare_insights[0],
+                                         lens=args.insights_lens,
+                                         focus=args.insights_focus)
+        sys.exit(rc)
+
+    if args.render_insights is not None:
+        export_json, insights_json = args.render_insights
+        _ins_fmts = [f for f in formats if f in ("html", "md")] or ["html", "md"]
+        rc = _sm()._run_render_insights(export_json, insights_json,
+                                        formats=_ins_fmts)
         sys.exit(rc)
 
     if args.compare_prep is not None:
