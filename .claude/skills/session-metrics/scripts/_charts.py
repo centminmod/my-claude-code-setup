@@ -50,7 +50,11 @@ def _build_chart_html(
             "cost":     cost[s:e],
             "models":   models_py[s:e] if models_py else [],
         })
-    data_json = json.dumps(pages_data, separators=(",", ":"))
+    # Escape ``</`` → ``<\/`` so a ``</script>`` token in chart data (e.g. a
+    # crafted/odd model id or a malformed timestamp) can't close this executable
+    # <script> block and break out into the HTML body. Mirrors the turn-drawer /
+    # timeline JSON payloads in _html_sections.py (v1.80.1).
+    data_json = json.dumps(pages_data, separators=(",", ":")).replace("</", "<\\/")
 
     # --- Container divs ---------------------------------------------------
     divs: list[str] = []
@@ -384,7 +388,10 @@ def _build_lib_chart_pages(series: dict, x_title: str) -> tuple[str, str]:
         "cost":   series["cost"][s:e],
         "models": series["models"][s:e],
     } for s, e in slices]
-    data_json = json.dumps(pages_data, separators=(",", ":"))
+    # Escape ``</`` → ``<\/`` so chart data can't break out of the executable
+    # <script> block in the uPlot / Chart.js renderers (v1.80.1; see
+    # _build_chart_html for the full rationale).
+    data_json = json.dumps(pages_data, separators=(",", ":")).replace("</", "<\\/")
 
     divs: list[str] = []
     for pg, (s, e) in enumerate(slices):

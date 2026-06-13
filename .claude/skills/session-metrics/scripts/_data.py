@@ -111,6 +111,14 @@ def _pricing_for(model: str) -> dict[str, float]:
     for pattern, rates in _sm()._PRICING_PATTERNS:
         if pattern.search(model):
             return rates
+    # NB (F5, v1.80.1): a generic "digit-boundary" guard here (refuse a prefix
+    # match when the next char is a digit) was evaluated and REJECTED — it
+    # regresses the *intentional* Opus-minor prefix design where
+    # ``claude-opus-4-9`` is meant to catch ``claude-opus-4-99`` at the NEW tier
+    # (see test_pricing_opus_4_99_silent_via_prefix). The bare-prefix-underprice
+    # risk for an unguarded dotted minor (e.g. a hypothetical ``glm-5.10``)
+    # remains documented policy debt, handled reactively per-model via an
+    # explicit ``(?!\d)`` regex in _PRICING_PATTERNS (as glm-5.1 / glm-5.2 are).
     for prefix, rates in _sm()._PRICING.items():
         if model.startswith(prefix):
             return rates
@@ -612,7 +620,12 @@ def _build_session_blocks(
         if kind == "user":
             b["user_msg_count"] += 1
         else:
-            assert turn is not None  # user events carry None; assistant turns carry a dict
+            # user events carry None; assistant turns carry a dict. Guard
+            # explicitly rather than with ``assert`` (which ``python -O`` strips,
+            # turning a broken invariant into an opaque crash mid-loop) — a
+            # malformed pairing now ``continue``s instead (v1.80.1).
+            if turn is None:
+                continue
             msg   = turn["message"]
             u     = msg["usage"]
             model = msg.get("model", "unknown")

@@ -3,6 +3,34 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.80.1 — 2026-06-14
+
+### Chart-export XSS hardening + assert-strip robustness (patch)
+
+Two fixes from a follow-up multi-AI audit of the v1.71.0–v1.80.0 range; all
+citation-verified, 2 new regression tests (full suite 1015 passed, 1 skipped).
+
+- **Chart data is now `</`-escaped before inlining into executable `<script>`
+  blocks.** `_build_chart_html` and `_build_lib_chart_pages` embedded their
+  `json.dumps(...)` payload verbatim into a `<script>var DATA=…</script>`
+  block (Highcharts / uPlot / Chart.js renderers) **without** the
+  `.replace("</", "<\\/")` neutralisation the turn-drawer / timeline payloads
+  already apply. A `</script>` token in a crafted/odd model id or malformed
+  timestamp could close the tag early and inject markup into a shared HTML
+  export. Both builders now escape, and `peak_json` (hour-of-day) gets the same
+  treatment for parity (it was already safe via `ZoneInfo` validation, hardened
+  defensively).
+- **`_build_session_blocks` no longer guards a hot-loop invariant with a bare
+  `assert`.** `python -O` strips `assert`, so the `turn is not None` check
+  vanished under optimised mode; replaced with an explicit `if turn is None:
+  continue`. Behaviour is unchanged for valid transcripts.
+- **Investigated but NOT shipped:** a generic prefix-sweep "digit-boundary"
+  guard in `_pricing_for` (to stop a bare version prefix underpricing a
+  glued-digit successor) was rejected — it regresses the intentional Opus-minor
+  prefix design (`claude-opus-4-9` catches `claude-opus-4-99` at the NEW tier).
+  The dotted-minor underprice risk stays documented policy debt, handled
+  reactively per-model via `(?!\d)` regex (as glm-5.1 / glm-5.2 are).
+
 ## v1.80.0 — 2026-06-14
 
 ### Audit-driven correctness & robustness fixes (minor)

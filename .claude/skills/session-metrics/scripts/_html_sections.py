@@ -419,12 +419,17 @@ def _build_hour_of_day_html(tod: dict, tz_label: str = "UTC",
     peak_json = "null"
     peak_legend = ""
     if peak:
+        # Escape ``</`` → ``<\/`` for parity with the chart-data / turn-drawer
+        # payloads: this blob is inlined into an executable <script> below
+        # (``var PEAK=…``), so a ``</script>`` token must not be able to close
+        # the block. Only reachable today if tz_label validation were ever
+        # loosened, but kept consistent defensively (v1.80.1).
         peak_json = json.dumps({
             "start":   peak["start"],
             "end":     peak["end"],
             "tz_off":  peak["tz_offset_hours"],
             "tz_label": peak["tz_label"],
-        }, separators=(",", ":"))
+        }, separators=(",", ":")).replace("</", "<\\/")
         peak_legend = (
             f'<span style="color:#8b949e;font-size:11px;display:inline-flex;'
             f'align-items:center;gap:6px">'
