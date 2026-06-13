@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.75.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.76.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -636,6 +636,10 @@ _theme_css                      = _hs_m._theme_css
 _theme_picker_markup            = _hs_m._theme_picker_markup
 _theme_bootstrap_head_js        = _hs_m._theme_bootstrap_head_js
 _theme_bootstrap_body_js        = _hs_m._theme_bootstrap_body_js
+_overlay_css                    = _hs_m._overlay_css
+_overlay_js                     = _hs_m._overlay_js
+_stamp_sections_and_build_chips = _hs_m._stamp_sections_and_build_chips
+_OVERLAY_NAMED_SECTIONS         = _hs_m._OVERLAY_NAMED_SECTIONS
 _build_chartrail_section_html   = _hs_m._build_chartrail_section_html
 _chartrail_script               = _hs_m._chartrail_script
 _build_daily_cost_rail_html     = _hs_m._build_daily_cost_rail_html

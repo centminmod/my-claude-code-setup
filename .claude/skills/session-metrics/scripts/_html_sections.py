@@ -1182,6 +1182,7 @@ def _build_workflow_companion_html(report: dict,
 <meta name="generator" content="session-metrics {ver}">
 <title>Dynamic workflows — {scope}</title>
 {_theme_css()}
+{_overlay_css()}
 {_workflow_companion_css()}
 {_theme_bootstrap_head_js()}
 </head>
@@ -1206,6 +1207,7 @@ journal.</p>
 </section>
 <footer class="foot"><span class="muted">session-metrics · {gen}</span></footer>
 </div>
+{_overlay_js()}
 {_theme_bootstrap_body_js()}
 </body>
 </html>"""
@@ -1416,6 +1418,7 @@ def _build_tasks_companion_html(report: dict, tasks_data: dict,
 <meta name="generator" content="session-metrics {ver}">
 <title>Tasks — {scope}</title>
 {_theme_css()}
+{_overlay_css()}
 {_workflow_companion_css()}
 {_theme_bootstrap_head_js()}
 </head>
@@ -1461,6 +1464,7 @@ with a verdict. Click a task to see its requests.</p>
   }});
 }})();
 </script>
+{_overlay_js()}
 {_theme_bootstrap_body_js()}
 </body>
 </html>"""
@@ -1488,6 +1492,7 @@ def _build_tasks_placeholder_html(report: dict, dashboard_href: str) -> str:
 <meta name="generator" content="session-metrics {ver}">
 <title>Tasks — pending</title>
 {_theme_css()}
+{_overlay_css()}
 {_theme_bootstrap_head_js()}
 </head>
 <body class="theme-console">
@@ -1511,6 +1516,7 @@ units.</p>
 </section>
 <footer class="foot"><span class="muted">session-metrics · {gen}</span></footer>
 </div>
+{_overlay_js()}
 {_theme_bootstrap_body_js()}
 </body>
 </html>"""
@@ -3698,6 +3704,323 @@ def _theme_bootstrap_body_js() -> str:
     )
 
 
+# Phase E — interactive overlay (Cmd/Ctrl+K palette, / find bar, J/K section
+# navigation, ? help, sticky chip nav). The named sections (those carrying an
+# ``id`` attribute) in DOCUMENT order — this list is the source of truth for the
+# chip nav band built in ``render_html``. Order matters for byte-stability: it
+# must match the order the sections appear in the rendered body f-string. The
+# palette and J/K navigation cover *all* sections (named + anonymous) via the
+# live ``.section-title h2`` text scan in ``_overlay_js``; only these named
+# sections become hash-addressable chips.
+_OVERLAY_NAMED_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("session-health-section", "Health"),
+    ("session-behavior-section", "Behavior"),
+    ("cache-efficiency-section", "Cache"),
+    ("velocity-section", "Velocity"),
+    ("window-ribbon-section", "Windows"),
+    ("weekly-rollup-section", "Weekly"),
+    ("session-blocks-section", "Blocks"),
+    ("session-duration-section", "Duration"),
+    ("hod-section", "Hour of day"),
+    ("cost-treemap-section", "Cost / session"),
+    ("cost-over-time-section", "Cost / time"),
+    ("pricing-advisory-section", "Pricing"),
+)
+
+
+def _stamp_sections_and_build_chips(body_html: str) -> tuple[str, str]:
+    """Stamp ``data-sm-section`` onto each named section present in ``body_html``
+    and build the sticky chip nav band.
+
+    For every ``(id, label)`` in :data:`_OVERLAY_NAMED_SECTIONS` whose
+    ``id="<id>"`` literal appears in the assembled body, rewrite that single
+    occurrence to ``id="<id>" data-sm-section="<id>"`` so the overlay JS can
+    map a chip / hash to the section element. The ``id`` values are ASCII slugs
+    that occur exactly once, so a bounded ``replace(.., 1)`` is unambiguous and
+    deterministic (no regex, no float folds, no dict iteration).
+
+    Returns ``(stamped_body, chip_nav_html)``. The chip nav is emitted only
+    when **3 or more** named sections are present (the resolved threshold); for
+    fewer it returns ``""`` so sparse variants (e.g. ``detail``) stay clean.
+    """
+    present: list[tuple[str, str]] = []
+    for sid, label in _OVERLAY_NAMED_SECTIONS:
+        needle = f'id="{sid}"'
+        if needle in body_html:
+            body_html = body_html.replace(
+                needle, f'{needle} data-sm-section="{sid}"', 1)
+            present.append((sid, label))
+    if len(present) < 3:
+        return body_html, ""
+    chips = "".join(
+        f'<button class="sm-chip" type="button" data-target="{sid}" '
+        f'aria-pressed="false">{html_mod.escape(label)}</button>'
+        for sid, label in present
+    )
+    chip_nav = (
+        '<nav id="sm-chip-nav" aria-label="Jump to section">' + chips + '</nav>'
+    )
+    return body_html, chip_nav
+
+
+def _overlay_css() -> str:
+    """Overlay stylesheet (command palette / find bar / help / chip nav).
+
+    Uses ONLY existing theme custom-properties (``--bg``/``--surface``/
+    ``--surface-deep``/``--border``/``--border-dim``/``--fg``/``--fg-dim``/
+    ``--accent``/``--accent-soft``/``--hover``/``--backdrop``) so the four
+    ``body.theme-*`` blocks restyle the overlay for free — the across-theme
+    check passes without any per-theme override. Positioned above the drawer
+    (``z-index:1000``); the overlay layers use ``1099``/``1100``. Raw string so
+    literal CSS braces need no escaping.
+    """
+    return r"""<style>
+/* Phase E — interactive overlay (theme-var only; no hardcoded colours) */
+#sm-ovl-backdrop{position:fixed;inset:0;background:var(--backdrop,rgba(0,0,0,.6));z-index:1099;display:none}
+#sm-ovl-backdrop.on{display:block}
+#sm-palette{position:fixed;top:13vh;left:50%;transform:translateX(-50%);width:min(560px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:14px;z-index:1100;display:none;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+#sm-palette.on{display:flex}
+.sm-palette-input{width:100%;padding:15px 18px;font-size:15px;background:var(--surface-deep);color:var(--fg);border:0;border-bottom:1px solid var(--border);outline:none}
+.sm-palette-input::placeholder{color:var(--fg-dim)}
+.sm-palette-list{list-style:none;margin:0;padding:6px;max-height:52vh;overflow:auto}
+.sm-palette-item{padding:9px 12px;border-radius:8px;cursor:pointer;color:var(--fg);display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:13px}
+.sm-palette-item .sm-pi-kind{color:var(--fg-dim);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.sm-palette-item.selected,.sm-palette-item:hover{background:var(--hover);outline:1px solid var(--accent-soft)}
+.sm-palette-empty{padding:14px 16px;color:var(--fg-dim);font-size:12px}
+#sm-findbar{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:min(520px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:12px;z-index:1100;display:none;align-items:center;gap:8px;padding:8px 10px;box-shadow:0 16px 40px rgba(0,0,0,.45)}
+#sm-findbar.on{display:flex}
+.sm-find-input{flex:1;padding:8px 10px;font-size:13px;background:var(--surface-deep);color:var(--fg);border:1px solid var(--border);border-radius:8px;outline:none}
+.sm-find-input::placeholder{color:var(--fg-dim)}
+.sm-find-count{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--fg-dim);min-width:70px;text-align:center}
+.sm-find-btn{padding:6px 10px;border-radius:8px;color:var(--fg);border:1px solid var(--border);background:var(--surface-deep);cursor:pointer}
+.sm-find-btn:hover{background:var(--hover);border-color:var(--accent-soft)}
+mark.sm-hit{background:var(--accent-soft);color:var(--bg);border-radius:2px}
+mark.sm-hit.sm-hit-cur{background:var(--accent);outline:2px solid var(--accent)}
+#sm-help{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(440px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:14px;z-index:1100;display:none;padding:22px 24px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+#sm-help.on{display:block}
+.sm-help-close{position:absolute;top:10px;right:12px;width:28px;height:28px;border-radius:8px;color:var(--fg-dim);font-size:18px;line-height:1;border:1px solid var(--border);background:var(--surface-deep);cursor:pointer}
+.sm-help-close:hover{color:var(--fg);background:var(--hover);border-color:var(--accent-soft)}
+#sm-help h3{margin:0 0 14px;font-family:'Inter Tight','Inter',sans-serif;font-size:16px;color:var(--fg)}
+.sm-help-table{width:100%;border-collapse:collapse;font-size:13px;color:var(--fg)}
+.sm-help-table td{padding:6px 4px;border-bottom:1px solid var(--border-dim)}
+.sm-help-table td.k{white-space:nowrap;width:46%}
+.sm-help-table kbd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;background:var(--surface-deep);border:1px solid var(--border);border-radius:5px;padding:2px 6px;color:var(--fg-dim)}
+#sm-chip-nav{position:sticky;top:0;z-index:35;display:flex;gap:8px;overflow-x:auto;padding:10px 24px;scrollbar-width:thin;background:var(--bg);border-bottom:1px solid var(--border-dim)}
+.sm-chip{flex:0 0 auto;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--fg-dim);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;cursor:pointer;transition:all .15s ease}
+.sm-chip:hover{color:var(--fg);border-color:var(--accent-soft)}
+.sm-chip.sm-chip-active{color:var(--fg);background:var(--hover);border-color:var(--accent)}
+</style>"""
+
+
+def _overlay_js() -> str:
+    """Overlay behaviour as a single self-contained IIFE ``<script>``.
+
+    DETERMINISTIC BY CONSTRUCTION: a static raw string — no f-string
+    interpolation, no ``json.dumps``, no timestamps, no dict/set iteration. The
+    ``test_overlay_js_is_deterministic`` guard asserts two calls return
+    byte-identical strings; never inject runtime data here.
+
+    Subsystems (all keyboard-driven, all reading section labels from the live
+    DOM so they work on every page that includes this script):
+      * Command palette (Cmd/Ctrl+K) — fuzzy-jump to any section by h2 text.
+      * Find bar (/) — TreeWalker text search with ``<mark>`` highlighting.
+      * Section navigation (J / ] forward, K / [ back).
+      * Help overlay (?).
+      * Chip nav sync (clicking / hashchange highlights the active chip).
+    Focus is restored to the pre-open element on close; palette and help trap
+    Tab focus. ``/``, ``j``/``k`` and ``?`` are suppressed while a text field is
+    focused (only Escape stays global), so typing in the palette/find inputs is
+    never hijacked.
+    """
+    return r"""<script>
+(function(){
+  'use strict';
+  if(window.__smOverlayInit)return; window.__smOverlayInit=true;
+  var D=document;
+  function ready(fn){if(D.readyState!=='loading'){fn();}else{D.addEventListener('DOMContentLoaded',fn);}}
+  function isEditable(el){if(!el)return false;var t=el.tagName;return t==='INPUT'||t==='TEXTAREA'||t==='SELECT'||el.isContentEditable;}
+  function preserveTheme(){var m=location.hash.match(/theme=[a-z]+/);return m?m[0]:'';}
+  function setHash(id){var th=preserveTheme();try{location.hash=id+(th?'&'+th:'');}catch(e){}}
+  function focusables(c){return [].slice.call(c.querySelectorAll('input,button,[tabindex]')).filter(function(e){return !e.disabled&&e.offsetParent!==null;});}
+  function trap(c,ev){if(ev.key!=='Tab')return;var f=focusables(c);if(!f.length)return;var first=f[0],last=f[f.length-1];if(ev.shiftKey&&D.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&D.activeElement===last){ev.preventDefault();first.focus();}}
+
+  ready(function(){
+    // ---- section registry (source of truth for palette + J/K nav) ----
+    var heads=[].slice.call(D.querySelectorAll('.section-title h2'));
+    var sections=heads.map(function(h){
+      var sec=h.closest?h.closest('.section'):null;
+      return {el:sec||h,label:(h.textContent||'').trim(),id:sec?sec.getAttribute('data-sm-section'):null};
+    }).filter(function(s){return s.label;});
+    var curIdx=-1,lastFocused=null;
+
+    // ---- build overlay DOM (runtime, keeps the static HTML minimal) ----
+    var backdrop=D.createElement('div');backdrop.id='sm-ovl-backdrop';
+    var palette=D.createElement('div');palette.id='sm-palette';
+    palette.setAttribute('role','dialog');palette.setAttribute('aria-modal','true');palette.setAttribute('aria-label','Jump to section');
+    var pInput=D.createElement('input');pInput.className='sm-palette-input';pInput.type='text';
+    pInput.setAttribute('placeholder','Jump to section…');pInput.setAttribute('aria-label','Jump to section');
+    pInput.setAttribute('role','combobox');pInput.setAttribute('autocomplete','off');pInput.setAttribute('aria-expanded','false');pInput.name='sm-palette-q';
+    pInput.setAttribute('aria-controls','sm-palette-list');pInput.setAttribute('aria-haspopup','listbox');
+    var pList=D.createElement('ul');pList.className='sm-palette-list';pList.id='sm-palette-list';pList.setAttribute('role','listbox');
+    palette.appendChild(pInput);palette.appendChild(pList);
+    var findbar=D.createElement('div');findbar.id='sm-findbar';findbar.setAttribute('role','search');
+    var fInput=D.createElement('input');fInput.className='sm-find-input';fInput.type='text';
+    fInput.setAttribute('placeholder','Find in page…');fInput.setAttribute('aria-label','Find in page');fInput.setAttribute('autocomplete','off');fInput.name='sm-find-q';
+    var fCount=D.createElement('span');fCount.className='sm-find-count';fCount.setAttribute('aria-live','polite');fCount.textContent='0 / 0';
+    var fPrev=D.createElement('button');fPrev.className='sm-find-btn';fPrev.type='button';fPrev.textContent='↑';fPrev.setAttribute('aria-label','Previous match');
+    var fNext=D.createElement('button');fNext.className='sm-find-btn';fNext.type='button';fNext.textContent='↓';fNext.setAttribute('aria-label','Next match');
+    findbar.appendChild(fInput);findbar.appendChild(fCount);findbar.appendChild(fPrev);findbar.appendChild(fNext);
+    var help=D.createElement('div');help.id='sm-help';help.setAttribute('role','dialog');help.setAttribute('aria-modal','true');help.setAttribute('aria-label','Keyboard shortcuts');
+    help.innerHTML='<button class="sm-help-close" type="button" aria-label="Close help">&times;</button>'+
+      '<h3>Keyboard shortcuts</h3><table class="sm-help-table"><tbody>'+
+      '<tr><td class="k"><kbd>Cmd</kbd>/<kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Command palette</td></tr>'+
+      '<tr><td class="k"><kbd>/</kbd></td><td>Find in page</td></tr>'+
+      '<tr><td class="k"><kbd>J</kbd> / <kbd>]</kbd></td><td>Next section</td></tr>'+
+      '<tr><td class="k"><kbd>K</kbd> / <kbd>[</kbd></td><td>Previous section</td></tr>'+
+      '<tr><td class="k"><kbd>?</kbd></td><td>This help</td></tr>'+
+      '<tr><td class="k"><kbd>Esc</kbd></td><td>Close</td></tr></tbody></table>';
+    D.body.appendChild(backdrop);D.body.appendChild(palette);D.body.appendChild(findbar);D.body.appendChild(help);
+
+    function modalOpen(){return palette.classList.contains('on')||help.classList.contains('on');}
+    function anyOpen(){return modalOpen()||findbar.classList.contains('on');}
+    function showBackdrop(on){backdrop.classList.toggle('on',on);}
+    function rememberFocus(){lastFocused=D.activeElement;}
+    function restoreFocus(){if(lastFocused&&typeof lastFocused.focus==='function'){lastFocused.focus();}lastFocused=null;}
+
+    function scrollToSection(s){if(!s||!s.el)return;s.el.scrollIntoView({behavior:'smooth',block:'start'});if(s.id)setHash(s.id);}
+    function nav(dir){if(!sections.length)return;curIdx+=dir;if(curIdx<0)curIdx=0;if(curIdx>=sections.length)curIdx=sections.length-1;scrollToSection(sections[curIdx]);}
+
+    // ---- palette ----
+    function buildList(q){
+      pList.innerHTML='';var ql=(q||'').toLowerCase();
+      var matched=sections.filter(function(s){return s.label.toLowerCase().indexOf(ql)>=0;});
+      matched.forEach(function(s,i){
+        var li=D.createElement('li');li.className='sm-palette-item';li.setAttribute('role','option');li.id='sm-pi-'+i;
+        var lbl=D.createElement('span');lbl.textContent=s.label;
+        var kind=D.createElement('span');kind.className='sm-pi-kind';kind.textContent='section';
+        li.appendChild(lbl);li.appendChild(kind);li.__section=s;
+        li.addEventListener('click',function(){activate(li);});
+        pList.appendChild(li);
+      });
+      if(!matched.length){var em=D.createElement('li');em.className='sm-palette-empty';em.textContent='No matching section';pList.appendChild(em);}
+      var act=D.createElement('li');act.className='sm-palette-item';act.setAttribute('role','option');act.id='sm-pi-find';
+      var al=D.createElement('span');al.textContent='Find in page…';
+      var ak=D.createElement('span');ak.className='sm-pi-kind';ak.textContent='/';
+      act.appendChild(al);act.appendChild(ak);act.__action='find';
+      act.addEventListener('click',function(){activate(act);});
+      pList.appendChild(act);
+      select(0);
+    }
+    function items(){return [].slice.call(pList.querySelectorAll('.sm-palette-item'));}
+    function select(i){var it=items();if(!it.length)return;if(i<0)i=0;if(i>=it.length)i=it.length-1;
+      it.forEach(function(e,j){e.classList.toggle('selected',j===i);});var sel=it[i];
+      pInput.setAttribute('aria-activedescendant',sel&&sel.id?sel.id:'');
+      if(sel)sel.scrollIntoView({block:'nearest'});}
+    function selectedIdx(){var it=items();for(var i=0;i<it.length;i++){if(it[i].classList.contains('selected'))return i;}return -1;}
+    function activate(li){
+      if(li.__action==='find'){closePalette();openFind();return;}
+      var s=li.__section;if(s){closePalette();curIdx=sections.indexOf(s);scrollToSection(s);if(s.id)setActiveChip(s.id);}
+    }
+    function openPalette(){rememberFocus();showBackdrop(true);palette.classList.add('on');pInput.setAttribute('aria-expanded','true');pInput.value='';buildList('');pInput.focus();}
+    function closePalette(){palette.classList.remove('on');pInput.setAttribute('aria-expanded','false');if(!modalOpen())showBackdrop(false);restoreFocus();}
+    function togglePalette(){palette.classList.contains('on')?closePalette():openPalette();}
+    pInput.addEventListener('input',function(){buildList(pInput.value);});
+    pInput.addEventListener('keydown',function(ev){
+      if(ev.key==='ArrowDown'){ev.preventDefault();select(selectedIdx()+1);}
+      else if(ev.key==='ArrowUp'){ev.preventDefault();select(selectedIdx()-1);}
+      else if(ev.key==='Enter'){ev.preventDefault();var it=items(),i=selectedIdx();if(i>=0&&it[i])activate(it[i]);}
+    });
+    palette.addEventListener('keydown',function(ev){trap(palette,ev);});
+
+    // ---- find bar ----
+    var hits=[],curHit=-1;
+    function clearMarks(){
+      var ms=D.querySelectorAll('mark.sm-hit');
+      [].forEach.call(ms,function(m){var p=m.parentNode;if(!p)return;p.replaceChild(D.createTextNode(m.textContent),m);p.normalize();});
+      hits=[];curHit=-1;
+    }
+    function textNodes(){
+      var skip={SCRIPT:1,STYLE:1,NOSCRIPT:1,MARK:1};
+      var w=D.createTreeWalker(D.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){
+        if(!n.nodeValue||!n.nodeValue.trim())return NodeFilter.FILTER_REJECT;
+        var p=n.parentNode;
+        while(p&&p!==D.body){
+          if(skip[p.tagName])return NodeFilter.FILTER_REJECT;
+          if(p.id&&(p.id==='turn-data'||p.id==='chartrail-data'||p.id==='costail-data'||p.id==='tod-epoch-secs'||p.id.indexOf('sm-')===0))return NodeFilter.FILTER_REJECT;
+          p=p.parentNode;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }});
+      var out=[],n;while((n=w.nextNode()))out.push(n);return out;
+    }
+    function updateCount(){fCount.textContent=(hits.length?(curHit+1):0)+' / '+hits.length;}
+    function focusHit(){
+      hits.forEach(function(m,i){m.classList.toggle('sm-hit-cur',i===curHit);});
+      if(curHit>=0&&hits[curHit])hits[curHit].scrollIntoView({behavior:'smooth',block:'center'});
+      updateCount();
+    }
+    function runFind(q){
+      clearMarks();
+      if(!q){updateCount();return;}
+      var ql=q.toLowerCase(),n=q.length;
+      textNodes().forEach(function(node){
+        var text=node.nodeValue,lower=text.toLowerCase(),idx=lower.indexOf(ql);
+        if(idx<0)return;
+        var frag=D.createDocumentFragment(),last=0;
+        while(idx>=0){
+          if(idx>last)frag.appendChild(D.createTextNode(text.slice(last,idx)));
+          var mk=D.createElement('mark');mk.className='sm-hit';mk.textContent=text.slice(idx,idx+n);
+          frag.appendChild(mk);hits.push(mk);last=idx+n;idx=lower.indexOf(ql,last);
+        }
+        if(last<text.length)frag.appendChild(D.createTextNode(text.slice(last)));
+        if(node.parentNode)node.parentNode.replaceChild(frag,node);
+      });
+      curHit=hits.length?0:-1;focusHit();
+    }
+    function stepHit(dir){if(!hits.length)return;curHit=(curHit+dir+hits.length)%hits.length;focusHit();}
+    function openFind(){rememberFocus();findbar.classList.add('on');fInput.value='';runFind('');fInput.focus();}
+    function closeFind(){findbar.classList.remove('on');clearMarks();updateCount();restoreFocus();}
+    fInput.addEventListener('input',function(){runFind(fInput.value);});
+    fInput.addEventListener('keydown',function(ev){if(ev.key==='Enter'){ev.preventDefault();stepHit(ev.shiftKey?-1:1);}});
+    fPrev.addEventListener('click',function(){stepHit(-1);});
+    fNext.addEventListener('click',function(){stepHit(1);});
+
+    // ---- help ----
+    function openHelp(){rememberFocus();showBackdrop(true);help.classList.add('on');var cb=help.querySelector('.sm-help-close');if(cb)cb.focus();}
+    function closeHelp(){help.classList.remove('on');if(!modalOpen())showBackdrop(false);restoreFocus();}
+    function toggleHelp(){help.classList.contains('on')?closeHelp():openHelp();}
+    help.addEventListener('keydown',function(ev){trap(help,ev);});
+    var _hClose=help.querySelector('.sm-help-close');if(_hClose)_hClose.addEventListener('click',closeHelp);
+
+    function closeAll(){if(palette.classList.contains('on'))closePalette();if(help.classList.contains('on'))closeHelp();if(findbar.classList.contains('on'))closeFind();}
+    backdrop.addEventListener('click',closeAll);
+
+    // ---- chip nav sync ----
+    var chips=[].slice.call(D.querySelectorAll('#sm-chip-nav .sm-chip'));
+    function setActiveChip(id){chips.forEach(function(c){var on=c.dataset.target===id;c.classList.toggle('sm-chip-active',on);c.setAttribute('aria-pressed',on?'true':'false');});}
+    chips.forEach(function(c){c.addEventListener('click',function(){
+      var id=c.dataset.target,s=sections.filter(function(x){return x.id===id;})[0];
+      if(s){curIdx=sections.indexOf(s);scrollToSection(s);}setActiveChip(id);
+    });});
+    function syncFromHash(){var raw=location.hash.replace(/^#/,'').split('&')[0];if(raw)setActiveChip(raw);}
+    window.addEventListener('hashchange',syncFromHash);syncFromHash();
+
+    // ---- global key router ----
+    window.addEventListener('keydown',function(ev){
+      if((ev.metaKey||ev.ctrlKey)&&(ev.key==='k'||ev.key==='K')){ev.preventDefault();togglePalette();return;}
+      if(ev.key==='Escape'){closeAll();return;}
+      if(isEditable(D.activeElement))return;
+      if(ev.key==='?'){ev.preventDefault();toggleHelp();return;}
+      if(anyOpen())return;
+      if(ev.key==='/'){ev.preventDefault();openFind();return;}
+      if(ev.key==='j'||ev.key==='J'||ev.key===']'){ev.preventDefault();nav(1);return;}
+      if(ev.key==='k'||ev.key==='K'||ev.key==='['){ev.preventDefault();nav(-1);return;}
+    });
+  });
+})();
+</script>"""
+
+
 def _build_chartrail_section_html(chartrail_data: list) -> str:
     """Return the chartrail section HTML for a given list of turn dicts.
 
@@ -4329,7 +4652,7 @@ def render_html(report: dict, variant: str = "single",
             f'<tr id="turn-{turn_key}" class="turn-row" data-session="{session_id[:8]}"'
             f' data-turn-id="{turn_key}" role="button" tabindex="0">'
             f'<td class="num">{t["index"]}</td>'
-            f'<td class="ts">{t["timestamp_fmt"]}</td>'
+            f'<td class="ts">{html_mod.escape(t["timestamp_fmt"])}</td>'
             f'<td class="model">{html_mod.escape(t["model"])}{_skill_badge}{_truncated_badge}</td>'
             f'{mode_td}'
             f'<td class="num">{t["input_tokens"]:,}</td>'
@@ -5505,6 +5828,24 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
 
     chartrail_script_html = _chartrail_script() if chartrail_section_html else ""
 
+    # Phase E — assemble the body into one block, stamp ``data-sm-section`` on
+    # named sections, and build the chip nav + overlay script. Joining the
+    # fragments with "\n" reproduces the prior per-line f-string layout
+    # byte-for-byte (each fragment previously sat on its own line); the stamp
+    # pass and overlay add only deterministic constant bytes.
+    body_html_block = "\n".join([
+        summary_cards_html, health_section_html, behavior_section_html,
+        usage_insights_html, waste_analysis_html, cache_efficiency_html,
+        velocity_html, cache_breaks_html, by_skill_html, by_subagent_type_html,
+        by_workflow_html, attribution_coverage_html, within_session_split_html,
+        tod_html, cost_treemap_html, chart_section_html, cost_over_time_html,
+        chartrail_section_html, table_section_html, request_units_html,
+        prompts_section_html, models_section_html, pricing_advisory_html,
+    ])
+    body_html_block, sm_chip_nav_html = _stamp_sections_and_build_chips(
+        body_html_block)
+    overlay_script_html = _overlay_js()
+
     title_suffix  = (" — Dashboard" if variant == "dashboard"
                      else " — Detail" if variant == "detail" else "")
     return f"""<!DOCTYPE html>
@@ -5515,39 +5856,19 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
 <title>Session Metrics — {slug}{title_suffix}</title>
 {chart_head_html}
 {_theme_css()}
+{_overlay_css()}
 {_theme_bootstrap_head_js()}
 </head>
 <body class="theme-console">
 <div class="shell">
 {nav_html}
+{sm_chip_nav_html}
 <header class="page-header">
   <h1>Session Metrics — {slug}{title_suffix}</h1>
   <p class="meta">Generated {generated} &nbsp;·&nbsp; Mode: {mode} &nbsp;·&nbsp;
   {len(sessions)} session{'s' if len(sessions) != 1 else ''}, {totals['turns']:,} turns &nbsp;·&nbsp; skill v{skill_version}</p>
 </header>
-{summary_cards_html}
-{health_section_html}
-{behavior_section_html}
-{usage_insights_html}
-{waste_analysis_html}
-{cache_efficiency_html}
-{velocity_html}
-{cache_breaks_html}
-{by_skill_html}
-{by_subagent_type_html}
-{by_workflow_html}
-{attribution_coverage_html}
-{within_session_split_html}
-{tod_html}
-{cost_treemap_html}
-{chart_section_html}
-{cost_over_time_html}
-{chartrail_section_html}
-{table_section_html}
-{request_units_html}
-{prompts_section_html}
-{models_section_html}
-{pricing_advisory_html}
+{body_html_block}
 <footer class="foot">
   <span class="muted">session-metrics · {generated}</span>
 </footer>
@@ -5557,6 +5878,7 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
 {turn_drawer_html}
 {drawer_script_html}
 {chartrail_script_html}
+{overlay_script_html}
 {_theme_bootstrap_body_js()}
 </body>
 </html>"""

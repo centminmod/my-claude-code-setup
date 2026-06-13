@@ -3,6 +3,38 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.76.0 — 2026-06-13
+
+### Interactive HTML overlay (minor)
+
+A keyboard-driven interactive layer on every HTML page — all inline JS/CSS, no
+new dependency, static-export contract preserved. The palette, find bar, J/K
+navigation and help work by reading section headings from the live DOM, so they
+cover every section (named or not); the chip nav covers the named sections.
+
+- **Command palette** (`Cmd`/`Ctrl`+`K`) — fuzzy-jump to any section by heading
+  text; arrow keys + Enter to select; also offers a "Find in page…" action.
+- **Find bar** (`/`) — in-page text search with `<mark>` highlighting, match
+  counter, and prev/next cycling (`Enter` / `Shift+Enter`). Excludes the JSON
+  data blobs and the overlay's own chrome.
+- **Section navigation** — `J` / `]` next, `K` / `[` previous; smooth-scrolls
+  and syncs the URL hash (preserving the active `theme=`).
+- **Help overlay** (`?`) — a keyboard-shortcut cheatsheet with a close button.
+- **Chip nav band** — a sticky row of section chips (shown when ≥3 named
+  sections are present), kept in sync with the URL hash; suppressed on sparse
+  variants like the detail page.
+- The overlay also ships on the three companion pages (Workflows + both Tasks
+  pages). All colours come from the existing theme vars, so it adapts across the
+  four themes; `/`, `?` and `J`/`K` are suppressed while a text field is focused.
+
+Accessibility: dialogs carry `role`/`aria-modal`, the palette combobox exposes
+`aria-controls` / `aria-expanded` / `aria-activedescendant`, the find counter is
+`aria-live`, and the palette/help trap and restore focus.
+
+Also: hardened HTML escaping of the per-turn timestamp cell in the timeline
+table (a pre-existing gap surfaced during this release's review) — a no-op on
+well-formed timestamps, defensive against malformed JSONL.
+
 ## v1.75.0 — 2026-06-13
 
 ### Static visualizations (minor)
