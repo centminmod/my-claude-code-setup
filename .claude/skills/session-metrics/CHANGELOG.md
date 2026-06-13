@@ -3,6 +3,45 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.74.0 — 2026-06-13
+
+### Accuracy & correctness disciplines (minor)
+
+Six correctness hardenings that protect the report's core value — accurate,
+reproducible numbers — without changing the common-case output:
+
+- **Deterministic multi-session fold order.** Instance-scope (`--all-projects`)
+  cost sums now visit projects in a stable slug order before folding, and the
+  merged `content_blocks` / `null_metric_counts` dicts use sorted keys, so the
+  JSON/HTML export bytes are reproducible run-to-run regardless of the OS's
+  directory-scan order. (Fixes a latent nondeterminism in the per-session fold.)
+- **Null-vs-zero discipline.** Totals now carry `null_metric_counts`, recording
+  how many turns had an *unmeasured* metric (currently `latency_seconds`, which
+  is genuinely absent on a stream's first turn) versus a measured zero — so a
+  consumer can read an aggregate as a lower bound rather than assuming full
+  coverage.
+- **Negative cache savings are surfaced, never hidden.** When cache writes cost
+  more than reads saved, the KPI card relabels to "Cache net cost" (amber), the
+  per-turn drawer shows "Cache net cost vs no-cache", and the text footer reads
+  "Cache cost vs no-cache baseline" — instead of a misleading $0.0000.
+- **CSV formula-injection hardening.** Every CSV export (session, project,
+  instance, and the two compare CSVs) routes cells through a writer proxy that
+  prefixes genuinely-textual cells beginning with `= + - @`/tab/CR/LF with a
+  single quote. Numeric strings (e.g. a negative cost) are left untouched, and
+  spreadsheets strip the escape on display.
+- **Velocity discipline.** A new `velocity` report key reports cost- and
+  token-per-active-minute plus p50/p90/mean turn-cycle seconds, computed over a
+  single filtered sample (units with a usable duration) with each unit's
+  wall-clock capped at 30 minutes so one outlier can't swamp the cohort.
+- **Pricing provenance + `--refresh-pricing`.** Reports now embed the rate-table
+  snapshot date and the list of any models priced at family-tier fallback (also
+  shown as an HTML "Pricing advisory" when present). The new `--refresh-pricing
+  <file.json>` flag supplements rates for *unresolved* models only — it never
+  overwrites a known model's rate.
+
+No change to existing cost totals or the common-case export bytes; new report
+keys are additive.
+
 ## v1.73.2 — 2026-06-13
 
 ### Fix: Session Health / Behavior sections now theme-aware (patch)

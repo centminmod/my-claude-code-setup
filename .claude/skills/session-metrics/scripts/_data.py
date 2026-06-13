@@ -20,6 +20,55 @@ def _sm():
     return sys.modules["session_metrics"]
 
 
+# C.4: CSV formula-injection hardening. Spreadsheet apps (Excel, LibreOffice,
+# Google Sheets) execute a cell as a formula when its first character is one of
+# ``= + - @`` or a leading tab/CR/LF. A transcript field that a user controls
+# (model id, slug, prompt snippet, tool name) could therefore smuggle a formula
+# into a CSV export and run on open. We neutralise such cells with a leading
+# apostrophe — the de-facto convention every major spreadsheet honours.
+_CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+
+def _csv_safe(cell):
+    """Return ``cell`` neutralised against CSV formula injection.
+
+    Only string cells are touched; ints/floats/bools/None pass through so the
+    numeric columns are unaffected. A string that *parses as a number* (e.g. a
+    negative cost rendered as ``"-0.5"``) is left alone — prefixing it would
+    corrupt a legitimately numeric value — so only genuinely textual cells that
+    open with an injection character get the apostrophe.
+    """
+    if not isinstance(cell, str) or not cell:
+        return cell
+    if cell[0] in _CSV_INJECTION_PREFIXES:
+        try:
+            float(cell)
+        except ValueError:
+            return "'" + cell
+    return cell
+
+
+class _SafeCsvWriter:
+    """``csv.writer`` proxy that runs every cell through :func:`_csv_safe`.
+
+    Wrapping at the writer-construction point means all current and future
+    ``writerow`` call sites are hardened automatically, rather than auditing
+    dozens of individual list literals.
+    """
+
+    __slots__ = ("_w",)
+
+    def __init__(self, writer):
+        self._w = writer
+
+    def writerow(self, row):
+        return self._w.writerow([_csv_safe(c) for c in row])
+
+    def writerows(self, rows):
+        for row in rows:
+            self.writerow(row)
+
+
 @functools.lru_cache(maxsize=128)
 def _pricing_for(model: str) -> dict[str, float]:
     """Resolve a model ID to its rate dict.
@@ -74,6 +123,59 @@ def _pricing_for(model: str) -> dict[str, float]:
             return rates
     _sm()._UNKNOWN_MODELS_SEEN.add(model)
     return _sm()._DEFAULT_PRICING
+
+
+def _load_pricing_supplement(path: str, unresolved_only: bool = True) -> None:
+    """C.6: supplement ``_PRICING`` from a JSON file for unresolved models only.
+
+    A model is "unresolved" when it has no exact key in ``_PRICING`` — that is
+    the set that otherwise falls back to family-tier rates. By default we never
+    overwrite an existing exact entry (``unresolved_only``), so a stale
+    side-file can't replace a rate the table already gets right. The file maps
+    ``model-id -> {input, output, cache_read?, cache_write?, cache_write_1h?}``
+    in USD per million tokens; missing cache tiers default from the input rate
+    using the standard Anthropic ratios. Non-fatal: a missing/unparseable file
+    or a malformed entry warns to stderr and the run continues with the
+    built-in table.
+    """
+    sm = _sm()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as exc:
+        print(f"[warn] --refresh-pricing: could not load {path!r}: {exc}",
+              file=sys.stderr)
+        return
+    if not isinstance(data, dict):
+        print(f"[warn] --refresh-pricing: {path!r} must be a JSON object "
+              "mapping model-id -> rate dict; ignoring.", file=sys.stderr)
+        return
+    applied: list[str] = []
+    for model, rates in data.items():
+        if not isinstance(rates, dict):
+            continue
+        if unresolved_only and model in sm._PRICING:
+            continue  # never clobber a known-correct exact entry
+        try:
+            inp = float(rates["input"])
+            entry = {
+                "input":          inp,
+                "output":         float(rates["output"]),
+                "cache_read":     float(rates.get("cache_read", inp * 0.1)),
+                "cache_write":    float(rates.get("cache_write", inp * 1.25)),
+                "cache_write_1h": float(rates.get("cache_write_1h", inp * 2.0)),
+            }
+        except (KeyError, TypeError, ValueError):
+            print(f"[warn] --refresh-pricing: skipping {model!r} "
+                  "(needs numeric 'input' and 'output' rates).", file=sys.stderr)
+            continue
+        sm._PRICING[model] = entry
+        sm._UNKNOWN_MODELS_SEEN.discard(model)
+        applied.append(model)
+    if applied:
+        _pricing_for.cache_clear()
+        print(f"[refresh-pricing] supplemented {len(applied)} model(s): "
+              f"{', '.join(sorted(applied))}", file=sys.stderr)
 
 
 def _fast_multiplier_for(model: str) -> float:
@@ -577,6 +679,14 @@ def _totals_from_turns(turn_records: list[dict]) -> dict:
                             "tool_result": 0, "image": 0,
                             "server_tool_use": 0, "advisor_tool_result": 0}
     thinking_turn_count = 0
+    # C.2: null-vs-zero discipline. ``latency_seconds`` is the one per-turn
+    # numeric that is genuinely *unmeasured* (set to None) rather than measured
+    # zero — it has no preceding timestamp to diff against on the first turn of
+    # a stream. Counting those turns lets a consumer read any latency aggregate
+    # as covering (turns − latency_seconds_null) turns, not all turns. (The
+    # cache_write_5m/1h and no_cache_cost fields are always populated by
+    # _build_turn_record, so they have no null state worth tracking.)
+    latency_null = 0
     name_counts: dict[str, int] = {}
     for r in turn_records:
         # Non-billable ``<synthetic>`` orchestrator/resume placeholders carry
@@ -587,6 +697,8 @@ def _totals_from_turns(turn_records: list[dict]) -> dict:
             t["synthetic_turns"] += 1
             continue
         t["turns"]        += 1
+        if r.get("latency_seconds") is None:
+            latency_null += 1
         t["input"]        += r["input_tokens"]
         t["output"]       += r["output_tokens"]
         t["cache_read"]   += r["cache_read_tokens"]
@@ -624,6 +736,7 @@ def _totals_from_turns(turn_records: list[dict]) -> dict:
             name_counts[name] = name_counts.get(name, 0) + 1
     t["content_blocks"] = content_block_totals
     t["thinking_turn_count"] = thinking_turn_count
+    t["null_metric_counts"] = {"latency_seconds": latency_null}
     _derive_total_fields(t, name_counts)
     # Internal field carried so `_add_totals` (P4.4) can fold per-session
     # subtotals into a project-wide total without re-iterating turns. Stripped
@@ -667,9 +780,21 @@ def _add_totals(a: dict, b: dict) -> dict:
     cb_a = a.get("content_blocks") or {}
     cb_b = b.get("content_blocks") or {}
     cb: dict[str, int] = {}
-    for k in set(cb_a) | set(cb_b):
+    # C.1: sort the merged key set so the folded `content_blocks` dict has a
+    # deterministic key order regardless of which session is folded first —
+    # a bare `set(...)` union iterates in hash order and would let JSON byte
+    # output drift across runs at multi-session scope.
+    for k in sorted(set(cb_a) | set(cb_b)):
         cb[k] = int(cb_a.get(k, 0)) + int(cb_b.get(k, 0))
     out["content_blocks"] = cb
+    # C.2: fold per-metric null counts with integer addition, sorted keys for a
+    # deterministic merged-dict order (same reason as the content_blocks merge).
+    nm_a = a.get("null_metric_counts") or {}
+    nm_b = b.get("null_metric_counts") or {}
+    out["null_metric_counts"] = {
+        k: int(nm_a.get(k, 0)) + int(nm_b.get(k, 0))
+        for k in sorted(set(nm_a) | set(nm_b))
+    }
     nc_a = a.get("_tool_name_counts") or {}
     nc_b = b.get("_tool_name_counts") or {}
     nc: dict[str, int] = dict(nc_a)
@@ -1583,6 +1708,50 @@ def _build_request_units(sessions: list[dict]) -> list[dict]:
                     t.get("is_post_compaction") for t in turns),
             })
     return units
+
+
+# C.5: velocity discipline. A single request unit can carry a wall-clock
+# outlier — a long-running agent, or a prompt the user left mid-stream — that
+# would dominate any throughput average. Cap each unit's contribution at
+# 30 minutes so one outlier can't swamp the cohort. Idle gaps between units
+# (lunch breaks) are excluded from active time by construction (we sum capped
+# *work* wall-clock, never the idle gap), so no separate idle cap is needed.
+_VELOCITY_CYCLE_CAP_S = 1800
+
+
+def _compute_velocity_stats(units: list[dict]) -> dict:
+    """Throughput statistics over the request units' wall-clock.
+
+    The "filtered sample" is the set of units with a measured positive
+    ``wall_clock_seconds`` (units with no usable timestamp diff contribute no
+    duration and would otherwise drag the mean toward zero). Mean and the p50/
+    p90 percentiles are computed over that *same* capped sample so they describe
+    one cohort, and the per-active-minute rates use the capped active minutes as
+    the denominator. Returns ``{}`` when no unit has a usable duration.
+    """
+    sample: list[int] = []
+    cost = 0.0
+    tokens = 0
+    for u in units:
+        w = int(u.get("wall_clock_seconds", 0))
+        if w <= 0:
+            continue
+        sample.append(min(w, _VELOCITY_CYCLE_CAP_S))
+        cost += float(u.get("combined_cost_usd", 0.0))
+        tokens += int(u.get("total_tokens", 0))
+    if not sample:
+        return {}
+    active_minutes = sum(sample) / 60.0
+    return {
+        "unit_count":            len(units),
+        "filtered_unit_count":   len(sample),
+        "active_minutes":        round(active_minutes, 4),
+        "mean_cycle_s":          round(sum(sample) / len(sample), 2),
+        "p50_cycle_s":           _sm()._percentile(sample, 50),
+        "p90_cycle_s":           _sm()._percentile(sample, 90),
+        "cost_per_active_min":   round(cost / active_minutes, 6) if active_minutes else 0.0,
+        "tokens_per_active_min": round(tokens / active_minutes, 2) if active_minutes else 0.0,
+    }
 
 
 # Schema version of the grouping.json consumed by ``--render-tasks``. Bumped

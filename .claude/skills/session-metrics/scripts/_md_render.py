@@ -298,7 +298,7 @@ def render_csv(report: dict) -> str:
     if report.get("mode") == "instance":
         return _sm()._render_instance_csv(report)
     out = io.StringIO()
-    w = csv_mod.writer(out)
+    w = _sm()._SafeCsvWriter(csv_mod.writer(out))  # C.4: formula-injection hardening
     w.writerow([f"# Session Metrics skill v{report.get('skill_version', '?')}",
                 report.get("generated_at", ""), report.get("mode", "")])
     w.writerow(["session_id", "turn", "timestamp", "model", "speed",

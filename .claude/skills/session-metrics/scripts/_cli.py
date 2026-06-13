@@ -351,6 +351,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-cache", action="store_true",
                    help="Skip the parse cache at ~/.cache/session-metrics/parse/ "
                         "and always re-parse JSONL from scratch.")
+    p.add_argument("--refresh-pricing", metavar="PATH", default=None,
+                   help="Supplement the built-in pricing table from a JSON file "
+                        "for UNRESOLVED models only (those without an exact "
+                        "entry). Shape: {\"model-id\": {\"input\": N, \"output\": "
+                        "N, \"cache_read\"?: N, \"cache_write\"?: N, "
+                        "\"cache_write_1h\"?: N}} (USD per million tokens). "
+                        "Never overwrites a known model's rate; missing cache "
+                        "tiers default from the input rate. Non-fatal on a bad "
+                        "file (warns and continues).")
     p.add_argument("--no-self-cost", action="store_true",
                    help="Suppress the self-cost meta-metric (skill's own "
                         "running-total cost in this session). Drops the "
@@ -812,6 +821,10 @@ def main() -> None:
     # --no-fast-premium: suppress the fast-mode cost multiplier (parity with
     # pre-fast-premium exports). Read in _cost / _no_cache_cost / extra_1h_cost.
     _sm()._FAST_PREMIUM_DISABLED = bool(getattr(args, "no_fast_premium", False))
+    # C.6: apply a pricing supplement (unresolved models only) before any cost
+    # math runs, so the supplemented rates flow into every turn's cost.
+    if getattr(args, "refresh_pricing", None):
+        _sm()._load_pricing_supplement(args.refresh_pricing)
     _maybe_warn_chart_license(chart_lib, formats)
     # Apply --projects-dir / --cache-dir / --export-dir overrides early so
     # the corresponding helpers (_projects_dir, _parse_cache_dir, _export_dir)

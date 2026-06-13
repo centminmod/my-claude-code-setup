@@ -42,7 +42,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.73.2"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.74.0"  # embedded in every export; bump when plugin version bumps
+# C.6: the date the built-in `_PRICING` table was last verified against the
+# published rate card (mirrors the "Snapshot:" comment below). Embedded in
+# every report so a reader can see how fresh the cost math is and decide
+# whether to supply `--refresh-pricing` for any unresolved models.
+_PRICING_SNAPSHOT_DATE = "2026-04-17"
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -655,6 +660,7 @@ del _rp_m
 
 _da_m = _load_leaf("_data")
 _pricing_for                = _da_m._pricing_for
+_load_pricing_supplement    = _da_m._load_pricing_supplement
 _fast_multiplier_for        = _da_m._fast_multiplier_for
 _parse_jsonl                = _da_m._parse_jsonl
 _parse_cache_dir            = _da_m._parse_cache_dir
@@ -690,6 +696,8 @@ _accumulate_bucket          = _da_m._accumulate_bucket
 _finalise_skill_rows        = _da_m._finalise_skill_rows
 _build_by_skill             = _da_m._build_by_skill
 _build_request_units        = _da_m._build_request_units
+_compute_velocity_stats     = _da_m._compute_velocity_stats
+_VELOCITY_CYCLE_CAP_S       = _da_m._VELOCITY_CYCLE_CAP_S
 _detect_multi_intent        = _da_m._detect_multi_intent
 _assemble_tasks             = _da_m._assemble_tasks
 _build_tasks_skeleton       = _da_m._build_tasks_skeleton
@@ -705,6 +713,8 @@ _finalise_subagent_rows     = _da_m._finalise_subagent_rows
 _build_by_subagent_type     = _da_m._build_by_subagent_type
 _build_by_workflow          = _da_m._build_by_workflow
 _write_evidence_pack        = _da_m._write_evidence_pack
+_csv_safe                   = _da_m._csv_safe
+_SafeCsvWriter              = _da_m._SafeCsvWriter
 del _da_m
 
 _he_m = _load_leaf("_health")

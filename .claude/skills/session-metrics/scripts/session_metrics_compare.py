@@ -2061,7 +2061,7 @@ def _render_controlled_csv(report: dict) -> str:
     - Blank row, then a ``# UNMATCHED`` section noting counts per side.
     """
     out = io.StringIO()
-    w = csv_mod.writer(out)
+    w = _main()._SafeCsvWriter(csv_mod.writer(out))  # C.4: formula-injection hardening
     w.writerow([
         "pair_index", "fingerprint", "suite_prompt_name",
         "a_model", "a_input_tokens", "a_output_tokens",
@@ -2339,7 +2339,7 @@ def _render_aggregate_md(report: dict) -> str:
 def _render_aggregate_csv(report: dict) -> str:
     """Mode-2 CSV renderer — two aggregate rows + summary + advisories."""
     out = io.StringIO()
-    w = csv_mod.writer(out)
+    w = _main()._SafeCsvWriter(csv_mod.writer(out))  # C.4: formula-injection hardening
 
     w.writerow([
         "side", "model_family", "dominant_model_id", "context_tier", "effort",

@@ -48,9 +48,18 @@ def _footer_text(totals: dict, models: dict[str, dict],
         time_of_day: Optional ``time_of_day`` report section.  When provided,
             a UTC-bucketed user activity summary is appended.
     """
+    # C.3: surface negative savings rather than hiding the sign. When cache
+    # writes outweigh read savings the "savings" is actually a net cost; never
+    # clamp it to zero — a misleadingly cheerful $0.0000 would bury a real
+    # signal that caching cost the user money on this run.
+    _sav = totals["cache_savings"]
+    if _sav >= 0:
+        _sav_line = f"Cache savings vs no-cache baseline : ${_sav:.4f}"
+    else:
+        _sav_line = f"Cache cost vs no-cache baseline (writes > reads): +${abs(_sav):.4f}"
     lines = [
         "",
-        f"Cache savings vs no-cache baseline : ${totals['cache_savings']:.4f}",
+        _sav_line,
         f"Cache hit ratio (read / total input): {totals['cache_hit_pct']:.1f}%",
     ]
     if totals.get("total_cache_turns", 0) > 0:
@@ -4230,6 +4239,27 @@ def render_html(report: dict, variant: str = "single",
             '</section>'
         )
 
+    # C.6: durable pricing advisory. Surfaces the rate-table snapshot date and
+    # any models priced at family-tier fallback (mirrors the stderr [warn], but
+    # in the exported file). Reuses the theme-verified .health-panel chrome so
+    # no new across-theme CSS is introduced. Auto-hidden when every model
+    # resolved to an exact rate.
+    pricing_advisory_html = ""
+    _unpriced = report.get("unpriced_models") or []
+    if _unpriced:
+        _snap = html_mod.escape(str(report.get("pricing_snapshot_date", "") or ""))
+        _models_esc = ", ".join(html_mod.escape(m) for m in _unpriced)
+        pricing_advisory_html = (
+            '<section class="section" id="pricing-advisory-section">\n'
+            '<div class="section-title"><h2>Pricing advisory</h2></div>\n'
+            '<div class="health-panel">\n'
+            f'<p style="color:var(--fg-dim)">Rate table snapshot: <strong>{_snap}</strong>. '
+            f'{len(_unpriced)} model(s) priced at family-tier fallback rates '
+            '(no exact entry). Pass <code>--refresh-pricing &lt;file.json&gt;</code> to '
+            f'supplement these with current rates: {_models_esc}</p>\n'
+            '</div>\n</section>'
+        )
+
     summary_cards_html = ""
     health_section_html = ""
     behavior_section_html = ""
@@ -4373,10 +4403,24 @@ def render_html(report: dict, variant: str = "single",
                             if len(sessions) == 1 else None)
         behavior_section_html = (_build_session_behavior_html(_single_behavior)
                                  if _single_behavior else "")
+        # C.3: never hide a negative cache "saving". When writes cost more than
+        # reads saved, relabel the card to "Cache net cost" and tint the value
+        # amber (a semantic status colour, intentionally theme-constant) so the
+        # sign is unmistakable instead of reading as a cheerful $0.0000.
+        _kpi_sav = totals["cache_savings"]
+        if _kpi_sav >= 0:
+            _kpi_sav_card = (
+                '  <div class="kpi cat-save"><div class="kpi-label">Cache savings</div>'
+                f'<div class="kpi-val">${_kpi_sav:.4f}</div></div>')
+        else:
+            _kpi_sav_card = (
+                '  <div class="kpi cat-save" title="Cache writes cost more than reads saved on this run">'
+                '<div class="kpi-label">Cache net cost</div>'
+                f'<div class="kpi-val" style="color:#d29922">+${abs(_kpi_sav):.4f}</div></div>')
         summary_cards_html = f'''\
 <div class="kpi-grid">{health_card}
   <div class="kpi featured cat-tokens"><div class="kpi-label">Total cost (USD)</div><div class="kpi-val">${totals['cost']:.4f}</div></div>{plan_leverage_card}
-  <div class="kpi cat-save"><div class="kpi-label">Cache savings</div><div class="kpi-val">${totals['cache_savings']:.4f}</div></div>
+{_kpi_sav_card}
   <div class="kpi"><div class="kpi-label">Cache hit ratio</div><div class="kpi-val">{totals['cache_hit_pct']:.1f}%</div></div>{partial_hit_card}{subagent_share_card}{subagent_turn_share_card}
   <div class="kpi cat-tokens"><div class="kpi-label">Total input tokens</div><div class="kpi-val">{totals['total_input']:,}</div></div>
   <div class="kpi cat-tokens"><div class="kpi-label">Input tokens (new)</div><div class="kpi-val">{totals['input']:,}</div></div>
@@ -4891,8 +4935,9 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
     setText('cost', '$' + (t.cost || 0).toFixed(4));
     var savings = (t.nc || 0) - (t.cost || 0);
     var sEl = sel('cache-savings');
-    if (savings > 0) { sEl.textContent = 'Cache savings vs no-cache: $' + savings.toFixed(4); sEl.hidden = false; }
-    else { sEl.textContent = ''; sEl.hidden = true; }
+    if (savings > 0) { sEl.textContent = 'Cache savings vs no-cache: $' + savings.toFixed(4); sEl.style.color = ''; sEl.hidden = false; }
+    else if (savings < 0) { sEl.textContent = 'Cache net cost vs no-cache: +$' + (-savings).toFixed(4); sEl.style.color = '#d29922'; sEl.hidden = false; }
+    else { sEl.textContent = ''; sEl.style.color = ''; sEl.hidden = true; }
 
     var asstSect = sel('assistant-sec');
     var asstSnip = sel('assistant-snippet');
@@ -5090,6 +5135,7 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
 {request_units_html}
 {prompts_section_html}
 {models_section_html}
+{pricing_advisory_html}
 <footer class="foot">
   <span class="muted">session-metrics · {generated}</span>
 </footer>

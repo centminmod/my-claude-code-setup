@@ -857,6 +857,16 @@ def _build_report(
     # every turn — so each unit can aggregate cost, tokens, tool mix and
     # waste signals. Honest framing: per-utterance, NOT semantic tasks.
     report["request_units"] = _sm()._build_request_units(sessions_out)
+    # C.5: velocity discipline. Throughput stats over the request units, with a
+    # per-unit wall-clock cap and a single filtered sample shared by mean/p50/
+    # p90. ``{}`` when no unit has a usable duration; renderers auto-hide.
+    report["velocity"] = _sm()._compute_velocity_stats(report["request_units"])
+    # C.6: stamp pricing provenance. ``_UNKNOWN_MODELS_SEEN`` is fully populated
+    # by now (every turn has been priced), so the report can surface which
+    # models fell back to family-tier rates and how fresh the table is — moving
+    # that signal from a transient stderr line into the durable export.
+    report["pricing_snapshot_date"] = _sm()._PRICING_SNAPSHOT_DATE
+    report["unpriced_models"] = sorted(_sm()._UNKNOWN_MODELS_SEEN)
     # Drop the internal flag after use so the report dict stays clean
     # for downstream renderers / JSON export.
     report.pop("_suppress_model_compare_insight", None)
@@ -1031,6 +1041,7 @@ def _aggregate_totals(project_reports: list[dict],
     out["advisor_cost_usd"] = 0.0
     content_blocks = {"thinking": 0, "tool_use": 0, "text": 0,
                       "tool_result": 0, "image": 0}
+    null_metric_counts: dict[str, int] = {}
     thinking_turn_count = 0
     walk_names = name_counts is None
     if walk_names:
@@ -1042,6 +1053,9 @@ def _aggregate_totals(project_reports: list[dict],
         cb = t.get("content_blocks") or {}
         for k, v in cb.items():
             content_blocks[k] = content_blocks.get(k, 0) + int(v or 0)
+        nm = t.get("null_metric_counts") or {}
+        for k, v in nm.items():
+            null_metric_counts[k] = null_metric_counts.get(k, 0) + int(v or 0)
         thinking_turn_count += t.get("thinking_turn_count", 0)
         # Tool-name counts cannot be read from the per-project ``totals`` dict:
         # the per-project name map (``_tool_name_counts``) is stripped in
@@ -1062,6 +1076,10 @@ def _aggregate_totals(project_reports: list[dict],
     # keep the same totals schema as session/project scope even when every
     # content-block count is zero.
     out["content_blocks"] = content_blocks
+    # C.2: carry merged null counts (sorted keys) so instance JSON keeps the
+    # same totals schema as session/project scope.
+    out["null_metric_counts"] = {k: null_metric_counts[k]
+                                 for k in sorted(null_metric_counts)}
     # Store unconditionally (not gated on a truthy count) so the derived
     # ``thinking_turn_pct`` below never KeyErrors on a thinking-free instance.
     out["thinking_turn_count"] = thinking_turn_count
@@ -1236,6 +1254,15 @@ def _build_instance_report(
     ``message.usage`` for token tallies; the slimming drops the message
     content payloads that dominated instance-scope memory.
     """
+    # C.1: pin a deterministic fold order. The caller builds ``project_reports``
+    # in directory-scan order, which varies across OSes/filesystems. Every
+    # downstream float fold below (``_aggregate_totals``, ``_aggregate_models``,
+    # ``_merge_bucket_rows``, the ``all_sessions_out`` flatten) visits projects
+    # in this list's order, so a stable sort by slug makes instance-scope cost
+    # sums — and therefore the JSON/HTML export bytes — reproducible run-to-run.
+    # Display ordering (``projects`` below) is re-sorted by cost separately.
+    project_reports = sorted(project_reports, key=lambda pr: pr.get("slug", ""))
+
     # Collect per-project summaries (no turns)
     projects: list[dict] = []
     for pr in project_reports:
@@ -1392,5 +1419,8 @@ def _build_instance_report(
         # disabled" framing in instance scope.
         "include_subagents": any(pr.get("include_subagents") for pr in project_reports),
     }
+    # C.6: pricing provenance at instance scope (same keys as session/project).
+    report["pricing_snapshot_date"] = _sm()._PRICING_SNAPSHOT_DATE
+    report["unpriced_models"] = sorted(_sm()._UNKNOWN_MODELS_SEEN)
     return report
 

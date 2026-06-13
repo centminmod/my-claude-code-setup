@@ -1179,7 +1179,7 @@ def _render_instance_csv(report: dict) -> str:
     column. Per-turn rows would explode at instance scale; per-session
     rows give a CSV that's pivotable in Excel without being unwieldy."""
     out = io.StringIO()
-    w = csv_mod.writer(out)
+    w = _sm()._SafeCsvWriter(csv_mod.writer(out))  # C.4: formula-injection hardening
     w.writerow([f"# Session Metrics skill v{report.get('skill_version', '?')}",
                 report.get("generated_at", ""), report.get("mode", "")])
     w.writerow([
