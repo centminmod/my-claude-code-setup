@@ -3,6 +3,24 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.79.0 — 2026-06-14
+
+### GLM-5.2 pricing detection (minor)
+
+Adds an explicit rate entry + regex guard for Z.ai's **GLM-5.2** (`glm-5.2`,
+including `glm-5.2[1m]` and date/`-air` suffixed variants), priced at the same
+tier as GLM-5.1 (input $1.05 / output $3.50 per 1M tokens).
+
+- **Bug fixed:** without the guard, `glm-5.2…` IDs silently prefix-matched the
+  cheaper bare `glm-5` entry ($0.60 / $2.08) — a ~43% input / ~41% output
+  undercharge — and, because the prefix sweep is the *silent* resolution tier,
+  no unknown-model advisory fired to flag it. This is the same `glm-5`-is-a-
+  strict-prefix trap already documented for `glm-5.1`.
+- The `(?!\d)` boundary keeps a hypothetical `glm-5.20`+ from gluing on (falls
+  through to the nearest `glm-5` prefix, matching the `glm-5.10` behaviour).
+- Tests extended with `glm-5.2`, `glm-5.2[1m]`, `glm-5.2-air` (→ $1.05) and the
+  `glm-5.20` boundary case (→ $0.60).
+
 ## v1.78.0 — 2026-06-13
 
 ### Auto-insights companion (minor)

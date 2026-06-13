@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.78.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.79.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -127,6 +127,10 @@ _PRICING: dict[str, dict[str, float]] = {
     "glm-4.7":                   {"input":  0.38, "output":  1.74, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "glm-5":                     {"input":  0.60, "output":  2.08, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "glm-5.1":                   {"input":  1.05, "output":  3.50, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # GLM-5.2 shares GLM-5.1's rate tier (Z.ai, 2026-06). Own key for export
+    # traceability; a dedicated regex guard below keeps it off the cheaper bare
+    # `glm-5` prefix (same trap documented for glm-5.1).
+    "glm-5.2":                   {"input":  1.05, "output":  3.50, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     # Google Gemma 4 — OpenRouter: google/gemma-4-26b-a4b-it @ $0.06/$0.33; prefix covers Ollama variants
     "google/gemma-4-26b-a4b":    {"input":  0.06, "output":  0.33, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "gemma4":                    {"input":  0.06, "output":  0.33, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -219,6 +223,12 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # `glm-5.1:1m`, `glm-5.1-20260101`) prefix-matches the cheaper `glm-5` entry
     # and undercharges. `(?!\d)` keeps a hypothetical `glm-5.10`+ from gluing on.
     (re.compile(r"glm-5\.1(?!\d)",                   re.I), _PRICING["glm-5.1"]),
+    # GLM-5.2 before the bare glm-5 prefix entry — identical guard rationale to
+    # glm-5.1: `glm-5` is a strict prefix of `glm-5.2`, so without this a
+    # suffixed variant (`glm-5.2-air`, `glm-5.2[1m]`, `glm-5.2-20260601`)
+    # prefix-matches the cheaper `glm-5` entry and undercharges. `(?!\d)` keeps
+    # a hypothetical `glm-5.20`+ from gluing on.
+    (re.compile(r"glm-5\.2(?!\d)",                   re.I), _PRICING["glm-5.2"]),
     # ----- Opus 4.0 (anchored regex; replaces the prefix-fallback `claude-opus-4`
     # entry that was removed in v1.41.2). Without this anchored form, the bare
     # `claude-opus-4` prefix in `_PRICING` would silently catch any future

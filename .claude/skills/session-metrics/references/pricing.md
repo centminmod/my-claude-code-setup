@@ -158,6 +158,7 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 | `glm-4.7`                    |  0.38 |   1.74 | `glm-4\.7`    |
 | `glm-5`                      |  0.60 |   2.08 | `glm-5`       |
 | `glm-5.1`                    |  1.05 |   3.50 | `glm-5\.1`    |
+| `glm-5.2`                    |  1.05 |   3.50 | `glm-5\.2`    |
 | `z-ai/glm-5-turbo`           |  1.20 |   4.00 | `glm-5-turbo` |
 
 ### Google Gemma 4
