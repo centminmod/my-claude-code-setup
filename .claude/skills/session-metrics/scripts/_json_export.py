@@ -116,7 +116,11 @@ def render_json(report: dict, *, redact_user_prompts: bool = False) -> str:
     if redact_user_prompts and export.get("request_units"):
         export["request_units"] = _redact_request_units_for_json(
             export["request_units"])
-    return json.dumps(export, indent=2)
+    # allow_nan=False: refuse to emit non-standard NaN/Infinity tokens (invalid
+    # per the JSON spec — strict parsers reject them). A finite-cost invariant
+    # holds in normal runs; this turns a silently-malformed export into a loud
+    # error if a poisoned value ever reaches here (see _load_pricing_supplement).
+    return json.dumps(export, indent=2, allow_nan=False)
 
 
 def _render_instance_json(report: dict) -> str:
@@ -132,4 +136,6 @@ def _render_instance_json(report: dict) -> str:
     # Convert time_of_day epoch lists to human-readable timestamps
     if "time_of_day" in export:
         export["time_of_day"] = _tod_for_json(export["time_of_day"])
-    return json.dumps(export, indent=2, default=str)
+    # allow_nan=False — see the session-scope export above: fail loud rather
+    # than emit invalid NaN/Infinity JSON tokens.
+    return json.dumps(export, indent=2, default=str, allow_nan=False)

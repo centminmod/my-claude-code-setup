@@ -548,10 +548,21 @@ def build_session_health(
     last_epoch = max(last_user_epoch or 0, last_assistant_epoch or 0)
     seconds_since_last = (now_epoch - last_epoch) if (now_epoch and last_epoch) else None
 
+    # A trailing tool-failure streak only means "ended in a failure spiral" if
+    # the session actually ended on tool activity. When the final real turn is a
+    # clean text-only completion (no tool calls, stopped on end_turn/stop_sequence),
+    # the agent recovered and answered — so the earlier failures are not a trailing
+    # streak. Zero it in that case to avoid misclassifying a recovered session as
+    # "errored". (The streak itself is still reported verbatim in signals.)
+    trailing_streak = tool_health["trailing_failure_streak"]
+    if (real and not (real[-1].get("tool_use_detail") or [])
+            and last_stop_reason in ("end_turn", "stop_sequence")):
+        trailing_streak = 0
+
     outcome_res = classify_outcome(
         turn_count=len(real),
         last_role=last_role,
-        trailing_failure_streak=tool_health["trailing_failure_streak"],
+        trailing_failure_streak=trailing_streak,
         last_assistant_text=last_assistant_text,
         last_stop_reason=last_stop_reason,
         seconds_since_last=seconds_since_last,

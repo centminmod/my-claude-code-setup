@@ -629,7 +629,10 @@ def _build_velocity_md(report: dict) -> str:
     v = report.get("velocity") or {}
     if not v or not v.get("filtered_unit_count"):
         return ""
-    return "\n".join([
+    n = int(v.get("filtered_unit_count", 0))
+    total_n = int(v.get("unit_count", 0))
+    excluded = max(0, total_n - n)
+    lines = [
         "## Velocity",
         "",
         "| Metric | Value |",
@@ -639,7 +642,17 @@ def _build_velocity_md(report: dict) -> str:
         f"| p50 request cycle | {v.get('p50_cycle_s', 0)}s |",
         f"| p90 request cycle | {v.get('p90_cycle_s', 0)}s |",
         f"| Active minutes | {float(v.get('active_minutes', 0.0)):,.1f} |",
-    ])
+        f"| Request units (timed) | {n} of {total_n} |",
+    ]
+    if excluded:
+        # Same disclosure as the HTML card: the timed cohort excludes
+        # single-turn / zero-duration units, so the rates describe that cohort,
+        # not the whole session.
+        lines.append("")
+        lines.append(f"> {excluded} request unit{'s' if excluded != 1 else ''} "
+                     "excluded — no measurable duration (single-turn / "
+                     "zero-wall-clock); throughput rates cover the timed cohort.")
+    return "\n".join(lines)
 
 
 def _build_cost_over_time_md(report: dict, top_n: int = 5) -> str:

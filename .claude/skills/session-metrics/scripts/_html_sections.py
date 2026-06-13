@@ -3139,7 +3139,14 @@ def _build_velocity_html(report: dict) -> str:
     total_n = int(v.get("unit_count", 0))
     active = float(v.get("active_minutes", 0.0) or 0.0)
     cap = _sm()._VELOCITY_CYCLE_CAP_S
+    # Spell out the excluded cohort: single-turn / zero-duration units have no
+    # measurable wall-clock and are dropped from the throughput numerator AND
+    # denominator (so the rates stay internally consistent for the timed cohort,
+    # but don't describe the whole session). Make that explicit when n < total.
+    excluded = max(0, total_n - n)
     sub = f'{n} of {total_n} request unit{"s" if total_n != 1 else ""}'
+    if excluded:
+        sub += f' ({excluded} excluded — no measurable duration)'
     cards = (
         f'<div class="kpi cat-time"><div class="kpi-label">Cost / active min</div>'
         f'<div class="kpi-val">${cpm:,.4f}</div>'

@@ -3,6 +3,36 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.80.0 — 2026-06-14
+
+### Audit-driven correctness & robustness fixes (minor)
+
+Three fixes from a multi-AI code-analysis audit of the v1.71.0–v1.79.0 range
+(session-health + Phases D–G). All citation-verified; 13 new regression tests.
+
+- **`--refresh-pricing` rejects non-finite / negative rates.** The supplement
+  loader converted rate fields with `float()`, which accepts `NaN`, `Infinity`,
+  `-Infinity` (and `json.load` parses those tokens by default) and negative
+  numbers — any of which silently poisoned every downstream cost figure, and
+  because the cache tiers derive from `input`, one bad value fanned out to all
+  five pricing slots. The loader now skips a model unless every rate is finite
+  and non-negative. JSON exports also pass `allow_nan=False`, so a poisoned
+  value fails loud instead of emitting invalid `NaN`/`Infinity` JSON tokens.
+- **Session outcome no longer mislabels a recovered session as `errored`.** A
+  trailing tool-failure streak (≥3 failed tool calls) was treated as "ended in
+  a failure spiral" even when the final turn was a clean text-only completion.
+  The streak is now zeroed when the last real turn is text-only and ended on
+  `end_turn`/`stop_sequence`; the raw `trailing_failure_streak` signal is still
+  reported verbatim.
+- **Velocity discloses its excluded cohort.** Single-turn / zero-duration
+  request units have no measurable wall-clock and are dropped from the
+  throughput cohort (the rates stay internally consistent for the timed cohort).
+  The HTML cards and Markdown table now state "N excluded — no measurable
+  duration" when timed units < total, so the rates aren't read as whole-session.
+
+No interface or flag changes. Behaviour changes are limited to the three cases
+above; all other output is byte-identical to v1.79.0.
+
 ## v1.79.0 — 2026-06-14
 
 ### GLM-5.2 pricing detection (minor)

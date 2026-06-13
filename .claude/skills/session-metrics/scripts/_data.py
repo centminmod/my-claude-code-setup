@@ -3,6 +3,7 @@ import bisect
 import functools
 import hashlib
 import json
+import math
 import os
 import pickle
 import re
@@ -168,6 +169,16 @@ def _load_pricing_supplement(path: str, unresolved_only: bool = True) -> None:
         except (KeyError, TypeError, ValueError):
             print(f"[warn] --refresh-pricing: skipping {model!r} "
                   "(needs numeric 'input' and 'output' rates).", file=sys.stderr)
+            continue
+        # Reject NaN / ±Inf / negative rates. ``float()`` happily accepts
+        # "NaN"/"Infinity" (and Python's json.load parses those tokens by
+        # default), and a negative is a valid float too — but any of them would
+        # silently poison every downstream cost figure (and, because the cache
+        # tiers above derive from ``inp``, one bad ``input`` fans out to all five
+        # slots). Guard the whole entry, finite-and-non-negative, before it lands.
+        if not all(math.isfinite(v) and v >= 0 for v in entry.values()):
+            print(f"[warn] --refresh-pricing: skipping {model!r} "
+                  "(rates must be finite and non-negative).", file=sys.stderr)
             continue
         sm._PRICING[model] = entry
         sm._UNKNOWN_MODELS_SEEN.discard(model)
