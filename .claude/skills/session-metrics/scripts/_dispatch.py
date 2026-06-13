@@ -944,6 +944,11 @@ def _run_all_projects(formats: list[str],
     # erase the gain on small projects. Order is preserved by collecting
     # results in submit-order rather than completion-order so per-project
     # ordering across `project_reports` matches the discovery order.
+    # One "today" reference shared by every per-project build and the instance
+    # build below, so all Phase F activity heatmaps agree on the today-backfill
+    # boundary within a single instance run (avoids N+1 independent clock reads).
+    _inst_now_epoch = int(datetime.now(UTC).timestamp())
+
     def _build_one_project(slug_and_raw: tuple[str, list]) -> dict:
         slug_, sessions_raw_ = slug_and_raw
         return _sm()._build_report(
@@ -956,6 +961,7 @@ def _run_all_projects(formats: list[str],
             include_subagents=include_subagents,
             compaction_events_by_session=instance_compaction,
             workflow_journals_by_session=instance_workflows,
+            now_epoch=_inst_now_epoch,
         )
 
     if len(project_inputs) > 1:
@@ -985,6 +991,7 @@ def _run_all_projects(formats: list[str],
         projects_dir=projects_dir,
         peak=peak,
         cache_break_threshold=cache_break_threshold,
+        now_epoch=_inst_now_epoch,
     )
     instance_report["_suppress_model_compare_insight"] = \
         suppress_model_compare_insight
@@ -1375,6 +1382,18 @@ def _render_instance_md(report: dict) -> str:
         p(f"- All time: **{summary.get('total', len(blocks))}** blocks")
         p()
 
+    # Phase F mirrors — multi-session & temporal sections at instance scope.
+    for _f in (
+        _sm()._build_session_shape_histograms_md(report.get("session_shape_histograms") or {}),
+        _sm()._build_cache_economics_md(report.get("cache_economics") or {}),
+        _sm()._build_project_concentration_md(report.get("project_concentration") or {}),
+        _sm()._build_activity_heatmap_md(report.get("activity_heatmap") or {}),
+        _sm()._build_session_activity_by_hour_md(report.get("session_activity_by_hour") or []),
+    ):
+        if _f:
+            p(_f)
+            p()
+
     # Per-project sub-sections with per-session subtotals
     p("## Per-project session subtotals")
     p()
@@ -1559,6 +1578,18 @@ def _render_instance_html(report: dict, chart_lib: str = "highcharts") -> str:
     insights_html = (window_html + rollup_html + blocks_html
                      + _sm()._build_tod_epoch_blob(tod_section)
                      + hod_html + punchcard_html + heatmap_html)
+
+    # Phase F — multi-session & temporal sections at instance scope. Each
+    # builder returns "" when its report key is empty (degenerate <2 sessions).
+    insights_html += (
+        _sm()._build_session_shape_histograms_html(
+            report.get("session_shape_histograms") or {})
+        + _sm()._build_cache_economics_html(report.get("cache_economics") or {})
+        + _sm()._build_project_concentration_html(report.get("project_concentration") or {})
+        + _sm()._build_activity_heatmap_html(report.get("activity_heatmap") or {}, tz_label)
+        + _sm()._build_session_activity_by_hour_html(
+            report.get("session_activity_by_hour") or [], tz_label)
+    )
 
     # Phase-A instance-level sections (v1.6.0).
     inst_by_skill_html = _sm()._build_by_skill_html(report.get("by_skill", []) or [])

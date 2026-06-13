@@ -3,6 +3,37 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.77.0 — 2026-06-13
+
+### Multi-session & temporal analytics (minor)
+
+Five new sections that render only at multi-session scope (`--project-cost` /
+`--all-projects`) and auto-hide for single-session reports. All static
+(server-rendered HTML, no JS), theme-var-only, with Markdown mirrors and JSON
+keys.
+
+- **Session shape distribution** — three side-by-side histograms (duration,
+  turn count, cost) over fixed bucket edges, each with p50/p90. Integer
+  buckets use inclusive-upper ranges so a session of exactly 5 turns lands in
+  the "1–5" bucket.
+- **Cache economics** — weighted hit ratio, no-cache counterfactual cost,
+  actual savings, savings fraction, and per-session hit-ratio dispersion
+  (≥3 sessions). Reads only already-computed totals; never mutates them.
+- **Cost concentration** — top-3 share of total spend + a per-item table
+  (session id at project scope, slug at instance scope) with a deterministic
+  cost/name tie-break.
+- **Sessions per hour** — 24-bar chart of distinct sessions active in each
+  local hour (distinct from the existing prompt-per-hour chart).
+- **Session activity heatmap** — GitHub-style calendar of distinct sessions
+  per day, back-filled from the first active day through today so idle gaps
+  are visible. Monotonic single-accent opacity ramp (works across all four
+  themes).
+
+New JSON keys (multi-session scope only): `session_shape_histograms`,
+`cache_economics`, `project_concentration`, `session_activity_by_hour`,
+`activity_heatmap`. A single build-time "today" reference is shared across all
+heatmaps in an instance run for determinism.
+
 ## v1.76.0 — 2026-06-13
 
 ### Interactive HTML overlay (minor)

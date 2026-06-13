@@ -1,7 +1,7 @@
 """Report building and aggregation layer for session-metrics."""
 import functools
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timezone, timedelta
 from pathlib import Path
 
 from _constants import _CACHE_BREAK_DEFAULT_THRESHOLD
@@ -211,6 +211,131 @@ def _compute_within_session_split(sessions: list[dict],
             "spawn_share_pct":  spawn_share_pct,
         })
     return out
+
+
+def _compute_cache_economics(sessions_out: list[dict], totals: dict) -> dict:
+    """Multi-session cache economics: weighted hit ratio + no-cache
+    counterfactual + per-session hit-ratio dispersion.
+
+    Reads only already-computed fields off ``totals`` (``cache_read`` /
+    ``input`` / ``cache_write`` / ``no_cache_cost`` / ``cache_savings``) and
+    never mutates them — zero cost-sum-invariant risk. The std-dev is folded
+    with ``sum()`` over the session-ordered list (deterministic) and rounded
+    to 4 dp in the compute layer so the value is byte-stable. ``{}`` for
+    fewer than two sessions.
+    """
+    if len(sessions_out) < 2:
+        return {}
+    cache_read = float(totals.get("cache_read", 0) or 0)
+    inp = float(totals.get("input", 0) or 0)
+    cache_write = float(totals.get("cache_write", 0) or 0)
+    denom = max(1.0, inp + cache_read + cache_write)
+    weighted = cache_read / denom
+    counterfactual = float(totals.get("no_cache_cost", 0.0) or 0.0)
+    savings = float(totals.get("cache_savings", 0.0) or 0.0)
+    savings_fraction = savings / max(1e-12, counterfactual)
+    hits = [float((s.get("subtotal") or {}).get("cache_hit_pct", 0.0) or 0.0)
+            for s in sessions_out]
+    mean = sum(hits) / len(hits)
+    variance = sum((h - mean) ** 2 for h in hits) / len(hits)
+    return {
+        "weighted_hit_ratio": weighted,
+        "counterfactual_cost": counterfactual,
+        "actual_savings": savings,
+        "savings_fraction": savings_fraction,
+        "hit_ratio_std": round(variance ** 0.5, 4),
+        "session_count": len(sessions_out),
+    }
+
+
+def _compute_project_concentration(items: list[dict], total_cost: float,
+                                   top_n: int = 3) -> dict:
+    """Top-N cost concentration over sessions (project scope) or project
+    summaries (instance scope).
+
+    Auto-detects the item shape: instance project-summaries carry a flat
+    ``cost_usd`` key, per-session dicts carry ``subtotal.cost``. Sort key is
+    ``(-cost, name)`` so identical-cost ties resolve deterministically
+    (byte-stable). ``{}`` when there are fewer than ``top_n + 1`` items, so the
+    card only renders when the top-N share is a non-trivial subset.
+    """
+    if len(items) < top_n + 1:
+        return {}
+    enriched: list[tuple[float, str]] = []
+    for it in items:
+        if "cost_usd" in it:
+            cost = float(it.get("cost_usd", 0.0) or 0.0)
+            name = str(it.get("slug", ""))[:24]
+        else:
+            cost = float((it.get("subtotal") or {}).get("cost", 0.0) or 0.0)
+            name = str(it.get("session_id", ""))[:8]
+        enriched.append((cost, name))
+    enriched.sort(key=lambda x: (-x[0], x[1]))
+    tc = float(total_cost) if total_cost else 0.0
+    top = enriched[:top_n]
+    top_cost = sum(c for c, _ in top)
+    return {
+        "top_n": top_n,
+        "top_n_cost": top_cost,
+        "top_n_share": (top_cost / tc if tc else 0.0),
+        "top_items": [
+            {"name": n, "cost": c, "share": (c / tc if tc else 0.0)}
+            for c, n in top
+        ],
+        "total_cost": tc,
+    }
+
+
+def _compute_activity_heatmap(sessions_out: list[dict],
+                              tz_offset_hours: float,
+                              now_epoch: int = 0) -> dict:
+    """GitHub-style daily heatmap of distinct sessions per local date.
+
+    The date range is filled contiguously from the first active day through
+    ``now_epoch`` (today), so idle gaps render as empty cells rather than
+    collapsing the calendar — a deliberate UX choice to surface dormant
+    stretches. ``dates`` is rebuilt from ``sorted(...)`` before return so dict
+    iteration order is lexicographic-by-date regardless of processing order
+    (byte-stable). ``{}`` for fewer than two sessions.
+    """
+    if len(sessions_out) < 2:
+        return {}
+    shift = int(round(tz_offset_hours * 3600))
+    date_sessions: dict[str, set] = {}
+    for s in sessions_out:
+        sid = s.get("session_id", "")
+        for t in s.get("turns", []) or []:
+            if t.get("is_resume_marker"):
+                continue
+            e = _sm()._parse_iso_epoch(t.get("timestamp", ""))
+            if not e:
+                continue
+            d = datetime.fromtimestamp(e + shift, tz=UTC).strftime("%Y-%m-%d")
+            date_sessions.setdefault(d, set()).add(sid)
+    if not date_sessions:
+        return {}
+    counts = {d: len(v) for d, v in date_sessions.items()}
+    first = min(counts)
+    last_active = max(counts)
+    if now_epoch:
+        today = datetime.fromtimestamp(now_epoch + shift, tz=UTC).strftime("%Y-%m-%d")
+        last = max(last_active, today)
+    else:
+        last = last_active
+    d0 = datetime.strptime(first, "%Y-%m-%d").replace(tzinfo=UTC)
+    d1 = datetime.strptime(last, "%Y-%m-%d").replace(tzinfo=UTC)
+    filled: dict[str, int] = {}
+    cur = d0
+    while cur <= d1:
+        ds = cur.strftime("%Y-%m-%d")
+        filled[ds] = counts.get(ds, 0)
+        cur += timedelta(days=1)
+    dates = dict(sorted(filled.items()))
+    return {
+        "dates": dates,
+        "max_count": max(dates.values()) if dates else 0,
+        "total_active_days": sum(1 for v in dates.values() if v > 0),
+    }
 
 
 def _compute_instance_subagent_share(project_reports: list[dict],
@@ -564,6 +689,7 @@ def _build_report(
     include_subagents: bool = False,
     compaction_events_by_session: dict | None = None,
     workflow_journals_by_session: dict | None = None,
+    now_epoch: int | None = None,
 ) -> dict:
     """Build a structured report dict from raw session data.
 
@@ -584,8 +710,11 @@ def _build_report(
     global_idx = 1
     # Report-generation time — the reference point for the session-health
     # recency gate (a session whose last record is very recent is "in
-    # progress", not abandoned). Computed once so every session shares it.
-    now_epoch = int(datetime.now(timezone.utc).timestamp())
+    # progress", not abandoned) and the Phase F heatmap's "today" backfill.
+    # Computed once so every session shares it; the caller may pass a shared
+    # value (instance build) so project + instance heatmaps agree on "today".
+    if now_epoch is None:
+        now_epoch = int(datetime.now(timezone.utc).timestamp())
     attribution_summary = {
         "attributed_turns":      0,
         "orphan_subagent_turns": 0,
@@ -845,6 +974,18 @@ def _build_report(
         report["window_stats"] = [
             _compute_window_stats(sessions_out, d) for d in (7, 30, 90, None)
         ]
+        # Phase F — multi-session & temporal analytics (project scope only;
+        # every builder returns "" on the single-session path because these
+        # keys are simply absent there). Each compute helper auto-degenerates
+        # to {} / [] below two sessions, so the renderers self-suppress.
+        report["session_shape_histograms"] = _sm()._compute_session_shape_histograms(sessions_out)
+        report["cache_economics"] = _compute_cache_economics(sessions_out, report["totals"])
+        report["project_concentration"] = _compute_project_concentration(
+            sessions_out, float(report["totals"].get("cost", 0.0) or 0.0))
+        report["activity_heatmap"] = _compute_activity_heatmap(
+            sessions_out, tz_offset_hours, now_epoch)
+        report["session_activity_by_hour"] = _sm()._compute_session_activity_by_hour(
+            sessions_out, tz_offset_hours)
     report["usage_insights"] = _sm()._compute_usage_insights(report)
     # v1.8.0: token-waste classification — runs after attribution + cache-break
     # detection (both mutate turn dicts in place); annotates turns with
@@ -1234,7 +1375,8 @@ def _build_instance_report(
         tz_label: str,
         projects_dir: Path,
         peak: dict | None = None,
-        cache_break_threshold: int = _CACHE_BREAK_DEFAULT_THRESHOLD) -> dict:
+        cache_break_threshold: int = _CACHE_BREAK_DEFAULT_THRESHOLD,
+        now_epoch: int = 0) -> dict:
     """Assemble the instance-wide report from per-project reports.
 
     Strategy: reuse ``_build_report(mode="project")`` for each project (done
@@ -1419,6 +1561,22 @@ def _build_instance_report(
         # disabled" framing in instance scope.
         "include_subagents": any(pr.get("include_subagents") for pr in project_reports),
     }
+    # Phase F — multi-session & temporal analytics at instance scope. Source
+    # the flattened ``all_sessions_out`` (kept above for the within-session
+    # split) for histograms / heatmap / per-hour; the project-summary list for
+    # cost concentration (each carries a flat ``cost_usd``). The caller threads
+    # a single ``now_epoch`` (shared with the per-project ``_build_report``
+    # calls) so every heatmap in one build agrees on "today"; fall back to a
+    # fresh read only for direct/standalone callers.
+    _now_epoch = now_epoch or int(datetime.now(UTC).timestamp())
+    report["session_shape_histograms"] = _sm()._compute_session_shape_histograms(all_sessions_out)
+    report["cache_economics"] = _compute_cache_economics(all_sessions_out, totals)
+    report["project_concentration"] = _compute_project_concentration(
+        projects, float(totals.get("cost", 0.0) or 0.0))
+    report["activity_heatmap"] = _compute_activity_heatmap(
+        all_sessions_out, tz_offset_hours, _now_epoch)
+    report["session_activity_by_hour"] = _sm()._compute_session_activity_by_hour(
+        all_sessions_out, tz_offset_hours)
     # C.6: pricing provenance at instance scope (same keys as session/project).
     report["pricing_snapshot_date"] = _sm()._PRICING_SNAPSHOT_DATE
     report["unpriced_models"] = sorted(_sm()._UNKNOWN_MODELS_SEEN)

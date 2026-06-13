@@ -682,6 +682,109 @@ def _build_cost_over_time_md(report: dict, top_n: int = 5) -> str:
     return "## Cost by model (running total)\n\n" + "\n".join(rows)
 
 
+# ---------------------------------------------------------------------------
+# Phase F — Markdown mirrors of the multi-session & temporal sections. Each
+# returns "" on the degenerate single-session path (the keys are absent there).
+# ---------------------------------------------------------------------------
+
+def _build_session_shape_histograms_md(hist: dict) -> str:
+    """Markdown mirror of F.1 — one Bucket|Count table per distribution."""
+    if not hist:
+        return ""
+
+    def _table(title: str, dist: dict, fmt) -> list[str]:
+        counts = dist.get("counts") or []
+        labels = dist.get("labels") or []
+        lines = [f"### {title}", "", "| Bucket | Count |", "|--------|------:|"]
+        for i, c in enumerate(counts):
+            lbl = labels[i] if i < len(labels) else ""
+            lines.append(f"| {lbl} | {c} |")
+        lines.append("")
+        lines.append(f"- p50: {fmt(dist.get('p50', 0))} · p90: {fmt(dist.get('p90', 0))}")
+        lines.append("")
+        return lines
+
+    out = ["## Session shape distribution", ""]
+    out += _table("Duration", hist.get("duration") or {},
+                  lambda v: _sm()._fmt_long_duration(float(v or 0)))
+    out += _table("Turns", hist.get("turns") or {}, lambda v: f"{int(v or 0):,}")
+    out += _table("Cost", hist.get("cost") or {}, lambda v: f"${float(v or 0):,.4f}")
+    return "\n".join(out).rstrip()
+
+
+def _build_cache_economics_md(econ: dict) -> str:
+    """Markdown mirror of F.2 — Metric|Value table."""
+    if not econ:
+        return ""
+    savings = float(econ.get("actual_savings", 0.0) or 0.0)
+    save_label = "Cache net cost" if savings < 0 else "Actual savings"
+    save_val = f"-${-savings:,.4f}" if savings < 0 else f"${savings:,.4f}"
+    rows = [
+        "## Cache economics",
+        "",
+        "| Metric | Value |",
+        "|--------|------:|",
+        f"| Weighted hit ratio | {float(econ.get('weighted_hit_ratio', 0.0)) * 100:.1f}% |",
+        f"| No-cache counterfactual | ${float(econ.get('counterfactual_cost', 0.0)):,.4f} |",
+        f"| {save_label} | {save_val} |",
+        f"| Savings fraction | {float(econ.get('savings_fraction', 0.0)) * 100:.1f}% |",
+    ]
+    if int(econ.get("session_count", 0) or 0) >= 3:
+        rows.append(f"| Hit-ratio std-dev | {float(econ.get('hit_ratio_std', 0.0)):.4f} |")
+    return "\n".join(rows)
+
+
+def _build_project_concentration_md(conc: dict) -> str:
+    """Markdown mirror of F.3 — Name|Cost|Share table + headline line."""
+    if not conc:
+        return ""
+    top_n = int(conc.get("top_n", 3) or 3)
+    rows = [
+        f"## Cost concentration (top {top_n})",
+        "",
+        "| Name | Cost | Share |",
+        "|------|-----:|------:|",
+    ]
+    for it in conc.get("top_items") or []:
+        rows.append(
+            f"| {it.get('name', '')} "
+            f"| ${float(it.get('cost', 0.0) or 0.0):,.4f} "
+            f"| {float(it.get('share', 0.0) or 0.0) * 100:.1f}% |"
+        )
+    rows.append("")
+    rows.append(f"Top-{top_n} share: {float(conc.get('top_n_share', 0.0)) * 100:.1f}% of total spend")
+    return "\n".join(rows)
+
+
+def _build_activity_heatmap_md(heatmap: dict) -> str:
+    """Markdown mirror of F.5 — busiest-10-days table + active-days line."""
+    if not heatmap or not heatmap.get("dates"):
+        return ""
+    dates = heatmap["dates"]
+    busiest = sorted(dates.items(), key=lambda kv: (-kv[1], kv[0]))[:10]
+    rows = [
+        "## Session activity heatmap",
+        "",
+        "| Date | Sessions |",
+        "|------|---------:|",
+    ]
+    for d, n in busiest:
+        rows.append(f"| {d} | {n} |")
+    rows.append("")
+    rows.append(f"Active days: {int(heatmap.get('total_active_days', 0) or 0)}")
+    return "\n".join(rows)
+
+
+def _build_session_activity_by_hour_md(by_hour: list) -> str:
+    """Markdown mirror of F.4 — Hour|Sessions table (24 rows)."""
+    if not by_hour or len(by_hour) != 24 or max(by_hour) == 0:
+        return ""
+    rows = ["## Sessions per hour", "", "| Hour | Sessions |", "|-----:|---------:|"]
+    for h in range(24):
+        rows.append(f"| {h:02d}:00 | {by_hour[h]} |")
+    return "\n".join(rows)
+
+
 def render_md(report: dict) -> str:
     """Render the full report as GitHub-flavored Markdown.
 
@@ -815,6 +918,19 @@ def render_md(report: dict) -> str:
     md_velocity = _build_velocity_md(report)
     if md_velocity:
         p(md_velocity)
+
+    # Phase F mirrors — multi-session & temporal sections. All auto-hide on the
+    # single-session path (keys absent), so they only surface under --project-cost.
+    for _f in (
+        _build_session_shape_histograms_md(report.get("session_shape_histograms") or {}),
+        _build_cache_economics_md(report.get("cache_economics") or {}),
+        _build_project_concentration_md(report.get("project_concentration") or {}),
+        _build_activity_heatmap_md(report.get("activity_heatmap") or {}),
+        _build_session_activity_by_hour_md(report.get("session_activity_by_hour") or []),
+    ):
+        if _f:
+            p(_f)
+            p()
 
     # Time-of-day section
     tod = report.get("time_of_day", {})

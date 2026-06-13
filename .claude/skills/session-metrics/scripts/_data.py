@@ -468,6 +468,92 @@ def _parse_iso_epoch(ts: str) -> int:
         return 0
 
 
+# Phase F — fixed bucket edges + stable labels for the multi-session
+# session-shape histograms. Edges are bucket *upper boundaries* consumed by
+# ``bisect.bisect_right`` (no leading 0), so a value lands in bucket
+# ``bisect_right(edges, value)`` and ``counts`` has ``len(edges)+1`` entries.
+# Labels are module constants (not recomputed per call) so the rendered bytes
+# are stable across runs.
+_HIST_DURATION_EDGES = [300, 900, 1800, 3600, 7200, 14400, 28800]
+_HIST_DURATION_LABELS = ["0–5m", "5–15m", "15–30m", "30m–1h",
+                         "1–2h", "2–4h", "4–8h", "8h+"]
+_HIST_TURN_EDGES = [5, 10, 20, 50, 100, 200]
+_HIST_TURN_LABELS = ["1–5", "6–10", "11–20", "21–50",
+                     "51–100", "101–200", "200+"]
+_HIST_COST_EDGES = [0.01, 0.05, 0.10, 0.50, 1.00, 5.00]
+_HIST_COST_LABELS = ["<$0.01", "$0.01–0.05", "$0.05–0.10",
+                     "$0.10–0.50", "$0.50–$1", "$1–$5", "$5+"]
+
+
+def _compute_session_shape_histograms(sessions_out: list[dict]) -> dict:
+    """Bucketed distributions of per-session duration / turn-count / cost.
+
+    Multi-session only — a single-session report has no distribution to show,
+    so ``{}`` is returned for ``len(sessions_out) < 2`` and every renderer
+    auto-hides. Counts are pure integer folds (no float-order risk); p50/p90
+    reuse the shared ``_percentile`` helper (which sorts internally), so the
+    output is deterministic regardless of session iteration order.
+    """
+    if len(sessions_out) < 2:
+        return {}
+    durations = [int(s.get("duration_seconds", 0) or 0) for s in sessions_out]
+    turns = [int((s.get("subtotal") or {}).get("turns", 0) or 0) for s in sessions_out]
+    costs = [float((s.get("subtotal") or {}).get("cost", 0.0) or 0.0) for s in sessions_out]
+
+    def _hist(values: list, edges: list, labels: list[str],
+              right: bool = False) -> dict:
+        # Bucket placement: ``bisect_left`` gives inclusive-upper ranges
+        # ("1–5" holds 1..5, "15–30m" holds up to 30m) which is what the
+        # integer turn / duration labels mean; a value exactly on an edge
+        # stays in the *lower* labelled bucket. ``bisect_right`` (right=True)
+        # is used for cost, whose leading "<$0.01" label is exclusive, so an
+        # exact $0.01 belongs in the next bucket. (Float cost values land on
+        # an edge essentially never, so the choice only matters for the
+        # integer turn histogram where edge-hits are common.)
+        place = bisect.bisect_right if right else bisect.bisect_left
+        counts = [0] * (len(edges) + 1)
+        for v in values:
+            counts[place(edges, v)] += 1
+        fvals = [float(v) for v in values]
+        return {
+            "counts": counts,
+            "labels": list(labels),
+            "p50": _sm()._percentile(fvals, 50),
+            "p90": _sm()._percentile(fvals, 90),
+            "n": len(values),
+        }
+
+    return {
+        "duration": _hist(durations, _HIST_DURATION_EDGES, _HIST_DURATION_LABELS),
+        "turns":    _hist(turns,     _HIST_TURN_EDGES,     _HIST_TURN_LABELS),
+        "cost":     _hist(costs,     _HIST_COST_EDGES,     _HIST_COST_LABELS, right=True),
+    }
+
+
+def _compute_session_activity_by_hour(sessions_out: list[dict],
+                                      tz_offset_hours: float) -> list[int]:
+    """24-element list of distinct sessions active in each local hour (0–23).
+
+    A session counts once per hour no matter how many turns it had in that
+    hour (``session_id`` set per bucket, then cardinality). Resume-marker
+    turns are skipped. Output is positional ``list[int]`` of length 24 — no
+    dict-key ordering, so it is byte-stable by construction.
+    """
+    shift = int(round(tz_offset_hours * 3600))
+    hour_sessions: list[set] = [set() for _ in range(24)]
+    for s in sessions_out:
+        sid = s.get("session_id", "")
+        for t in s.get("turns", []) or []:
+            if t.get("is_resume_marker"):
+                continue
+            e = _parse_iso_epoch(t.get("timestamp", ""))
+            if not e:
+                continue
+            h = (((e + shift) % 86400) + 86400) % 86400 // 3600
+            hour_sessions[h].add(sid)
+    return [len(b) for b in hour_sessions]
+
+
 def _build_session_blocks(
     sessions_raw: list[tuple[str, list[dict], list[int]]],
 ) -> list[dict]:

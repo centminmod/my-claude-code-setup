@@ -2638,6 +2638,266 @@ def _build_waste_analysis_html(wa: dict) -> str:
 # zero-cache / single-session report) renders unchanged.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Phase F — multi-session & temporal sections. Every builder gates on its
+# data being present (project / instance scope only) and returns "" otherwise,
+# so the single-session and minimal-fixture paths render byte-identically.
+# All colours come from theme CSS vars — no hardcoded hex — so the four themes
+# work without per-builder overrides.
+# ---------------------------------------------------------------------------
+
+def _build_session_shape_histograms_html(hist: dict) -> str:
+    """Three side-by-side bar charts of per-session duration / turns / cost
+    distribution (F.1). Static bars (Python sets the heights) — no JS. Returns
+    "" on the degenerate single-session path (hist == {})."""
+    if not hist:
+        return ""
+
+    def _panel(title: str, dist: dict, fmt) -> str:
+        counts = dist.get("counts") or []
+        labels = dist.get("labels") or []
+        mx = max(counts) if counts else 0
+        bars = "".join(
+            f'<div title="{html_mod.escape(str(labels[i] if i < len(labels) else ""))}: '
+            f'{c} session{"s" if c != 1 else ""}" '
+            f'style="flex:1;background:var(--accent);border-radius:2px 2px 0 0;'
+            f'min-height:{"0" if c == 0 else "1px"};'
+            f'height:{(c / mx * 100) if mx else 0:.1f}%"></div>'
+            for i, c in enumerate(counts)
+        )
+        lab = "".join(
+            f'<div style="flex:1;text-align:center;overflow:hidden">'
+            f'{html_mod.escape(str(lbl))}</div>'
+            for lbl in labels
+        )
+        p50 = fmt(dist.get("p50", 0))
+        p90 = fmt(dist.get("p90", 0))
+        return (
+            '<div style="background:var(--surface-deep);border:1px solid var(--border);'
+            'border-radius:8px;padding:12px">\n'
+            f'  <div style="font-size:12px;color:var(--fg-dim);margin-bottom:8px">{title}</div>\n'
+            '  <div style="display:flex;align-items:flex-end;gap:3px;height:120px;'
+            'border-bottom:1px solid var(--border-dim)">'
+            f'{bars}</div>\n'
+            "  <div style=\"display:flex;gap:3px;margin-top:4px;font-size:9px;"
+            "color:var(--fg-dim);font-family:'JetBrains Mono',monospace\">"
+            f'{lab}</div>\n'
+            f'  <div style="margin-top:8px;font-size:11px;color:var(--fg-dim)">'
+            f'p50 {p50} &middot; p90 {p90}</div>\n'
+            '</div>'
+        )
+
+    def _dur(v):  # noqa: ANN001 — local formatter
+        return html_mod.escape(_sm()._fmt_long_duration(float(v or 0)))
+
+    def _int(v):  # noqa: ANN001
+        return f"{int(v or 0):,}"
+
+    def _cost(v):  # noqa: ANN001
+        return f"${float(v or 0):,.4f}"
+
+    panels = (
+        _panel("Duration", hist.get("duration") or {}, _dur)
+        + _panel("Turns", hist.get("turns") or {}, _int)
+        + _panel("Cost", hist.get("cost") or {}, _cost)
+    )
+    return (
+        '<section class="section" id="session-shape-section">\n'
+        '  <div class="section-title"><h2>Session shape distribution</h2>'
+        '<span class="hint">multi-session &middot; fixed bucket edges</span></div>\n'
+        '  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">\n'
+        f'  {panels}\n'
+        '  </div>\n</section>'
+    )
+
+
+def _build_cache_economics_html(econ: dict) -> str:
+    """Cache-economics KPI row: weighted hit ratio, no-cache counterfactual,
+    actual savings, savings fraction, and (≥3 sessions) hit-ratio dispersion
+    (F.2). Negative savings are surfaced honestly via label + sign — never
+    clamped. Returns "" when econ == {}."""
+    if not econ:
+        return ""
+    weighted = float(econ.get("weighted_hit_ratio", 0.0) or 0.0) * 100
+    counter = float(econ.get("counterfactual_cost", 0.0) or 0.0)
+    savings = float(econ.get("actual_savings", 0.0) or 0.0)
+    frac = float(econ.get("savings_fraction", 0.0) or 0.0) * 100
+    n = int(econ.get("session_count", 0) or 0)
+    if savings < 0:
+        save_label = "Cache net cost"
+        save_val = f"-${-savings:,.4f}"
+    else:
+        save_label = "Actual savings"
+        save_val = f"${savings:,.4f}"
+    cards = (
+        f'<div class="kpi cat-tokens"><div class="kpi-label">Weighted hit ratio</div>'
+        f'<div class="kpi-val">{weighted:.1f}%</div>'
+        f'<div class="kpi-sub">across {n} sessions</div></div>'
+        f'<div class="kpi cat-tokens"><div class="kpi-label">No-cache counterfactual</div>'
+        f'<div class="kpi-val">${counter:,.4f}</div>'
+        f'<div class="kpi-sub">baseline without cache</div></div>'
+        f'<div class="kpi cat-save"><div class="kpi-label">{save_label}</div>'
+        f'<div class="kpi-val">{save_val}</div>'
+        f'<div class="kpi-sub">vs no-cache baseline</div></div>'
+        f'<div class="kpi cat-tokens"><div class="kpi-label">Savings fraction</div>'
+        f'<div class="kpi-val">{frac:.1f}%</div>'
+        f'<div class="kpi-sub">of counterfactual cost</div></div>'
+    )
+    if n >= 3:
+        std = float(econ.get("hit_ratio_std", 0.0) or 0.0)
+        cards += (
+            f'<div class="kpi cat-tokens"><div class="kpi-label">Hit-ratio &sigma;</div>'
+            f'<div class="kpi-val">{std:.4f}</div>'
+            f'<div class="kpi-sub">per-session dispersion</div></div>'
+        )
+    return (
+        '<section class="section" id="cache-economics-section">\n'
+        '  <div class="section-title"><h2>Cache economics</h2>'
+        '<span class="hint">weighted hit ratio &middot; no-cache counterfactual</span></div>\n'
+        f'  <div class="kpi-grid">{cards}</div>\n</section>'
+    )
+
+
+def _build_project_concentration_html(conc: dict) -> str:
+    """Cost-concentration table + headline top-N share KPI (F.3). Returns ""
+    when conc == {} (fewer than top_n+1 items)."""
+    if not conc:
+        return ""
+    top_n = int(conc.get("top_n", 3) or 3)
+    share = float(conc.get("top_n_share", 0.0) or 0.0) * 100
+    items = conc.get("top_items") or []
+    total_cost = float(conc.get("total_cost", 0.0) or 0.0)
+    top_cost = float(conc.get("top_n_cost", 0.0) or 0.0)
+    rows = "".join(
+        f'<tr><td>{html_mod.escape(str(it.get("name", "")))}</td>'
+        f'<td style="text-align:right">${float(it.get("cost", 0.0) or 0.0):,.4f}</td>'
+        f'<td style="text-align:right">{float(it.get("share", 0.0) or 0.0) * 100:.1f}%</td></tr>'
+        for it in items
+    )
+    remainder = total_cost - top_cost
+    if remainder > 0:
+        rows += (
+            f'<tr><td style="color:var(--fg-dim)">Other</td>'
+            f'<td style="text-align:right;color:var(--fg-dim)">${remainder:,.4f}</td>'
+            f'<td style="text-align:right;color:var(--fg-dim)">'
+            f'{(remainder / total_cost * 100) if total_cost else 0:.1f}%</td></tr>'
+        )
+    return (
+        '<section class="section" id="project-concentration-section">\n'
+        '  <div class="section-title"><h2>Cost concentration</h2>'
+        f'<span class="hint">top-{top_n} share of total spend</span></div>\n'
+        '  <div class="health-panel">\n'
+        f'    <div class="kpi cat-save" style="margin-bottom:12px"><div class="kpi-label">'
+        f'Top-{top_n} share</div><div class="kpi-val">{share:.1f}%</div>'
+        f'<div class="kpi-sub">${top_cost:,.4f} of ${total_cost:,.4f}</div></div>\n'
+        '    <table class="mini-table" style="width:100%">\n'
+        '      <thead><tr><th>Name</th>'
+        '<th style="text-align:right">Cost</th>'
+        '<th style="text-align:right">Share</th></tr></thead>\n'
+        f'      <tbody>{rows}</tbody>\n'
+        '    </table>\n'
+        '  </div>\n</section>'
+    )
+
+
+def _build_activity_heatmap_html(heatmap: dict, tz_label: str = "UTC") -> str:
+    """GitHub-style daily session-activity calendar (F.5). Static cells with a
+    ``data-bucket`` attribute resolved by inline scoped CSS — no JS. Weeks are
+    columns, weekdays rows; the first cell is offset to its weekday so the
+    calendar aligns. Returns "" when there is no date data."""
+    if not heatmap or not heatmap.get("dates"):
+        return ""
+    dates = heatmap["dates"]
+    items = list(dates.items())  # already sorted by the compute layer
+    first_date = items[0][0]
+    try:
+        first_wd = datetime.strptime(first_date, "%Y-%m-%d").weekday()  # Mon=0..Sun=6
+    except ValueError:
+        first_wd = 0
+    cells = []
+    for i, (d, n) in enumerate(items):
+        b = 0 if n == 0 else 1 if n == 1 else 2 if n <= 3 else 3
+        offset = f'grid-row-start:{first_wd + 1};' if i == 0 else ""
+        cells.append(
+            f'<div class="hm-cell" data-bucket="{b}" '
+            f'title="{html_mod.escape(d)}: {n} session{"s" if n != 1 else ""}" '
+            f'style="{offset}"></div>'
+        )
+    total_days = int(heatmap.get("total_active_days", 0) or 0)
+    legend = (
+        '<div style="display:flex;align-items:center;gap:6px;margin-top:10px;'
+        "font-size:10px;color:var(--fg-dim);font-family:'JetBrains Mono',monospace\">"
+        '<span>Less</span>'
+        '<span class="hm-cell" data-bucket="0"></span>'
+        '<span class="hm-cell" data-bucket="1"></span>'
+        '<span class="hm-cell" data-bucket="2"></span>'
+        '<span class="hm-cell" data-bucket="3"></span>'
+        '<span>More</span></div>'
+    )
+    # Intensity ramp = one accent colour at rising opacity (bucket 0 = idle =
+    # border-dim). Using opacity rather than accent-soft → accent keeps the ramp
+    # monotonic in every theme (in some themes accent-soft is a contrasting hue,
+    # which would read as a separate category mid-scale, not "more").
+    style = (
+        '<style>\n'
+        "#activity-heatmap-section .hm-grid{display:grid;grid-auto-flow:column;"
+        "grid-template-rows:repeat(7,12px);grid-auto-columns:12px;gap:3px;"
+        "overflow-x:auto}\n"
+        "#activity-heatmap-section .hm-cell{width:12px;height:12px;border-radius:2px;"
+        "background:var(--border-dim);display:inline-block}\n"
+        "#activity-heatmap-section .hm-cell[data-bucket='1']{background:var(--accent);opacity:.4}\n"
+        "#activity-heatmap-section .hm-cell[data-bucket='2']{background:var(--accent);opacity:.7}\n"
+        "#activity-heatmap-section .hm-cell[data-bucket='3']{background:var(--accent);opacity:1}\n"
+        '</style>'
+    )
+    return (
+        '<section class="section" id="activity-heatmap-section">\n'
+        f'  {style}\n'
+        '  <div class="section-title"><h2>Session activity</h2>'
+        '<span class="hint">distinct sessions per day &middot; '
+        f'{html_mod.escape(tz_label)}</span></div>\n'
+        '  <div class="health-panel">\n'
+        f'    <div class="hm-grid">{"".join(cells)}</div>\n'
+        f'    <div style="margin-top:10px;font-size:11px;color:var(--fg-dim)">'
+        f'{total_days} active day{"s" if total_days != 1 else ""}</div>\n'
+        f'    {legend}\n'
+        '  </div>\n</section>'
+    )
+
+
+def _build_session_activity_by_hour_html(by_hour: list, tz_label: str = "UTC") -> str:
+    """24-bar chart of distinct sessions active in each local hour (F.4). A
+    different metric from the prompt-per-hour chart (sessions, not prompts), so
+    it renders as a separate section. Static bars — no JS. Returns "" when
+    empty / all-zero."""
+    if not by_hour or len(by_hour) != 24 or max(by_hour) == 0:
+        return ""
+    mx = max(by_hour)
+    bars = "".join(
+        f'<div title="{h:02d}:00  {c} session{"s" if c != 1 else ""}" '
+        f'style="flex:1;background:var(--accent);border-radius:2px 2px 0 0;'
+        f'min-height:{"0" if c == 0 else "1px"};height:{(c / mx * 100):.1f}%"></div>'
+        for h, c in enumerate(by_hour)
+    )
+    axis = "".join(
+        f'<div style="flex:1;text-align:center">{h:02d}</div>' for h in range(24)
+    )
+    return (
+        '<section class="section" id="session-activity-hour-section">\n'
+        '  <div class="section-title"><h2>Sessions per hour</h2>'
+        '<span class="hint">distinct sessions active each local hour &middot; '
+        f'{html_mod.escape(tz_label)}</span></div>\n'
+        '  <div class="health-panel">\n'
+        '    <div style="display:flex;align-items:flex-end;gap:2px;height:140px;'
+        'border-bottom:1px solid var(--border-dim)">'
+        f'{bars}</div>\n'
+        "    <div style=\"display:flex;gap:2px;margin-top:6px;font-size:10px;"
+        "color:var(--fg-dim);font-family:'JetBrains Mono',monospace\">"
+        f'{axis}</div>\n'
+        '  </div>\n</section>'
+    )
+
+
 def _build_cache_efficiency_html(totals: dict) -> str:
     """Cache-efficiency 4-segment token bar + savings callout (D.1).
 
@@ -4461,6 +4721,17 @@ def render_html(report: dict, variant: str = "single",
         tod_html       = (window_html + rollup_html + blocks_html + duration_html
                           + _build_tod_epoch_blob(tod_section)
                           + hod_html + punchcard_html + heatmap_html)
+        # Phase F — multi-session & temporal sections (project scope only;
+        # the keys are absent at single-session scope so each builder returns
+        # "" and the page is unchanged).
+        tod_html      += (
+            _build_session_shape_histograms_html(report.get("session_shape_histograms") or {})
+            + _build_cache_economics_html(report.get("cache_economics") or {})
+            + _build_project_concentration_html(report.get("project_concentration") or {})
+            + _build_activity_heatmap_html(report.get("activity_heatmap") or {}, tz_label)
+            + _build_session_activity_by_hour_html(
+                report.get("session_activity_by_hour") or [], tz_label)
+        )
 
     # ---- Table rows --------------------------------------------------------
     show_mode    = _sm()._has_fast(report)

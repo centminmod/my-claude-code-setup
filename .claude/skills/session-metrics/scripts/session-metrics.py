@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.76.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.77.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -543,6 +543,11 @@ _build_usage_insights_md        = _mr_m._build_usage_insights_md
 _build_waste_analysis_md        = _mr_m._build_waste_analysis_md
 _build_cache_efficiency_md      = _mr_m._build_cache_efficiency_md
 _build_velocity_md              = _mr_m._build_velocity_md
+_build_session_shape_histograms_md = _mr_m._build_session_shape_histograms_md
+_build_cache_economics_md       = _mr_m._build_cache_economics_md
+_build_project_concentration_md = _mr_m._build_project_concentration_md
+_build_activity_heatmap_md      = _mr_m._build_activity_heatmap_md
+_build_session_activity_by_hour_md = _mr_m._build_session_activity_by_hour_md
 _build_cost_over_time_md        = _mr_m._build_cost_over_time_md
 del _mr_m
 
@@ -650,6 +655,11 @@ _build_cost_over_time_svg_html  = _hs_m._build_cost_over_time_svg_html
 _squarify                       = _hs_m._squarify
 _build_cost_treemap_html        = _hs_m._build_cost_treemap_html
 _build_vital_signs_html         = _hs_m._build_vital_signs_html
+_build_session_shape_histograms_html = _hs_m._build_session_shape_histograms_html
+_build_cache_economics_html     = _hs_m._build_cache_economics_html
+_build_project_concentration_html = _hs_m._build_project_concentration_html
+_build_activity_heatmap_html    = _hs_m._build_activity_heatmap_html
+_build_session_activity_by_hour_html = _hs_m._build_session_activity_by_hour_html
 render_html                     = _hs_m.render_html
 del _hs_m
 
@@ -658,6 +668,9 @@ _compute_subagent_share             = _rp_m._compute_subagent_share
 _build_compaction_summary           = _rp_m._build_compaction_summary
 _compute_within_session_split       = _rp_m._compute_within_session_split
 _compute_window_stats               = _rp_m._compute_window_stats
+_compute_cache_economics            = _rp_m._compute_cache_economics
+_compute_project_concentration      = _rp_m._compute_project_concentration
+_compute_activity_heatmap           = _rp_m._compute_activity_heatmap
 _compute_instance_subagent_share    = _rp_m._compute_instance_subagent_share
 _median                             = _rp_m._median
 _compute_prompt_anchor_indices      = _rp_m._compute_prompt_anchor_indices
@@ -713,6 +726,11 @@ _build_by_skill             = _da_m._build_by_skill
 _build_request_units        = _da_m._build_request_units
 _compute_velocity_stats     = _da_m._compute_velocity_stats
 _VELOCITY_CYCLE_CAP_S       = _da_m._VELOCITY_CYCLE_CAP_S
+_compute_session_shape_histograms = _da_m._compute_session_shape_histograms
+_compute_session_activity_by_hour = _da_m._compute_session_activity_by_hour
+_HIST_DURATION_LABELS       = _da_m._HIST_DURATION_LABELS
+_HIST_TURN_LABELS           = _da_m._HIST_TURN_LABELS
+_HIST_COST_LABELS           = _da_m._HIST_COST_LABELS
 _detect_multi_intent        = _da_m._detect_multi_intent
 _assemble_tasks             = _da_m._assemble_tasks
 _build_tasks_skeleton       = _da_m._build_tasks_skeleton
