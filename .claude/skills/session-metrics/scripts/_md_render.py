@@ -519,6 +519,84 @@ def render_csv(report: dict) -> str:
     return out.getvalue()
 
 
+_HEALTH_PENALTY_LABELS_MD = {
+    "failures":             "Tool failures",
+    "retries":              "Repeated identical calls",
+    "churn":                "File edit churn",
+    "streak":               "Consecutive-failure streak",
+    "compactions":          "Context compactions",
+    "mid_task_compactions": "Mid-task compactions",
+    "context_pressure":     "Context pressure (>90%)",
+    "outcome":              "Outcome penalty",
+}
+
+
+def _build_session_health_md(health: dict) -> str:
+    """Markdown mirror of the HTML Session Health section. "" when absent."""
+    if not health:
+        return ""
+    sig = health.get("signals") or {}
+    grade = health.get("grade")
+    score = health.get("score")
+    out = ["## Session Health", ""]
+    if grade:
+        out.append(f"**Grade {grade}** &middot; {score}/100")
+    else:
+        out.append("**Not scored** (automated / in-progress / insufficient data)")
+    out.append("")
+    out.append(f"- Outcome: **{health.get('outcome', 'unknown')}** "
+               f"({health.get('outcome_confidence', '')} confidence)")
+    out.append(f"- Scored on: {', '.join(health.get('basis') or []) or '—'}")
+    pen = {k: v for k, v in (health.get("penalties") or {}).items() if v}
+    if pen:
+        out.append("")
+        out.append("| Penalty | Points |")
+        out.append("|---------|-------:|")
+        for k, v in pen.items():
+            out.append(f"| {_HEALTH_PENALTY_LABELS_MD.get(k, k)} | -{v} |")
+    out.append("")
+    out.append(f"- Tool failures: {int(sig.get('failure_signal_count', 0))} "
+               f"(longest streak {int(sig.get('consecutive_failure_max', 0))})")
+    out.append(f"- Repeated identical calls: {int(sig.get('retry_count', 0))}")
+    out.append(f"- Edit churn: {int(sig.get('edit_churn_count', 0))} file(s)")
+    out.append(f"- Compactions: {int(sig.get('compaction_count', 0))} "
+               f"({int(sig.get('mid_task_compaction_count', 0))} mid-task)")
+    cp = sig.get("context_pressure")
+    if cp is not None:
+        cp_str = f"{cp * 100:.0f}% of {int(sig.get('context_window', 0)):,}-token window"
+    else:
+        cp_str = "n/a"
+    out.append(f"- Peak context pressure: {cp_str}")
+    if health.get("give_up"):
+        out.append("- ⚠ Final reply reads like a capitulation (soft failure)")
+    out.append("")
+    return "\n".join(out)
+
+
+def _build_session_behavior_md(behavior: dict) -> str:
+    """Markdown mirror of the HTML Session Behavior section. "" when absent."""
+    if not behavior:
+        return ""
+    ad = behavior.get("adoption") or {}
+    out = ["## Session Behavior", ""]
+    out.append(f"- Archetype: **{behavior.get('archetype', '')}** "
+               f"({behavior.get('user_prompt_count', 0)} user prompts)")
+    ar = behavior.get("autonomy_ratio")
+    if ar is not None:
+        out.append(f"- Autonomy ratio: **{ar}×** (tool-carrying turns / prompt)")
+    out.append(f"- Plan mode used: {'yes' if ad.get('plan_mode_used') else 'no'}")
+    out.append(f"- Subagents spawned: {int(ad.get('subagent_spawn_count', 0))}")
+    out.append(f"- Distinct skills: {int(ad.get('distinct_skill_count', 0))}")
+    out.append(f"- Termination: {behavior.get('termination', '')}")
+    out.append(f"- Relationship: {behavior.get('relationship', '')}")
+    tax = behavior.get("tool_taxonomy") or {}
+    if tax:
+        out.append("- Tools by category: "
+                   + ", ".join(f"{k} {v}" for k, v in tax.items()))
+    out.append("")
+    return "\n".join(out)
+
+
 def render_md(report: dict) -> str:
     """Render the full report as GitHub-flavored Markdown.
 
@@ -622,6 +700,16 @@ def render_md(report: dict) -> str:
     # "never emitted") duplicated it in every export with subagent data;
     # removed in v1.66.2.
     p()
+
+    # Session Health (v1.72.0) — single-session reports only (per-session grade).
+    _sessions = report.get("sessions") or []
+    if len(_sessions) == 1:
+        md_health = _build_session_health_md(_sessions[0].get("session_health"))
+        if md_health:
+            p(md_health)
+        md_behavior = _build_session_behavior_md(_sessions[0].get("session_behavior"))
+        if md_behavior:
+            p(md_behavior)
 
     # Usage Insights — derived from `_compute_usage_insights`. Renders only
     # when at least one insight crossed its threshold; otherwise the

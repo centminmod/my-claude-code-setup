@@ -3,6 +3,121 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.73.2 — 2026-06-13
+
+### Fix: Session Health / Behavior sections now theme-aware (patch)
+
+The two new sections rendered as bare unstyled text — they used
+`<section class="card">` with a bare `<h2>`, but themed sections use
+`<section class="section">` + `<div class="section-title"><h2>…</h2></div>`
+and the boxed "card" look comes from a panel styled with theme CSS
+variables. Restructured both to the canonical section markup, wrapped the
+body in a new `.health-panel` (border/background via `--border` /
+`--surface-deep`, so it matches across all four themes — Beacon, Console,
+Lattice, Pulse), added `.health-panel .mini-table` styling for the penalty
+table, and switched inline `var(--muted…)` to the real `var(--fg-dim…)`
+theme variable. Verified visually in Chrome across all four themes.
+
+## v1.73.1 — 2026-06-13
+
+### Fix: context-pressure mis-reads the 1M long-context tier (patch)
+
+The per-turn `message.model` in the JSONL drops the `[1m]` long-context
+suffix, so a session actually running on the 1M tier looked like the 200K
+base model to the session-health context-pressure signal. A peak context of
+~436K tokens then reported **218% pressure** (impossible) and, on a
+*completed* session, wrongly added the 10-point context-pressure penalty to
+the health score. Fixed via a physical invariant: a turn's context can't
+exceed the real window, so if the observed peak exceeds the base-tier
+estimate the session must be on the extended tier — the window is upgraded to
+1M and pressure reads correctly (~45%). Found by exporting a live 1M session.
+
+## v1.73.0 — 2026-06-13
+
+### Session Behavior — adoption, autonomy, archetype signals (minor)
+
+A companion to Session Health: cheap behavioral signals derived from
+already-parsed turn data, surfaced as a per-session `session_behavior` object.
+
+- **Session archetype** — quick / standard / deep / marathon, bucketed by
+  user-prompt count (≤5 / ≤15 / ≤50 / >50).
+- **Autonomy ratio** — tool-carrying assistant turns ÷ user prompts (how far
+  the agent runs between human checkpoints).
+- **Adoption** — plan-mode used (`ExitPlanMode`/`EnterPlanMode`), subagent-spawn
+  count, distinct-skill count + names.
+- **Tool taxonomy** — raw tool names normalised into ~8 categories
+  (read / edit / shell / search / delegate / skill / web / plan).
+- **Termination class** — clean / awaiting_user / tool_call_pending (mechanical,
+  distinct from the qualitative outcome).
+- **Relationship** — continuation (opens on a compaction summary) vs primary.
+- **Behavioral turn typing** — per-turn agentic / thinking / text / other from
+  the content-block mix.
+
+Renders as a "Session Behavior" chips section in single-session HTML, a
+`## Session Behavior` Markdown section, and the `session_behavior` object in
+JSON. No change to cost/token math.
+
+## v1.72.0 — 2026-06-13
+
+### Session Health — a 0–100 score, A–F grade, and outcome verdict (minor)
+
+The skill now renders a verdict on **how a session went**, not just what it
+cost. A new per-session `session_health` object (new `_health.py` module)
+turns the data the JSONL already carries into an auditable quality signal.
+
+- **Outcome classification** — `completed` / `abandoned` / `errored` /
+  `unknown` / `in_progress`, each with a confidence. A recency gate (last
+  record vs report-generation time) keeps a *live* session from being mislabelled
+  "abandoned"; a trailing tool-failure streak or a `stop_reason=="refusal"`
+  marks `errored`; a capitulation phrase in the final reply downgrades a
+  "completed" to low confidence.
+- **Tool-health pass** — `is_error`-led failure detection (with content-heuristic
+  enrichment for older transcripts), longest consecutive-failure streak,
+  byte-identical repeated-call (retry) detection, edit-churn detection (a file
+  re-edited 3+ times in a tight window), and a per-tool failure-rate table.
+- **Context pressure** — peak per-turn context ÷ the model's window (1M long-context
+  beta auto-detected), plus a mid-task-compaction flag (tool-name overlap across
+  a compaction boundary).
+- **Health score** — start at 100, subtract capped per-signal penalties
+  (failures/retries/churn/streak/compactions/mid-task/context-pressure/outcome),
+  floor at 0, map to A≥90 / B≥75 / C≥60 / D≥40 / F. The score is `null` (not 0)
+  when scoring would be misleading (automated, in-progress, or outcome-only data),
+  with a `basis` list recording which signals had data.
+- **Automated-session gate** — benchmark / warm-up / harness sessions aren't graded.
+- **Rendering** — a "Session Health" card + a full breakdown section in single-session
+  HTML, mirrored in Markdown, and the `session_health` object in the JSON export.
+  Single-session scope only (the grade is intrinsically per-session).
+
+Cost/token math is unchanged. Adds `_health.py` (17th leaf module) and the
+model→context-window table in `_constants.py`.
+
+## v1.71.0 — 2026-06-13
+
+### Tool-result + tool-input capture for session-health signals (minor)
+
+Parser groundwork for an upcoming session-health layer. The per-turn
+record now retains the data needed to reason about *how a session went*,
+not just what it cost — surfaced in JSON exports and ready for the
+failure / retry / churn passes that build on it.
+
+- **`tool_results` per turn.** Each `tool_result` the turn received is
+  captured as `{tool_use_id, is_error, text}`. `is_error` is read straight
+  off the JSONL (present and reliable on tool responses; `null` only on
+  older transcripts). `text` is the flattened result content, capped at
+  600 chars — enough to carry failure signatures (tracebacks, "command
+  not found", stack traces) without bloating exports.
+- **`input_hash` + `file_path` per tool call.** Every `tool_use_detail`
+  entry now carries a stable 16-char hash of its canonicalised input
+  (for spotting byte-identical repeated calls) and the target file path
+  for Edit/Write/Read/NotebookEdit (for detecting rapid re-editing of one
+  file). Hashing avoids retaining large raw inputs in the export.
+- **Redaction.** `--redact-user-prompts` now also masks `tool_results.text`
+  (it can echo file contents), leaving `is_error` / `tool_use_id` intact.
+- **Docs.** `references/jsonl-schema.md` documents the `tool_result`
+  block shape and the `is_error` field.
+
+No change to cost/token math; all additions are new per-turn fields.
+
 ## v1.70.0 — 2026-06-11
 
 ### Compare-suite v2 — fix `tool_heavy_task` hang + agentic-loop bounds (minor)

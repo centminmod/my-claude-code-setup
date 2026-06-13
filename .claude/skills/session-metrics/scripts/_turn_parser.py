@@ -1,4 +1,5 @@
 """Turn extraction and per-turn record construction for session-metrics."""
+import hashlib
 import json
 import re
 import sys
@@ -428,6 +429,12 @@ def _summarise_task_notification(inner: str) -> str:
 # the natural shape of user input and typically doesn't need a cap.
 _ASSISTANT_TEXT_CAP = 2000
 _PROMPT_TEXT_CAP   = 1000
+# Bound on retained ``tool_result`` text. Failure signatures (tracebacks,
+# "command not found", "Permission denied", multi-line stack traces) live at
+# the start of a result, so a few hundred characters carry the signal that the
+# tool-health pass needs while keeping the embedded turn payload bounded even
+# on sessions with hundreds of large (successful) Read/Grep results.
+_TOOL_RESULT_TEXT_CAP = 600
 
 
 def _truncate(text: str | None, n: int) -> str:
@@ -439,6 +446,91 @@ def _truncate(text: str | None, n: int) -> str:
     # Prefer a clean break at whitespace within the last 20% of the window
     cut = text[:n].rstrip()
     return cut + "…"
+
+
+def _flatten_tool_result_content(content) -> str:
+    """Flatten a ``tool_result`` block's ``content`` to plain text.
+
+    ``content`` is either a plain string or a list of blocks (text / image).
+    Image blocks contribute nothing; text blocks are joined with newlines so
+    multi-line failure signatures survive. Returns "" for anything else.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                txt = block.get("text")
+                if isinstance(txt, str) and txt:
+                    parts.append(txt)
+        return "\n".join(parts)
+    return ""
+
+
+def _extract_tool_results(user_raw) -> list[dict]:
+    """Extract ``tool_result`` blocks from a turn's preceding user content.
+
+    Returns one dict per ``tool_result`` block::
+
+        {"tool_use_id": str, "is_error": bool | None, "text": str}
+
+    ``is_error`` is read directly off the block — it is present and reliable
+    in the Claude Code JSONL on tool responses; ``None`` only when the field
+    is genuinely absent (older transcripts). ``text`` is the flattened result
+    content capped to ``_TOOL_RESULT_TEXT_CAP``. This is the parser-side data
+    the tool-health pass consumes to derive failure signals downstream.
+    """
+    if not isinstance(user_raw, list):
+        return []
+    out: list[dict] = []
+    for block in user_raw:
+        if not isinstance(block, dict) or block.get("type") != "tool_result":
+            continue
+        ie = block.get("is_error")
+        out.append({
+            "tool_use_id": str(block.get("tool_use_id") or ""),
+            "is_error":    ie if isinstance(ie, bool) else None,
+            "text":        _truncate(
+                _flatten_tool_result_content(block.get("content")),
+                _TOOL_RESULT_TEXT_CAP),
+        })
+    return out
+
+
+def _tool_input_hash(tool_input) -> str:
+    """Stable 16-char hash of a ``tool_use`` block's canonicalised input.
+
+    Lets retry detection spot byte-identical consecutive calls without
+    retaining the (potentially large) raw input in the exported turn record —
+    a Write's ``content`` or an Edit's replacement string can be tens of KB.
+    Keys are sorted so logically-identical inputs hash equal regardless of
+    JSON key order. Returns "" when the input is missing or unhashable.
+    """
+    if not isinstance(tool_input, dict):
+        return ""
+    try:
+        canon = json.dumps(tool_input, sort_keys=True,
+                           separators=(",", ":"), default=str)
+    except (TypeError, ValueError):
+        return ""
+    return hashlib.sha1(canon.encode("utf-8")).hexdigest()[:16]
+
+
+def _tool_input_file_path(name: str, tool_input) -> str:
+    """Extract the target file path from a file-touching ``tool_use`` input.
+
+    Drives edit-churn detection (rapid re-editing of one file). Returns ""
+    for tools that don't target a file.
+    """
+    if not isinstance(tool_input, dict):
+        return ""
+    if name in ("Edit", "Write", "Read", "MultiEdit"):
+        return str(tool_input.get("file_path") or "")
+    if name in ("NotebookEdit", "NotebookRead"):
+        return str(tool_input.get("notebook_path")
+                   or tool_input.get("file_path") or "")
+    return ""
 
 
 def _extract_user_prompt_text(content) -> str:
@@ -743,6 +835,12 @@ def _build_turn_record(global_index: int, entry: dict,
     user_raw       = entry.get("_preceding_user_content")
     assist_counts, tool_names = _count_content_blocks(assist_content)
     user_counts, _ = _count_content_blocks(user_raw)
+    # Phase-0 (v1.71.0): retain each tool_result's is_error flag + (capped)
+    # text from the preceding user entry so the tool-health pass can derive
+    # failure / retry / churn signals. tool_results belong to the assistant
+    # turn whose tool_use blocks they answer (attributed via the same
+    # preceding-user-content pointer as tool_result counts).
+    tool_results = _extract_tool_results(user_raw)
     content_blocks = {
         "thinking":             assist_counts["thinking"],
         "tool_use":             assist_counts["tool_use"],
@@ -783,9 +881,20 @@ def _build_turn_record(global_index: int, entry: dict,
             if not isinstance(block, dict) or block.get("type") != "tool_use":
                 continue
             name = block.get("name") or ""
+            name_str = name if isinstance(name, str) else str(name)
+            _bid = block.get("id")
             tool_detail.append({
-                "name":          name if isinstance(name, str) else str(name),
+                "name":          name_str,
+                # tool_use id — lets the tool-health pass map a tool_result
+                # (which carries tool_use_id) back to the tool that produced it
+                # for the per-tool failure-rate table.
+                "id":            _bid if isinstance(_bid, str) else "",
                 "input_preview": _summarise_tool_input(name, block.get("input")),
+                # canonical-input hash + file_path enable the tool-health pass to
+                # detect byte-identical retries and edit-churn without retaining
+                # the full raw input.
+                "input_hash":    _tool_input_hash(block.get("input")),
+                "file_path":     _tool_input_file_path(name_str, block.get("input")),
             })
             binput = block.get("input")
             if not isinstance(binput, dict):
@@ -886,6 +995,9 @@ def _build_turn_record(global_index: int, entry: dict,
         "is_cache_break":         False,
         "content_blocks":         content_blocks,
         "tool_use_names":         tool_names,
+        # Phase-0 (v1.71.0): per-tool_result is_error + capped text, consumed
+        # by the tool-health pass. Empty list for turns with no tool results.
+        "tool_results":           tool_results,
         "is_resume_marker":       bool(entry.get("_is_resume_marker", False)),
         "is_clear_event":         bool(entry.get("_is_clear_event", False)),
         # Q1c: stamped later by ``_build_report`` from the canonical, deduped

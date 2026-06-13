@@ -582,6 +582,10 @@ def _build_report(
     """
     sessions_out = []
     global_idx = 1
+    # Report-generation time — the reference point for the session-health
+    # recency gate (a session whose last record is very recent is "in
+    # progress", not abandoned). Computed once so every session shares it.
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
     attribution_summary = {
         "attributed_turns":      0,
         "orphan_subagent_turns": 0,
@@ -721,6 +725,27 @@ def _build_report(
                 if not _t.get("is_resume_marker"):
                     _t["is_continued_from_prior"] = True
                     break
+        # Session-health layer (v1.72.0): tool-health + outcome + context
+        # pressure + a penalty-based 0–100 score. Runs LAST in the per-session
+        # loop so it sees the compaction stamps (is_post_compaction) the
+        # mid-task flag depends on. Always attached; renderers auto-hide on
+        # automated / unscored sessions.
+        session_dict["is_automated"] = _sm()._detect_automated_session(turn_records)
+        # Behavioral & adoption signals (v1.73.0): archetype, autonomy ratio,
+        # plan-mode / subagent / skill adoption, tool taxonomy, termination.
+        session_dict["session_behavior"] = _sm()._build_session_behavior(
+            turn_records,
+            relationship=("continuation" if session_dict.get("starts_with_summary")
+                          else "primary"),
+        )
+        session_dict["session_health"] = _sm()._build_session_health(
+            turn_records=turn_records,
+            compaction_boundaries=session_dict["compaction_events"],
+            last_user_epoch=(user_ts[-1] if user_ts else 0),
+            last_assistant_epoch=last_epoch,
+            now_epoch=now_epoch,
+            is_automated=session_dict["is_automated"],
+        )
         sessions_out.append(session_dict)
 
     all_turns = [t for s in sessions_out for t in s["turns"]]

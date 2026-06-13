@@ -191,6 +191,27 @@ when counting user-prompt activity** — otherwise user-activity
 metrics inflate 10-20× on tool-heavy sessions. Implementation:
 `_is_user_prompt` in `scripts/session-metrics.py`.
 
+Shape:
+
+```json
+{
+  "type": "tool_result",
+  "tool_use_id": "toolu_01Abc",
+  "content": "Exit code 1\nruff not found",
+  "is_error": true
+}
+```
+
+| Field         | Notes                                                                                                  |
+|---------------|--------------------------------------------------------------------------------------------------------|
+| `tool_use_id` | Links the result back to the `tool_use` block it answers (`toolu_` prefix).                             |
+| `content`     | The tool output — a plain string **or** a list of `text` / `image` blocks. Flattened for failure scans. |
+| `is_error`    | **Present and reliable** boolean on tool responses (empirically ~6.6% `true` across live transcripts). The primary failure signal — leads tool-health failure detection, with content heuristics for enrichment. `None` only on older transcripts that omit it. |
+
+Captured into the per-turn `tool_results` list (`tool_use_id` + `is_error` +
+capped `text`) by `_extract_tool_results` (`_turn_parser.py`) so the
+tool-health pass can derive failure / retry / churn signals.
+
 ### `image` (user-entry block)
 
 Pasted / attached image. Rare in shell-bound sessions.

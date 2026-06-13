@@ -1808,6 +1808,221 @@ def _build_subagent_turn_share_card_html(stats: dict) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# Session-health card + section (v1.72.0)
+# ---------------------------------------------------------------------------
+
+_GRADE_COLORS = {
+    "A": "#1a7f37", "B": "#3fb950", "C": "#d29922", "D": "#e3742f", "F": "#cf222e",
+}
+_OUTCOME_STYLE = {
+    "completed":   ("Completed",   "#1a7f37"),
+    "abandoned":   ("Abandoned",   "#d29922"),
+    "errored":     ("Errored",     "#cf222e"),
+    "unknown":     ("Unknown",     "#6e7781"),
+    "in_progress": ("In progress", "#0969da"),
+    "automated":   ("Automated",   "#6e7781"),
+}
+_PENALTY_LABELS = {
+    "failures":             "Tool failures",
+    "retries":              "Repeated identical calls",
+    "churn":                "File edit churn",
+    "streak":               "Consecutive-failure streak",
+    "compactions":          "Context compactions",
+    "mid_task_compactions": "Mid-task compactions",
+    "context_pressure":     "Context pressure (>90%)",
+    "outcome":              "Outcome penalty",
+}
+
+
+def _outcome_badge_html(outcome: str) -> str:
+    label, color = _OUTCOME_STYLE.get(outcome, (outcome.replace("_", " ").title(), "#6e7781"))
+    return (f'<span style="display:inline-block;padding:2px 10px;border-radius:12px;'
+            f'background:{color};color:#fff;font-weight:600;font-size:13px">{label}</span>')
+
+
+def _build_session_health_card_html(health: dict) -> str:
+    """Compact KPI card: grade + score + outcome, for the dashboard grid."""
+    if not health:
+        return ""
+    grade = health.get("grade")
+    score = health.get("score")
+    outcome = health.get("outcome", "unknown")
+    o_label = _OUTCOME_STYLE.get(outcome, (outcome.replace("_", " ").title(),))[0]
+    if grade:
+        g_color = _GRADE_COLORS.get(grade, "#6e7781")
+        val = (f'<span style="color:{g_color}">{grade}</span> '
+               f'<span style="font-size:18px;color:var(--muted,#888)">{score}/100</span>')
+    else:
+        val = '<span style="font-size:18px;color:var(--muted,#888)">not scored</span>'
+    return (
+        '<div class="kpi cat-save" title="Penalty-based 0–100 session-health '
+        'score with an A–F grade. See the Session Health section for the '
+        'per-signal breakdown.">'
+        '<div class="kpi-label">Session health</div>'
+        f'<div class="kpi-val">{val}</div>'
+        f'<div class="kpi-sub">{o_label}</div></div>'
+    )
+
+
+def _build_session_health_html(health: dict) -> str:
+    """Full Session Health section: grade, outcome, penalty breakdown, signals.
+
+    Returns "" when no health object is present. Renders for automated /
+    unscored sessions too — the outcome + signals are still informative even
+    when the numeric score is suppressed.
+    """
+    if not health:
+        return ""
+    sig = health.get("signals") or {}
+    outcome = health.get("outcome", "unknown")
+    grade = health.get("grade")
+    score = health.get("score")
+    confidence = health.get("outcome_confidence", "")
+    basis = health.get("basis") or []
+
+    if grade:
+        g_color = _GRADE_COLORS.get(grade, "#6e7781")
+        grade_block = (
+            f'<span style="display:inline-block;min-width:48px;text-align:center;'
+            f'padding:8px 14px;border-radius:10px;background:{g_color};color:#fff;'
+            f'font-size:30px;font-weight:700;line-height:1">{grade}</span>'
+            f'<span style="font-size:22px;margin-left:12px">{score}<span '
+            f'style="color:var(--fg-dim,#888);font-size:15px">/100</span></span>'
+        )
+    else:
+        reason = "automated session" if outcome == "automated" else (
+            "live session" if outcome == "in_progress" else "insufficient data")
+        grade_block = (
+            f'<span style="font-size:18px;color:var(--fg-dim,#888)">Not scored '
+            f'&middot; {reason}</span>'
+        )
+
+    pen = health.get("penalties") or {}
+    pen_rows = "".join(
+        f'<tr><td>{_PENALTY_LABELS.get(k, k)}</td>'
+        f'<td style="text-align:right;color:#cf222e">&minus;{v}</td></tr>'
+        for k, v in pen.items() if v
+    )
+    if pen_rows:
+        pen_table = (
+            '<table class="mini-table" style="margin-top:8px"><thead><tr>'
+            '<th>Penalty</th><th style="text-align:right">Points</th></tr></thead>'
+            f'<tbody>{pen_rows}</tbody></table>'
+        )
+    elif grade:
+        pen_table = ('<p style="color:#1a7f37;margin-top:8px">No penalties &mdash; '
+                     'clean session.</p>')
+    else:
+        pen_table = ""
+
+    # Signals one-liners.
+    def _n(key):
+        return int(sig.get(key, 0) or 0)
+    cp = sig.get("context_pressure")
+    cp_str = (f'{cp * 100:.0f}% of {int(sig.get("context_window", 0)):,}-token window'
+              if cp is not None else "n/a")
+    signal_bits = [
+        f'<li>Tool failures: <strong>{_n("failure_signal_count")}</strong> '
+        f'(longest streak {_n("consecutive_failure_max")})</li>',
+        f'<li>Repeated identical calls: <strong>{_n("retry_count")}</strong></li>',
+        f'<li>Edit churn: <strong>{_n("edit_churn_count")}</strong> file(s)</li>',
+        f'<li>Compactions: <strong>{_n("compaction_count")}</strong> '
+        f'({_n("mid_task_compaction_count")} mid-task)</li>',
+        f'<li>Peak context pressure: <strong>{cp_str}</strong></li>',
+    ]
+    if health.get("give_up"):
+        signal_bits.append('<li style="color:#d29922">Final reply reads like a '
+                           'capitulation (soft failure)</li>')
+    churned = sig.get("churned_files") or []
+    if churned:
+        items = "".join(
+            f'<li>{html_mod.escape(c.get("path", ""))} '
+            f'&mdash; {int(c.get("edits", 0))} edits</li>' for c in churned[:8]
+        )
+        signal_bits.append(f'<li>Churned files:<ul>{items}</ul></li>')
+
+    basis_str = ", ".join(basis) if basis else "&mdash;"
+    conf_str = f' &middot; {confidence} confidence' if confidence else ""
+    return (
+        '<section class="section" id="session-health-section">'
+        '<div class="section-title"><h2>Session Health</h2></div>'
+        f'<div class="health-panel">'
+        '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;'
+        'margin-bottom:6px">'
+        f'{grade_block}'
+        f'<span>Outcome: {_outcome_badge_html(outcome)}{conf_str}</span>'
+        '</div>'
+        f'<p style="color:var(--fg-dim,#888);font-size:13px;margin:4px 0">'
+        f'Scored on: {basis_str}</p>'
+        f'{pen_table}'
+        f'<ul style="margin-top:10px;line-height:1.6">{"".join(signal_bits)}</ul>'
+        '</div>'
+        '</section>'
+    )
+
+
+def _chip_html(text: str, *, color: str = "#57606a") -> str:
+    return (f'<span style="display:inline-block;padding:3px 10px;margin:2px;'
+            f'border-radius:12px;background:{color};color:#fff;font-size:13px">'
+            f'{html_mod.escape(text)}</span>')
+
+
+_ARCHETYPE_COLORS = {"quick": "#0969da", "standard": "#1a7f37",
+                     "deep": "#8250df", "marathon": "#bf3989"}
+_TERMINATION_LABELS = {
+    "clean": ("Ended clean", "#1a7f37"),
+    "awaiting_user": ("Awaiting user", "#0969da"),
+    "tool_call_pending": ("Tool call pending", "#d29922"),
+    "truncated": ("Truncated", "#cf222e"),
+}
+
+
+def _build_session_behavior_html(behavior: dict) -> str:
+    """Session Behavior section — adoption / autonomy / archetype chips + taxonomy."""
+    if not behavior:
+        return ""
+    ad = behavior.get("adoption") or {}
+    arche = behavior.get("archetype", "")
+    chips = [
+        _chip_html(f"{arche.title()} session", color=_ARCHETYPE_COLORS.get(arche, "#57606a")),
+    ]
+    ar = behavior.get("autonomy_ratio")
+    if ar is not None:
+        chips.append(_chip_html(f"Autonomy {ar}× (tool turns / prompt)"))
+    chips.append(_chip_html(f"{behavior.get('user_prompt_count', 0)} user prompts"))
+    if ad.get("plan_mode_used"):
+        chips.append(_chip_html("Plan mode used", color="#1a7f37"))
+    sc = int(ad.get("subagent_spawn_count", 0) or 0)
+    if sc:
+        chips.append(_chip_html(f"{sc} subagent{'s' if sc != 1 else ''} spawned"))
+    dk = int(ad.get("distinct_skill_count", 0) or 0)
+    if dk:
+        chips.append(_chip_html(f"{dk} distinct skill{'s' if dk != 1 else ''}"))
+    term = behavior.get("termination", "")
+    t_label, t_color = _TERMINATION_LABELS.get(term, (term.replace("_", " ").title(), "#57606a"))
+    chips.append(_chip_html(t_label, color=t_color))
+    if behavior.get("relationship") == "continuation":
+        chips.append(_chip_html("Continuation", color="#8250df"))
+
+    tax = behavior.get("tool_taxonomy") or {}
+    tax_html = ""
+    if tax:
+        cells = " &middot; ".join(
+            f'{html_mod.escape(k)} {v}' for k, v in tax.items())
+        tax_html = (f'<p style="color:var(--fg-dim,#888);font-size:13px;'
+                    f'margin-top:8px">Tools by category: {cells}</p>')
+    return (
+        '<section class="section" id="session-behavior-section">'
+        '<div class="section-title"><h2>Session Behavior</h2></div>'
+        f'<div class="health-panel">'
+        f'<div style="line-height:2">{"".join(chips)}</div>'
+        f'{tax_html}'
+        '</div>'
+        '</section>'
+    )
+
+
 def _build_window_ribbon_html(window_stats: list[dict]) -> str:
     """Multi-window 7d / 30d / 90d / all-time comparison ribbon.
 
@@ -2496,6 +2711,14 @@ details.insights .body li{margin:6px 0}
 
 /* Legacy .usage-insights wrapper — styled through theme rules */
 .usage-insights{margin:0 0 24px;padding:14px 18px;border-radius:12px}
+/* Session-health / Session-behavior panels — theme-aware card chrome via vars
+   so they match the surrounding sections across all four themes. */
+.health-panel{padding:16px 18px;border-radius:12px;border:1px solid var(--border);background:var(--surface-deep,var(--surface))}
+.health-panel ul{margin:8px 0 0;padding-left:20px}
+.health-panel ul ul{margin:2px 0}
+.health-panel .mini-table{border-collapse:collapse;font-size:13px}
+.health-panel .mini-table th{text-align:left;color:var(--fg-dim,#888);font-weight:500;padding:2px 16px 2px 0;border-bottom:1px solid var(--border-dim,var(--border))}
+.health-panel .mini-table td{padding:2px 16px 2px 0}
 .usage-insights .ui-top{font-size:13px;line-height:1.55;margin:0}
 .usage-insights .ui-top strong{font-size:15px;font-weight:600;margin-right:6px}
 .usage-insights details{margin-top:10px;padding-top:8px;border-top:1px solid var(--border-dim)}
@@ -4008,6 +4231,8 @@ def render_html(report: dict, variant: str = "single",
         )
 
     summary_cards_html = ""
+    health_section_html = ""
+    behavior_section_html = ""
     if include_insights:
         ttl_mix_card = _build_ttl_mix_card_html(totals)
         thinking_card = _build_thinking_card_html(totals)
@@ -4134,8 +4359,22 @@ def render_html(report: dict, variant: str = "single",
                 f'{_sc_turns} turn{"s" if _sc_turns != 1 else ""} &middot; '
                 f'{_sc_tokens:,} tokens</div></div>'
             )
+        # Session-health (v1.72.0) — single-session reports only (the grade /
+        # outcome is intrinsically per-session; a multi-session rollup has no
+        # one grade). Card rides in the kpi-grid; the full breakdown is its own
+        # section after the grid.
+        _single_health = (sessions[0].get("session_health")
+                          if len(sessions) == 1 else None)
+        health_card = (("\n  " + _build_session_health_card_html(_single_health))
+                       if _single_health else "")
+        health_section_html = (_build_session_health_html(_single_health)
+                               if _single_health else "")
+        _single_behavior = (sessions[0].get("session_behavior")
+                            if len(sessions) == 1 else None)
+        behavior_section_html = (_build_session_behavior_html(_single_behavior)
+                                 if _single_behavior else "")
         summary_cards_html = f'''\
-<div class="kpi-grid">
+<div class="kpi-grid">{health_card}
   <div class="kpi featured cat-tokens"><div class="kpi-label">Total cost (USD)</div><div class="kpi-val">${totals['cost']:.4f}</div></div>{plan_leverage_card}
   <div class="kpi cat-save"><div class="kpi-label">Cache savings</div><div class="kpi-val">${totals['cache_savings']:.4f}</div></div>
   <div class="kpi"><div class="kpi-label">Cache hit ratio</div><div class="kpi-val">{totals['cache_hit_pct']:.1f}%</div></div>{partial_hit_card}{subagent_share_card}{subagent_turn_share_card}
@@ -4834,6 +5073,8 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
   {len(sessions)} session{'s' if len(sessions) != 1 else ''}, {totals['turns']:,} turns &nbsp;·&nbsp; skill v{skill_version}</p>
 </header>
 {summary_cards_html}
+{health_section_html}
+{behavior_section_html}
 {usage_insights_html}
 {waste_analysis_html}
 {cache_breaks_html}

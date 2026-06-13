@@ -47,6 +47,14 @@ def _redact_turns_for_json(sessions: list[dict]) -> list[dict]:
             for fld in _REDACTED_TURN_FIELDS:
                 if redacted.get(fld):
                     redacted[fld] = _REDACTED_PLACEHOLDER
+            # tool_result text can echo file contents / command output that may
+            # carry PII — mask it too, leaving is_error + tool_use_id (the
+            # cost-analysis-relevant structured fields) intact.
+            if redacted.get("tool_results"):
+                redacted["tool_results"] = [
+                    {**tr, "text": _REDACTED_PLACEHOLDER} if tr.get("text") else tr
+                    for tr in redacted["tool_results"]
+                ]
             new_turns.append(redacted)
         out.append({**s, "turns": new_turns})
     return out

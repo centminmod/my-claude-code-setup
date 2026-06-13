@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.70.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.73.2"  # embedded in every export; bump when plugin version bumps
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
@@ -369,6 +369,9 @@ def _load_leaf(name: str):
 # (``def fn(x: int = _NAME)``) import from it at their own load time.
 _co_m = _load_leaf("_constants")
 _CACHE_BREAK_DEFAULT_THRESHOLD = _co_m._CACHE_BREAK_DEFAULT_THRESHOLD
+_MODEL_CONTEXT_WINDOWS         = _co_m._MODEL_CONTEXT_WINDOWS
+_DEFAULT_CONTEXT_WINDOW        = _co_m._DEFAULT_CONTEXT_WINDOW
+_LONG_CONTEXT_WINDOW           = _co_m._LONG_CONTEXT_WINDOW
 del _co_m
 
 _dt_m = _load_leaf("_dt")
@@ -481,6 +484,11 @@ _SLASH_BARE_RE                = _tp_m._SLASH_BARE_RE
 _XML_MARKER_RE                = _tp_m._XML_MARKER_RE
 _ASSISTANT_TEXT_CAP           = _tp_m._ASSISTANT_TEXT_CAP
 _PROMPT_TEXT_CAP              = _tp_m._PROMPT_TEXT_CAP
+_TOOL_RESULT_TEXT_CAP         = _tp_m._TOOL_RESULT_TEXT_CAP
+_extract_tool_results         = _tp_m._extract_tool_results
+_tool_input_hash             = _tp_m._tool_input_hash
+_tool_input_file_path         = _tp_m._tool_input_file_path
+_flatten_tool_result_content  = _tp_m._flatten_tool_result_content
 _cache_write_split            = _tp_m._cache_write_split
 _cost                         = _tp_m._cost
 _advisor_info                 = _tp_m._advisor_info
@@ -698,6 +706,17 @@ _build_by_subagent_type     = _da_m._build_by_subagent_type
 _build_by_workflow          = _da_m._build_by_workflow
 _write_evidence_pack        = _da_m._write_evidence_pack
 del _da_m
+
+_he_m = _load_leaf("_health")
+_build_session_health           = _he_m.build_session_health
+_build_session_behavior         = _he_m.build_session_behavior
+_classify_outcome               = _he_m.classify_outcome
+_compute_tool_health            = _he_m.compute_tool_health
+_compute_context_pressure       = _he_m.compute_context_pressure
+_compute_health_score           = _he_m.compute_health_score
+_detect_automated_session       = _he_m.detect_automated_session
+_health_context_window_for      = _he_m._context_window_for
+del _he_m
 
 _inv_m = _load_leaf("_invariants")
 _run_invariants                 = _inv_m._run_invariants
