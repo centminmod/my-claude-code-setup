@@ -1,11 +1,11 @@
 ---
 name: consult-zai
-description: Compare z.ai GLM 4.7 and code-searcher responses for comprehensive dual-AI code analysis. Use when you need multiple AI perspectives on code questions.
+description: Dual-AI code analysis pairing z.ai GLM 5.2 with Claude code-searcher — a lightweight two-model second opinion. Use for a quick z.ai-backed check on a code question.
 ---
 
-# Dual-AI Consultation: z.ai GLM 4.7 vs Code-Searcher
+# Dual-AI Consultation: z.ai GLM 5.2 vs Code-Searcher
 
-You orchestrate consultation between z.ai's GLM 4.7 model and Claude's code-searcher to provide comprehensive analysis with comparison.
+You orchestrate consultation between z.ai's GLM 5.2 model and Claude's code-searcher to provide comprehensive analysis with comparison.
 
 ## When to Use This Skill
 
@@ -57,23 +57,29 @@ Wrap the user's question with structured output requirements:
 
 Launch both simultaneously in a single message with multiple tool calls:
 
-- **For z.ai GLM 4.7:** Use a temp file to avoid shell quoting issues:
+- **For z.ai GLM 5.2:** Use a temp file to avoid shell quoting issues.
 
-  **Step 1:** Write the enhanced prompt to a temp file using the Write tool:
+  **Step 0 — run-scope the filename and sweep stale prompts.** Pick a unique `RUN_ID` for this run (e.g. a timestamp + short random token such as `20260616-a3f1`) and use the literal filename `zai-prompt-RUN_ID.txt` (with `RUN_ID` substituted) in Steps 1–2 and in §3 cleanup. Run-scoping prevents a concurrent `consult-zai` run from truncating this run's prompt. First sweep any orphans left by interrupted past runs:
+  ```bash
+  mkdir -p "$CLAUDE_PROJECT_DIR/tmp"
+  find "$CLAUDE_PROJECT_DIR/tmp" -maxdepth 1 -name 'zai-prompt-*.txt' -mmin +60 -delete 2>/dev/null
   ```
-  Write to $CLAUDE_PROJECT_DIR/tmp/zai-prompt.txt with the ENHANCED_PROMPT content
+
+  **Step 1:** Write the enhanced prompt to the temp file using the Write tool:
+  ```
+  Write to $CLAUDE_PROJECT_DIR/tmp/zai-prompt-RUN_ID.txt with the ENHANCED_PROMPT content
   ```
 
   **Step 2:** Execute z.ai with the temp file:
 
   **macOS:**
   ```bash
-  zsh -i -c 'zai -p "$(cat $CLAUDE_PROJECT_DIR/tmp/zai-prompt.txt)" --output-format json --append-system-prompt "You are GLM 4.7 model accessed via z.ai API." 2>&1'
+  zsh -i -c 'zai -p "$(cat "$CLAUDE_PROJECT_DIR/tmp/zai-prompt-RUN_ID.txt")" --output-format json --append-system-prompt "You are GLM 5.2 model accessed via z.ai API." 2>&1'
   ```
 
   **Linux:**
   ```bash
-  bash -i -c 'zai -p "$(cat $CLAUDE_PROJECT_DIR/tmp/zai-prompt.txt)" --output-format json --append-system-prompt "You are GLM 4.7 model accessed via z.ai API." 2>&1'
+  bash -i -c 'zai -p "$(cat "$CLAUDE_PROJECT_DIR/tmp/zai-prompt-RUN_ID.txt")" --output-format json --append-system-prompt "You are GLM 5.2 model accessed via z.ai API." 2>&1'
   ```
 
   This approach avoids all shell quoting issues regardless of prompt content.
@@ -87,7 +93,7 @@ This parallel execution significantly improves response time.
 After processing the z.ai response (success or failure), clean up the temp prompt file:
 
 ```bash
-rm -f $CLAUDE_PROJECT_DIR/tmp/zai-prompt.txt
+rm -f "$CLAUDE_PROJECT_DIR/tmp/zai-prompt-RUN_ID.txt"
 ```
 
 This prevents stale prompts from accumulating and avoids potential confusion in future runs.
@@ -104,7 +110,7 @@ Use this exact format:
 
 ---
 
-## z.ai (GLM 4.7) Response
+## z.ai (GLM 5.2) Response
 
 [Raw output from zai-cli agent]
 
@@ -118,7 +124,9 @@ Use this exact format:
 
 ## Comparison Table
 
-| Aspect | z.ai (GLM 4.7) | Code-Searcher (Claude) |
+(MANDATORY — always render this table on a multi-agent run; it is the at-a-glance visual diff readers rely on, so never skip it. Omit only in a degraded single-AI run, where there is nothing to compare.)
+
+| Aspect | z.ai (GLM 5.2) | Code-Searcher (Claude) |
 |--------|----------------|------------------------|
 | File paths | [Specific/Generic/None] | [Specific/Generic/None] |
 | Line numbers | [Provided/Missing] | [Provided/Missing] |
@@ -137,7 +145,7 @@ Use this exact format:
 
 ## Key Differences
 
-- **z.ai GLM 4.7:** [unique findings, strengths, approach]
+- **z.ai GLM 5.2:** [unique findings, strengths, approach]
 - **Code-Searcher:** [unique findings, strengths, approach]
 
 ## Synthesized Summary
