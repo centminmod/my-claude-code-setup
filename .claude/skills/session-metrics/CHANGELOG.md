@@ -3,6 +3,28 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.81.0 — 2026-06-16
+
+### Pricing: MiniMax M3, Kimi K2.7 Code, Qwen 3.7 Plus (minor)
+
+Adds explicit OpenRouter pricing keys for three consult-skill models that
+previously fell through to family-fallback rates and emitted the
+`[warn] … priced at fallback rates` advisory. Rates verified against the live
+OpenRouter model pages (2026-06):
+
+- **MiniMax M3** — `minimax/minimax-m3`, $0.30 in / $1.20 out (regex
+  `minimax[-_/.]m3(?!\d)`).
+- **Kimi K2.7 Code** — `moonshotai/kimi-k2.7-code`, $0.75 in / $3.50 out
+  (regex `kimi[-_/.]k2\.7(?!\d)`).
+- **Qwen 3.7 Plus** — `qwen/qwen3.7-plus`, $0.32 in / $1.28 out (regex
+  `qwen3\.7(?!\d).*plus\b`).
+
+Cache columns are `0.00`, matching every other non-Anthropic entry (these
+OpenRouter models don't emit Anthropic-style `cache_read`/`cache_creation`
+usage). The predecessor keys (`kimi-k2.6`, `minimax-m2.7`, `qwen3.6-plus`)
+are unchanged. New tests cover explicit-rate resolution, silent (non-flagged)
+recognition, and `(?!\d)` over-match guards. Full `test_pricing.py`: 106 passed.
+
 ## v1.80.1 — 2026-06-14
 
 ### Chart-export XSS hardening + assert-strip robustness (patch)

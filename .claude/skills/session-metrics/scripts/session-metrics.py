@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.80.1"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.81.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -147,10 +147,16 @@ _PRICING: dict[str, dict[str, float]] = {
     "xiaomi/mimo-v2.5":          {"input":  0.40, "output":   2.00, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     # Moonshot Kimi K2.6
     "moonshotai/kimi-k2.6":      {"input": 0.7448, "output":  4.655, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # Moonshot Kimi K2.7 Code (OpenRouter, 2026-06)
+    "moonshotai/kimi-k2.7-code": {"input":  0.75, "output":   3.50, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     # Qwen 3.6 Plus
     "qwen/qwen3.6-plus":         {"input": 0.325,  "output":   1.95, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # Qwen 3.7 Plus (OpenRouter, 2026-06)
+    "qwen/qwen3.7-plus":         {"input":  0.32,  "output":   1.28, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     # MiniMax M2.7
     "minimax/minimax-m2.7":      {"input":  0.30, "output":   1.20, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # MiniMax M3 (OpenRouter, 2026-06)
+    "minimax/minimax-m3":        {"input":  0.30, "output":   1.20, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     # GLM-5-Turbo (Z.ai) — must precede glm-5 in prefix scan; regex guard also added below
     "z-ai/glm-5-turbo":          {"input":  1.20, "output":   4.00, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
 }
@@ -187,8 +193,8 @@ _WEB_SEARCH_REQUEST_USD = 0.01
 # still resolve. More-specific patterns must come first within each family.
 #
 # Boundary policy (v1.41.0):
-#   * Numeric-suffix families (gpt-5.5, qwen3.6, mimo-v2.5, kimi-k2.6,
-#     minimax-m2.7) carry ``(?!\d)`` so a model with one extra trailing digit
+#   * Numeric-suffix families (gpt-5.5, qwen3.6/3.7, mimo-v2.5, kimi-k2.6/2.7,
+#     minimax-m2.7/m3) carry ``(?!\d)`` so a model with one extra trailing digit
 #     (e.g. ``gpt-5.55``, ``qwen3.60``) falls through to default Sonnet rates
 #     instead of being mispriced as the shorter version.
 #   * Provider/model separators use the class ``[-_/.]`` rather than a bare
@@ -212,10 +218,17 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     (re.compile(r"mimo[-_/.]v2\.5(?!\d)",            re.I), _PRICING["xiaomi/mimo-v2.5"]),
     # Moonshot Kimi K2.6
     (re.compile(r"kimi[-_/.]k2\.6(?!\d)",            re.I), _PRICING["moonshotai/kimi-k2.6"]),
+    # Moonshot Kimi K2.7 (Code) — distinct version string from K2.6; matches
+    # the `-code` suffix variant the consult skills use (kimi-k2.7-code).
+    (re.compile(r"kimi[-_/.]k2\.7(?!\d)",            re.I), _PRICING["moonshotai/kimi-k2.7-code"]),
     # Qwen 3.6 Plus
     (re.compile(r"qwen3\.6(?!\d).*plus\b",           re.I), _PRICING["qwen/qwen3.6-plus"]),
+    # Qwen 3.7 Plus
+    (re.compile(r"qwen3\.7(?!\d).*plus\b",           re.I), _PRICING["qwen/qwen3.7-plus"]),
     # MiniMax M2.7
     (re.compile(r"minimax[-_/.]m2\.7(?!\d)",         re.I), _PRICING["minimax/minimax-m2.7"]),
+    # MiniMax M3 (integer version; (?!\d) blocks an `m30`+ glue-on)
+    (re.compile(r"minimax[-_/.]m3(?!\d)",            re.I), _PRICING["minimax/minimax-m3"]),
     # GLM-5-Turbo before the bare glm-5 prefix entry
     (re.compile(r"glm-5-turbo\b",                    re.I), _PRICING["z-ai/glm-5-turbo"]),
     # GLM-5.1 before the bare glm-5 prefix entry. `glm-5` is a strict prefix of

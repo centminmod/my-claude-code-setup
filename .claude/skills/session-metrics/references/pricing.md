@@ -137,8 +137,8 @@ Source: [OpenRouter pricing](https://openrouter.ai/pricing) — snapshot 2026-04
 sweep so families with shared prefixes (e.g. `glm-5` vs `glm-5-turbo`) resolve
 correctly regardless of dict insertion order.
 
-**Boundary policy (v1.41.0)**: numeric-suffix families (gpt-5.5, qwen3.6,
-mimo-v2.5, kimi-k2.6, minimax-m2.7) carry `(?!\d)` so a model with one
+**Boundary policy (v1.41.0)**: numeric-suffix families (gpt-5.5, qwen3.6/3.7,
+mimo-v2.5, kimi-k2.6/2.7, minimax-m2.7/m3) carry `(?!\d)` so a model with one
 extra trailing digit (`gpt-5.55`, `qwen3.60-plus`) falls through to default
 Sonnet rates instead of being mispriced as the shorter version. Provider /
 model separators use the class `[-_/.]` (not bare `.`) so `deepseek.v4-flash`
@@ -174,6 +174,7 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 |------------------------------|-------|--------|----------------------|
 | `qwen3.5:9b`                 |  0.10 |   0.15 | exact                |
 | `qwen/qwen3.6-plus`          | 0.325 |   1.95 | `qwen3\.6(?!\d).*plus\b` |
+| `qwen/qwen3.7-plus`          |  0.32 |   1.28 | `qwen3\.7(?!\d).*plus\b` |
 
 ### OpenAI (via OpenRouter)
 
@@ -201,12 +202,14 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 | Model ID                     | Input  | Output | Regex pattern |
 |------------------------------|--------|--------|---------------|
 | `moonshotai/kimi-k2.6`       | 0.7448 |  4.655 | `kimi[-_/.]k2\.6(?!\d)` |
+| `moonshotai/kimi-k2.7-code`  |  0.75  |  3.50  | `kimi[-_/.]k2\.7(?!\d)` |
 
 ### MiniMax
 
 | Model ID                     | Input | Output | Regex pattern      |
 |------------------------------|-------|--------|--------------------|
 | `minimax/minimax-m2.7`       |  0.30 |   1.20 | `minimax[-_/.]m2\.7(?!\d)` |
+| `minimax/minimax-m3`         |  0.30 |   1.20 | `minimax[-_/.]m3(?!\d)` |
 
 ## Notes
 
