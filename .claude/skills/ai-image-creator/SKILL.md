@@ -67,6 +67,7 @@ Professional prompt patterns are available in 3 reference files. These are **not
 | "building", "interior", "room", "architecture" | `architecture` | `prompt-core.md` + `prompt-categories.md` § architecture |
 | "chart", "infographic", "data", "diagram" | `infographic` | `prompt-core.md` + `prompt-categories.md` § infographic |
 | "t-shirt", "mug design", "poster", "POD", "print-on-demand" | `pod_design` | `prompt-core.md` + `prompt-platforms.md` + `prompt-categories.md` § pod_design |
+| "consistent character", "same character/product across frames", "comic strip", "storyboard", "frame set", "start and last frame", "panels", "before/after" | `frame_consistency` | Read `references/consistency-presets.md` — keep people/objects/scenes consistent across a SET of frames (for video first/last frames or stitched comic strips) |
 | "describe", "analyze", "what's in this image", "explain image" | `analyze` | Skip prompt enhancement — use `--analyze` mode directly. Read `references/analyze-reference.md` for advanced analysis patterns |
 | No match / simple request | — | Skip patterns, generate directly |
 
