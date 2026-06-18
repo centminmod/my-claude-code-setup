@@ -6,7 +6,8 @@ All models use the same OpenRouter `/v1/chat/completions` endpoint and response 
 
 | Keyword | Model ID | Modalities | Type |
 |---------|----------|------------|------|
-| `gemini` | [`google/gemini-3.1-flash-image-preview`](https://openrouter.ai/google/gemini-3.1-flash-image-preview) | `["image", "text"]` | Multimodal (default) |
+| `gemini` | [`google/gemini-3.1-flash-image`](https://openrouter.ai/google/gemini-3.1-flash-image) | `["image", "text"]` | Multimodal (default) |
+| `geminipro` | [`google/gemini-3-pro-image`](https://openrouter.ai/google/gemini-3-pro-image) | `["image", "text"]` | Multimodal |
 | `riverflow` | [`sourceful/riverflow-v2-pro`](https://openrouter.ai/sourceful/riverflow-v2-pro) | `["image"]` | Image-only |
 | `flux2` | [`black-forest-labs/flux.2-max`](https://openrouter.ai/black-forest-labs/flux.2-max) | `["image"]` | Image-only |
 | `seedream` | [`bytedance-seed/seedream-4.5`](https://openrouter.ai/bytedance-seed/seedream-4.5) | `["image"]` | Image-only |
@@ -15,7 +16,7 @@ All models use the same OpenRouter `/v1/chat/completions` endpoint and response 
 
 **Important:** Image-only models MUST use `"modalities": ["image"]`. Using `["image", "text"]` may cause errors with these models. The script handles this automatically when using keywords.
 
-**Reference image support:** Only multimodal models (gemini, gpt5, gpt5.4) support image input for editing and style transfer. Image-only models (riverflow, flux2, seedream) do not accept reference images.
+**Reference image support:** Only multimodal models (gemini, geminipro, gpt5, gpt5.4) support image input for editing and style transfer. Image-only models (riverflow, flux2, seedream) do not accept reference images.
 
 ---
 
@@ -27,7 +28,7 @@ When sending reference images via OpenRouter, change `messages[0].content` from 
 
 ```json
 {
-  "model": "google/gemini-3.1-flash-image-preview",
+  "model": "google/gemini-3.1-flash-image",
   "messages": [
     {
       "role": "user",
@@ -93,7 +94,7 @@ https://openrouter.ai/api/v1/chat/completions
 **Request format (OpenAI-compatible):**
 ```json
 {
-  "model": "google/gemini-3.1-flash-image-preview",
+  "model": "google/gemini-3.1-flash-image",
   "messages": [
     {"role": "user", "content": "Generate a beautiful sunset over mountains"}
   ],
@@ -135,7 +136,7 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   -H "cf-aig-authorization: Bearer ${AI_IMG_CREATOR_CF_TOKEN}" \
   -d '{
-    "model": "google/gemini-3.1-flash-image-preview",
+    "model": "google/gemini-3.1-flash-image",
     "messages": [{"role": "user", "content": "A blue circle on white background"}],
     "modalities": ["image", "text"]
   }'
@@ -148,7 +149,7 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${AI_IMG_CREATOR_OPENROUTER_KEY}" \
   -d '{
-    "model": "google/gemini-3.1-flash-image-preview",
+    "model": "google/gemini-3.1-flash-image",
     "messages": [{"role": "user", "content": "A blue circle on white background"}],
     "modalities": ["image", "text"]
   }'
@@ -207,7 +208,7 @@ https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
 **curl example (gateway):**
 ```bash
 curl -s -X POST \
-  "https://gateway.ai.cloudflare.com/v1/${AI_IMG_CREATOR_CF_ACCOUNT_ID}/${AI_IMG_CREATOR_CF_GATEWAY_ID}/google-ai-studio/v1beta/models/gemini-3.1-flash-image-preview:generateContent" \
+  "https://gateway.ai.cloudflare.com/v1/${AI_IMG_CREATOR_CF_ACCOUNT_ID}/${AI_IMG_CREATOR_CF_GATEWAY_ID}/google-ai-studio/v1beta/models/gemini-3.1-flash-image:generateContent" \
   -H "Content-Type: application/json" \
   -H "cf-aig-authorization: Bearer ${AI_IMG_CREATOR_CF_TOKEN}" \
   -H "cf-aig-byok-alias: aistudio" \
@@ -219,7 +220,7 @@ curl -s -X POST \
 **curl example (direct):**
 ```bash
 curl -s -X POST \
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent" \
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent" \
   -H "Content-Type: application/json" \
   -H "x-goog-api-key: ${AI_IMG_CREATOR_GEMINI_KEY}" \
   -d '{

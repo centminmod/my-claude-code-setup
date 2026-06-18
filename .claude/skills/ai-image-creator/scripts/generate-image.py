@@ -3,6 +3,7 @@
 
 Supports multiple image generation models via keyword shortcuts:
     gemini     — Google Gemini 3.1 Flash (default, multimodal)
+    geminipro  — Google Gemini 3 Pro (multimodal, highest quality)
     riverflow  — Sourceful Riverflow v2 Fast (image-only)
     flux2      — Black Forest Labs FLUX.2 Klein 4B (image-only)
     seedream   — ByteDance SeedDream 4.5 (image-only)
@@ -38,8 +39,8 @@ from typing import Any  # noqa: F401 — used in type hints below
 
 # Default models per provider
 DEFAULT_MODELS = {
-    "openrouter": "google/gemini-3.1-flash-image-preview",
-    "google": "gemini-3.1-flash-image-preview",
+    "openrouter": "google/gemini-3.1-flash-image",
+    "google": "gemini-3.1-flash-image",
 }
 
 # Model registry — maps keyword shortcuts to model metadata.
@@ -47,9 +48,14 @@ DEFAULT_MODELS = {
 # Image-only models use modalities: ["image"], multimodal use ["image", "text"].
 MODEL_REGISTRY: dict[str, dict[str, Any]] = {
     "gemini": {
-        "id": "google/gemini-3.1-flash-image-preview",
+        "id": "google/gemini-3.1-flash-image",
         "modalities": ["image", "text"],
         "description": "Google Gemini 3.1 Flash — multimodal (text+image), default",
+    },
+    "geminipro": {
+        "id": "google/gemini-3-pro-image",
+        "modalities": ["image", "text"],
+        "description": "Google Gemini 3 Pro — multimodal (text+image), highest quality",
     },
     "riverflow": {
         "id": "sourceful/riverflow-v2-pro",
@@ -237,7 +243,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-m", "--model",
         default=None,
-        help="Model keyword (gemini, riverflow, flux2, seedream, gpt5, gpt5.4) or full model ID",
+        help="Model keyword (gemini, geminipro, riverflow, flux2, seedream, gpt5, gpt5.4) or full model ID",
     )
     parser.add_argument(
         "-r", "--ref",
@@ -1121,7 +1127,7 @@ def main() -> None:
             print(
                 f"ERROR: Reference images (-r) require a multimodal model. "
                 f"'{model}' only supports image output.\n"
-                f"Use --model gemini or --model gpt5 for image editing/style transfer.",
+                f"Use --model gemini, geminipro, or gpt5 for image editing/style transfer.",
                 file=sys.stderr,
             )
             sys.exit(1)

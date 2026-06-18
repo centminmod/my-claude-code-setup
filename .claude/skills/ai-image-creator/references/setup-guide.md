@@ -25,7 +25,7 @@ These are only needed if you use the `-t` flag for transparent background genera
 3. Copy the key (starts with `sk-or-...`)
 4. Add credits at [openrouter.ai/credits](https://openrouter.ai/credits) (pay-as-you-go pricing)
 
-**Model pricing:** `google/gemini-3.1-flash-image-preview` — check current rates at [openrouter.ai/models](https://openrouter.ai/models) (search for "gemini-3.1-flash-image-preview")
+**Model pricing:** `google/gemini-3.1-flash-image` — check current rates at [openrouter.ai/models](https://openrouter.ai/models) (search for "gemini-3.1-flash-image")
 
 ---
 
