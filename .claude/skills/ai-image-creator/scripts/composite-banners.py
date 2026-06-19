@@ -317,6 +317,46 @@ def validate_config(config: dict, magick: str) -> list[str]:
     return errors + [f"WARNING: {w}" for w in warnings]
 
 
+_FUZZ_RE = re.compile(r"^\d+(\.\d+)?%?$")
+_UNSAFE_NAME_RE = re.compile(r"[/\\]|\.\.")
+
+
+def sanitize_config(config: dict) -> None:
+    """Reject config values that could drive ImageMagick file-read injection or
+    path traversal, then exit 2. ImageMagick treats a leading '@' on a
+    text-consuming argument (-annotate, -fuzz, labels) as "read this file",
+    which a crafted config could use to exfiltrate arbitrary local files onto a
+    banner image or into error output. Banner names flow into output paths.
+    """
+    errors: list[str] = []
+
+    logo = config.get("logo", {})
+    fuzz = logo.get("fuzz", "15%")
+    if not _FUZZ_RE.match(str(fuzz)):
+        errors.append(f"logo.fuzz must be a number or percentage (got {fuzz!r})")
+    if str(logo.get("path", "logo.png")).startswith("@"):
+        errors.append("logo.path must not start with '@'")
+
+    brand = config.get("brand", {})
+    for field in ("title", "tagline", "url_text"):
+        val = brand.get(field)
+        if isinstance(val, str) and val.startswith("@"):
+            errors.append(f"brand.{field} must not start with '@' (ImageMagick file-read)")
+
+    for i, b in enumerate(config.get("banners", [])):
+        name = str(b.get("name", ""))
+        if name.startswith(("@", "-")) or _UNSAFE_NAME_RE.search(name):
+            errors.append(
+                f"Banner [{i}] name {name!r} is unsafe "
+                "(no '/', '\\', '..', or leading '@'/'-')"
+            )
+
+    if errors:
+        for e in errors:
+            print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(2)
+
+
 # ── Logo extraction ────────────────────────────────────────────────────
 
 def extract_logo_mark(logo_path: Path, logo_config: dict, tmp_dir: Path, magick: str) -> tuple[Path, tuple[float, float]]:
@@ -614,12 +654,15 @@ def main():
         sys.exit(2)
 
     config = load_config(config_path)
+    sanitize_config(config)
     magick = find_magick()
 
     # --validate
     if args.validate:
         issues = validate_config(config, magick)
         if not issues:
+            if args.json:
+                print(json.dumps({"ok": True, "valid": True, "issues": []}))
             print("Config OK: no issues found.", file=sys.stderr)
             logo_path = config["logo"].get("_resolved_path")
             if logo_path:
@@ -642,9 +685,13 @@ def main():
             for e in errs:
                 print(f"  ERROR: {e}", file=sys.stderr)
             if errs:
+                if args.json:
+                    print(json.dumps({"ok": False, "valid": False, "issues": errs}))
                 print(f"\n{len(errs)} error(s), {len(warns)} warning(s).", file=sys.stderr)
                 sys.exit(2)
             else:
+                if args.json:
+                    print(json.dumps({"ok": True, "valid": True, "issues": warns}))
                 print(f"\nConfig OK with {len(warns)} warning(s).", file=sys.stderr)
                 sys.exit(0)
 

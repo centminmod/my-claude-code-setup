@@ -4,10 +4,11 @@
 Supports multiple image generation models via keyword shortcuts:
     gemini     — Google Gemini 3.1 Flash (default, multimodal)
     geminipro  — Google Gemini 3 Pro (multimodal, highest quality)
-    riverflow  — Sourceful Riverflow v2 Fast (image-only)
-    flux2      — Black Forest Labs FLUX.2 Klein 4B (image-only)
+    riverflow  — Sourceful Riverflow v2 Pro (image-only)
+    flux2      — Black Forest Labs FLUX.2 Max (image-only)
     seedream   — ByteDance SeedDream 4.5 (image-only)
-    gpt5       — OpenAI GPT-5 Image Mini (multimodal)
+    gpt5       — OpenAI GPT-5 Image (multimodal)
+    gpt5.4     — OpenAI GPT-5.4 Image 2 (multimodal, 272K context)
 
 Routes through Cloudflare AI Gateway BYOK when configured, with automatic
 fallback to direct API calls. Uses only Python stdlib (no pip dependencies).
@@ -578,7 +579,7 @@ def make_request(
         url: Full API endpoint URL.
         headers: HTTP headers dict.
         body: Request body dict (will be JSON-serialized).
-        timeout: Request timeout in seconds (default: 120).
+        timeout: Request timeout in seconds (default: 300).
 
     Returns:
         Parsed JSON response as a dict.
@@ -1127,7 +1128,7 @@ def main() -> None:
             print(
                 f"ERROR: Reference images (-r) require a multimodal model. "
                 f"'{model}' only supports image output.\n"
-                f"Use --model gemini, geminipro, or gpt5 for image editing/style transfer.",
+                f"Use --model gemini, geminipro, gpt5, or gpt5.4 for image editing/style transfer.",
                 file=sys.stderr,
             )
             sys.exit(1)

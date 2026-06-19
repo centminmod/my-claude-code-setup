@@ -159,7 +159,7 @@ If the user needs resizing, format conversion, or other manipulation, first dete
 | `--aspect-ratio` | `-a` | No | model default | OpenRouter only: `1:1`, `16:9`, `9:16`, `3:2`, `2:3`, `4:3`, `3:4`, `4:5`, `5:4`, `21:9` |
 | `--image-size` | `-s` | No | model default | OpenRouter only: `0.5K`, `1K`, `2K`, `4K` |
 | `--model` | `-m` | No | `gemini` | Model keyword (`gemini`, `geminipro`, `riverflow`, `flux2`, `seedream`, `gpt5`, `gpt5.4`) or full model ID |
-| `--ref` | `-r` | No | -- | Reference image file (repeatable). For editing/style transfer. Multimodal models only (gemini, geminipro, gpt5) |
+| `--ref` | `-r` | No | -- | Reference image file (repeatable). For editing/style transfer. Multimodal models only (gemini, geminipro, gpt5, gpt5.4) |
 | `--analyze` | -- | No | -- | Analyze/describe a reference image (text-only output, no image generated). Requires `-r`. Multimodal models only |
 | `--transparent` | `-t` | No | -- | Generate with transparent background. Requires ffmpeg + imagemagick |
 | `--costs` | -- | No | -- | Display generation/cost history for this project and exit |
@@ -198,7 +198,7 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
 
 ## Reference Images (`-r`)
 
-Send existing images alongside text prompts for editing, style transfer, or guided generation. Supports multiple references. **Multimodal models only** (gemini, geminipro, gpt5) — image-only models (riverflow, flux2, seedream) will error.
+Send existing images alongside text prompts for editing, style transfer, or guided generation. Supports multiple references. **Multimodal models only** (gemini, geminipro, gpt5, gpt5.4) — image-only models (riverflow, flux2, seedream) will error.
 
 ```bash
 # Edit an existing image
@@ -214,7 +214,7 @@ Supported formats: PNG, JPEG, WebP, GIF.
 
 ## Image Analysis (`--analyze`)
 
-Describe, analyze, or explain existing images using multimodal AI vision. Returns text-only output (no image generated). **Multimodal models only** (gemini, geminipro, gpt5).
+Describe, analyze, or explain existing images using multimodal AI vision. Returns text-only output (no image generated). **Multimodal models only** (gemini, geminipro, gpt5, gpt5.4).
 
 No `-o` output path needed. No prompt enhancement needed. The script outputs JSON to stdout with the model's analysis in the `analysis` field.
 
@@ -242,7 +242,7 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
 {"ok": true, "analyze": true, "analysis": "<model text>", "provider": "openrouter", "model": "...", "mode": "gateway", "elapsed_seconds": 3.2, "ref_images": 1}
 ```
 
-**Incompatible flags:** `--analyze` cannot be combined with `-o`, `-t`, `-a`, or `-s`.
+**Incompatible flags:** `--analyze` cannot be combined with `-t`, `-a`, or `-s`. (`-o` is accepted but ignored in analyze mode, which returns text only.)
 
 For advanced analysis prompt patterns (structured output, comparison, targeted analysis), read `references/analyze-reference.md`.
 
