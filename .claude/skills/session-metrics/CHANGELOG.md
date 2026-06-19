@@ -3,6 +3,37 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.82.0 — 2026-06-19
+
+### Bounded task-breakdown worksheet + summary-only report-back (minor)
+
+Closes an output-truncation gap on the **manual `/task-breakdown`** path flagged
+by a Claude Code insights report ("Prompt is too long" / output-limit truncation
+when a large session's grouping collapsed — e.g. 1,574 request units into one
+task). The auto-companion path was already gated (2–40 units, v1.54.0) and the
+insights digest already bounded (v1.78.0), but `--prepare-tasks` still printed
+one worksheet line per request unit with **no cap**, so a large export flooded
+the stdout the editing model reads back.
+
+- **Worksheet cap (`_render_tasks_worksheet`, `_data.py`).** Above
+  `_TASKS_WORKSHEET_UNIT_CAP = 120` request units the worksheet now emits a
+  bounded per-*cluster* summary (one line per candidate cluster, itself capped
+  at 120 with an explicit "(N more clusters omitted)" note) instead of a
+  per-unit dump. On a 1,574-unit export, stdout drops from ~190 KB to ~9 KB
+  (125 lines). At/below the cap the rich per-unit worksheet is unchanged. The
+  written `*_grouping.json` skeleton still covers **every** unit, so it remains
+  the authoritative surface the model edits — no unit is hidden, and the
+  "model is an editor, not an author" contract holds.
+- **Summary-only report-back.** `task-breakdown/SKILL.md` step 7 and the
+  auto-companion reference (`references/tasks-companion.md`) now mandate a short
+  reply — counts, total cost, coverage %, verdict tallies, warnings, and the
+  file paths — and explicitly forbid pasting the full task list / `*_tasks.md`
+  inline (the second overflow vector). Up to 3 notable tasks may be named.
+
+1 new regression test
+(`test_prepare_tasks_worksheet_is_bounded_on_large_session`); full suite
+**1029 passed / 1 skipped**. No change to the auto-companion or insights paths.
+
 ## v1.81.0 — 2026-06-16
 
 ### Pricing: MiniMax M3, Kimi K2.7 Code, Qwen 3.7 Plus (minor)

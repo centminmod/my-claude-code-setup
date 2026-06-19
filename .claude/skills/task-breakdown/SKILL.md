@@ -73,8 +73,13 @@ If `$ARGUMENTS[0]` is missing, first generate a session export by invoking the
    the JSON with `jq`/`Read`.** Each row shows the unit's candidate cluster
    (`cl`), turns, cost, tokens, `risk/reread/cbreak`, idle gap, snippet, and top
    tools; `[cont]` marks an agent-completion continuation and `[blank]` a
-   no-prompt unit (both pre-attached to the preceding cluster). Then **edit**
-   the skeleton per steps 3–5 below rather than writing it from scratch:
+   no-prompt unit (both pre-attached to the preceding cluster). On a **large
+   session (>120 request units)** the worksheet prints a bounded per-*cluster*
+   summary instead of per-unit rows (so stdout never overflows the prompt) — the
+   written skeleton still covers every unit, so treat it as your authoritative
+   surface and edit it (merge/split/rename) rather than reconstructing the full
+   per-unit list inline. Then **edit** the skeleton per steps 3–5 below rather
+   than writing it from scratch:
    rename each seeded title (and drop its `_auto_title` field once named),
    merge/split clusters where the worksheet warrants, write one-line rationales,
    and fill any blank verdict the skeleton left for your judgment. Skip to
@@ -156,10 +161,15 @@ If `$ARGUMENTS[0]` is missing, first generate a session export by invoking the
    `<stem>_tasks.html` + `<stem>_tasks.md` next to the export. It prints the
    output paths and any validation warnings.
 
-7. **Report back** to the user: the task list with each verdict, turn count and
-   cost (read these back from the script's stdout / the rendered `*_tasks.md` —
-   do not recompute), the paths to the two companion files, and any grouping
-   warnings the script surfaced. Offer to open the HTML page.
+7. **Report back** to the user with a SHORT SUMMARY ONLY — do **not** paste the
+   full task list or the rendered `*_tasks.md` inline (on a large session that
+   overflows the reply with "Prompt is too long" / output truncation). Include:
+   a one-line result (N tasks, total cost, coverage %), the verdict counts
+   (worth_it / mixed / likely_waste), any grouping warnings the script surfaced,
+   and the `*_tasks.html` / `*_tasks.md` paths. Read every figure back from the
+   script's stdout / the rendered `*_tasks.md` — never recompute. Optionally name
+   up to **3** notable tasks; the full per-task detail lives in the written
+   files. Offer to open the HTML page.
 
 ## Guardrails
 

@@ -53,7 +53,10 @@ authoring `grouping.json` from scratch.
    the JSON with `jq`/`Read`.** Each row carries the unit's candidate cluster
    (`cl`), turns, cost, tokens, `risk/reread/cbreak`, idle gap, snippet, and
    tools. `[cont]` = an agent-completion continuation, `[blank]` = a no-prompt
-   unit; both are pre-attached to the preceding cluster.
+   unit; both are pre-attached to the preceding cluster. On a **large session
+   (>120 request units)** the worksheet prints a bounded per-*cluster* summary
+   instead of per-unit rows so stdout never overflows the prompt — the written
+   skeleton still covers every unit; edit it as your authoritative surface.
 
 2. **Edit** the skeleton `grouping.json` (do not rewrite it from scratch):
    - **Titles** — replace each seeded title with a real task name, and **remove
@@ -83,11 +86,14 @@ authoring `grouping.json` from scratch.
      <export.json> <grouping.json>
    ```
 
-4. Tell the user the task list (verdicts + turns + cost, read back from the
-   renderer's stdout / the rendered `*_tasks.md` — do not recompute) and the
-   `*_tasks.html` / `*_tasks.md` paths. The dashboard `Tasks` nav button now
-   resolves to that page. If the renderer printed a collapse warning, fix the
-   grouping and re-render rather than shipping it.
+4. Tell the user a SHORT SUMMARY ONLY — a one-line result (N tasks, total cost,
+   coverage %), the verdict counts, and the `*_tasks.html` / `*_tasks.md` paths
+   (read every figure back from the renderer's stdout / the rendered
+   `*_tasks.md` — do not recompute). Do **not** paste the full task list inline;
+   the per-task detail lives in the written files. Optionally name up to 3
+   notable tasks. The dashboard `Tasks` nav button now resolves to that page. If
+   the renderer printed a collapse warning, fix the grouping and re-render rather
+   than shipping it.
 
 This is automatic for HTML exports. The standalone `/task-breakdown
 <json-path>` skill remains for re-grouping a saved JSON export later without

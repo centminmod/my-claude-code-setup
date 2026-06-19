@@ -2022,14 +2022,30 @@ def _build_tasks_skeleton(report: dict) -> dict:
     }
 
 
+# Above this many request units a full one-line-per-unit worksheet (~120 chars
+# each) would flood --prepare-tasks stdout that the editing model must read back
+# -> "Prompt is too long". Past the cap we emit a bounded per-CLUSTER summary
+# instead; the written *_grouping.json skeleton stays the authoritative per-unit
+# surface the model edits, so no unit is hidden from the grouping. Sized for a
+# comfortable read-back (~120 lines ~= 15 KB); the moderate manual case keeps the
+# rich per-unit view.
+_TASKS_WORKSHEET_UNIT_CAP = 120
+
+
 def _render_tasks_worksheet(report: dict) -> str:
     """Compact one-line-per-request-unit worksheet for ``--prepare-tasks``
     stdout — gives the editing model every grouping signal without loading
     full ``prompt_text`` (the jq-probe replacement). Each row shows its
     candidate-cluster number so the model sees the proposed grouping inline.
+
+    On a large session (> ``_TASKS_WORKSHEET_UNIT_CAP`` units) a per-unit dump
+    would overflow the prompt the model reads back, so it falls back to a
+    bounded per-cluster summary (``_render_tasks_cluster_summary``).
     """
     units = report.get("request_units") or []
     clusters = _cluster_request_units(units)
+    if len(units) > _TASKS_WORKSHEET_UNIT_CAP:
+        return _render_tasks_cluster_summary(units, clusters)
     cl_of: dict = {}
     for i, cl in enumerate(clusters, 1):
         for u in cl:
@@ -2055,6 +2071,47 @@ def _render_tasks_worksheet(report: dict) -> str:
             f"{u.get('total_tokens', 0):>9} {risk:>9} "
             f"{int(u.get('idle_gap_before_seconds', 0)):>7}  "
             f"{snip[:70]}{tag}  [{tools}]")
+    return "\n".join(lines)
+
+
+def _render_tasks_cluster_summary(units: list, clusters: list) -> str:
+    """Bounded per-cluster fallback for ``_render_tasks_worksheet`` on a large
+    session. One line per candidate cluster (not per unit), itself capped at
+    ``_TASKS_WORKSHEET_UNIT_CAP`` clusters with an explicit overflow note, so the
+    stdout the model reads back stays a predictable size regardless of session
+    length. The full per-unit detail and every ``unit_id`` live in the written
+    ``*_grouping.json`` skeleton, which remains the surface the model edits.
+    """
+    def _span(cl: list) -> str:
+        first = (cl[0].get("unit_id") or "").split(":")[-1] or "?"
+        last = (cl[-1].get("unit_id") or "").split(":")[-1] or "?"
+        return first if first == last else f"{first}..{last}"
+
+    shown = clusters[:_TASKS_WORKSHEET_UNIT_CAP]
+    lines = [
+        f"{len(units)} request units -> {len(clusters)} candidate clusters "
+        f"(LARGE session: per-CLUSTER summary — per-unit detail and every "
+        f"unit_id are in the written *_grouping.json skeleton; edit that file, "
+        f"do NOT re-probe the export)",
+        "(cl = candidate cluster; r/rr/cb = risk/reread/cache-break totals)", "",
+        f"{'cl':>3} {'units':>5} {'span':>13} {'turns':>5} {'cost$':>9} "
+        f"{'tokens':>9} {'r/rr/cb':>10}  title/snippet",
+    ]
+    for i, cl in enumerate(shown, 1):
+        turns = sum(int(u.get("turn_count", 0)) for u in cl)
+        cost = sum(float(u.get("combined_cost_usd", 0.0)) for u in cl)
+        toks = sum(int(u.get("total_tokens", 0)) for u in cl)
+        risk = sum(int(u.get("risk_turn_count", 0)) for u in cl)
+        rr = sum(int(u.get("reread_path_count", 0)) for u in cl)
+        cb = sum(int(u.get("cache_break_count", 0)) for u in cl)
+        title = _seed_title(cl).replace("\n", " ")
+        lines.append(
+            f"{i:>3} {len(cl):>5} {_span(cl):>13} {turns:>5} {cost:>9.4f} "
+            f"{toks:>9} {f'{risk}/{rr}/{cb}':>10}  {title[:60]}")
+    if len(clusters) > len(shown):
+        lines.append(
+            f"... ({len(clusters) - len(shown)} more clusters omitted for "
+            f"length — full grouping is in the written *_grouping.json skeleton)")
     return "\n".join(lines)
 
 
