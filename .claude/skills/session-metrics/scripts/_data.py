@@ -1235,7 +1235,7 @@ def _detect_file_reaccesses(turns: list[dict]) -> dict:
         for tool in t.get("tool_use_detail", []):
             name    = tool.get("name", "")
             preview = tool.get("input_preview", "")
-            if name in ("Read", "Edit", "Write") and preview and _READ_EXT_RE.search(preview):
+            if name in ("Read", "Edit", "MultiEdit", "Write") and preview and _READ_EXT_RE.search(preview):
                 seg_turns[(preview, seg)].append(idx)
                 path_segs[preview].add(seg)
             elif name == "Bash":

@@ -35,10 +35,19 @@ _REDACTED_TURN_FIELDS = (
 _REDACTED_PLACEHOLDER = "[redacted]"
 
 
-def _redact_turns_for_json(sessions: list[dict]) -> list[dict]:
+def _redact_turns_for_json(sessions: list[dict],
+                           redact_tool_io: bool = False) -> list[dict]:
     """Return a shallow copy of ``sessions`` with freeform prompt/assistant
     text replaced by ``[redacted]`` on every turn. Empty fields stay empty so
-    downstream filters (``if t.get("prompt_text"):``) keep their meaning."""
+    downstream filters (``if t.get("prompt_text"):``) keep their meaning.
+
+    ``redact_tool_io`` (set under the ``--export-share-safe`` publication
+    bundle) additionally masks ``tool_use_detail[].input_preview`` — which can
+    echo Bash commands, grep patterns, URLs, and file paths — leaving the
+    structured ``name`` / ``id`` fields intact for cost analysis. Under the
+    plain ``--redact-user-prompts`` flag (cost-analysis use), tool-input
+    previews stay visible.
+    """
     out = []
     for s in sessions:
         new_turns = []
@@ -55,8 +64,34 @@ def _redact_turns_for_json(sessions: list[dict]) -> list[dict]:
                     {**tr, "text": _REDACTED_PLACEHOLDER} if tr.get("text") else tr
                     for tr in redacted["tool_results"]
                 ]
+            if redact_tool_io and redacted.get("tool_use_detail"):
+                redacted["tool_use_detail"] = [
+                    {**td, "input_preview": _REDACTED_PLACEHOLDER}
+                    if td.get("input_preview") else td
+                    for td in redacted["tool_use_detail"]
+                ]
             new_turns.append(redacted)
         out.append({**s, "turns": new_turns})
+    return out
+
+
+def _redact_workflows_for_json(by_workflow: list[dict]) -> list[dict]:
+    """Mask the freeform ``promptPreview`` / ``resultPreview`` on each workflow
+    agent detail under the ``--export-share-safe`` bundle. These can carry source
+    text, paths, or agent output; the structured agent metadata stays intact."""
+    out = []
+    for wf in by_workflow:
+        details = wf.get("agent_details")
+        if not details:
+            out.append(wf)
+            continue
+        new_details = [
+            {**d,
+             **({"promptPreview": _REDACTED_PLACEHOLDER} if d.get("promptPreview") else {}),
+             **({"resultPreview": _REDACTED_PLACEHOLDER} if d.get("resultPreview") else {})}
+            for d in details
+        ]
+        out.append({**wf, "agent_details": new_details})
     return out
 
 
@@ -75,7 +110,8 @@ def _redact_request_units_for_json(units: list[dict]) -> list[dict]:
     return out
 
 
-def render_json(report: dict, *, redact_user_prompts: bool = False) -> str:
+def render_json(report: dict, *, redact_user_prompts: bool = False,
+                redact_tool_io: bool = False) -> str:
     """Render the full report as indented JSON.
 
     Internal ``epoch_secs`` lists in ``time_of_day`` sections are converted to
@@ -85,10 +121,16 @@ def render_json(report: dict, *, redact_user_prompts: bool = False) -> str:
 
     ``redact_user_prompts`` masks ``prompt_text`` / ``prompt_snippet`` and
     ``assistant_text`` / ``assistant_snippet`` on every turn with
-    ``[redacted]`` so the JSON is safe to share publicly. Tool inputs,
-    slash-command names, and structured cost / token fields stay visible.
-    Instance-scope JSON has no per-turn records, so the flag is a no-op
-    there.
+    ``[redacted]``. Tool inputs, slash-command names, and structured cost /
+    token fields stay visible (cost-analysis use). Instance-scope JSON has no
+    per-turn records, so the flag is a no-op there.
+
+    ``redact_tool_io`` (set under the ``--export-share-safe`` publication
+    bundle) ADDITIONALLY masks ``tool_use_detail[].input_preview`` and the
+    workflow ``agent_details[].promptPreview`` / ``resultPreview`` previews,
+    which can carry Bash commands, file paths, URLs, source text, or agent
+    output — closing the share-safe gap where a flag named for publication left
+    those previews intact.
     """
     if report.get("mode") == "compare":
         return sys.modules["session_metrics_compare"].render_compare_json(report)
@@ -104,13 +146,16 @@ def render_json(report: dict, *, redact_user_prompts: bool = False) -> str:
         export["time_of_day"] = _tod_for_json(export["time_of_day"])
     if "sessions" in export:
         sessions = export["sessions"]
-        if redact_user_prompts:
-            sessions = _redact_turns_for_json(sessions)
+        if redact_user_prompts or redact_tool_io:
+            sessions = _redact_turns_for_json(sessions, redact_tool_io=redact_tool_io)
         export["sessions"] = [
             {**s, "time_of_day": _tod_for_json(s["time_of_day"])}
             if "time_of_day" in s else s
             for s in sessions
         ]
+    # Under the share-safe bundle, also scrub workflow agent previews.
+    if redact_tool_io and export.get("by_workflow"):
+        export["by_workflow"] = _redact_workflows_for_json(export["by_workflow"])
     # Request units carry their own copy of the anchor prompt text — redact
     # it under the same flag so the per-request breakdown is share-safe too.
     if redact_user_prompts and export.get("request_units"):

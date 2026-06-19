@@ -2021,7 +2021,8 @@ def _dispatch(report: dict, formats: list[str],
             content = _sm().render_html(report, variant="single", chart_lib=chart_lib,
                                    idle_gap_minutes=idle_gap_minutes)
         elif fmt == "json":
-            content = _sm().render_json(report, redact_user_prompts=redact_user_prompts)
+            content = _sm().render_json(report, redact_user_prompts=redact_user_prompts,
+                                        redact_tool_io=share_safe)
         else:
             content = _sm()._RENDERERS[fmt](report)
         path = _write_output(fmt, content, report, explicit_ts=run_ts,

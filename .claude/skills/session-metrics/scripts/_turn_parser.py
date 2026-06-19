@@ -634,7 +634,7 @@ def _summarise_tool_input(name: str, tool_input) -> str:
     if name in ("Read", "Write", "NotebookRead", "NotebookEdit"):
         p = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
         return str(p)[:160]
-    if name == "Edit":
+    if name in ("Edit", "MultiEdit"):
         p = tool_input.get("file_path") or ""
         return str(p)[:160]
     if name == "Grep":
@@ -673,22 +673,32 @@ def _cache_write_split(u: dict) -> tuple[int, int]:
     """
     cc = u.get("cache_creation")
     if isinstance(cc, dict):
-        return (
-            int(cc.get("ephemeral_5m_input_tokens", 0) or 0),
-            int(cc.get("ephemeral_1h_input_tokens", 0) or 0),
-        )
+        e5 = int(cc.get("ephemeral_5m_input_tokens", 0) or 0)
+        e1 = int(cc.get("ephemeral_1h_input_tokens", 0) or 0)
+        # An empty (``{}``) or all-zero nested object must NOT silently zero the
+        # cache-write cost when the flat ``cache_creation_input_tokens`` total is
+        # non-zero (a partial / schema-transition transcript shape). Fall back to
+        # the flat total at the 5m tier — the documented sum of both ephemeral
+        # buckets (references/jsonl-schema.md) — rather than reporting (0, 0).
+        if e5 == 0 and e1 == 0:
+            return int(u.get("cache_creation_input_tokens", 0) or 0), 0
+        return e5, e1
     return int(u.get("cache_creation_input_tokens", 0) or 0), 0
 
 
 def _cost(u: dict, model: str) -> float:
     r = _sm()._pricing_for(model)
     tokens_5m, tokens_1h = _cache_write_split(u)
+    # ``… or 0`` (not ``.get(k, 0)``) so an explicit ``"input_tokens": null`` in a
+    # hand-edited / truncated transcript collapses to 0 instead of propagating
+    # ``None`` into ``None * rate`` (TypeError). The default in ``.get(k, 0)`` only
+    # covers a MISSING key, not a present-but-null value.
     primary = (
-        u.get("input_tokens", 0)              * r["input"]           / 1_000_000
-        + u.get("output_tokens", 0)           * r["output"]          / 1_000_000
-        + u.get("cache_read_input_tokens", 0) * r["cache_read"]      / 1_000_000
-        + tokens_5m                           * r["cache_write"]     / 1_000_000
-        + tokens_1h                           * r["cache_write_1h"]  / 1_000_000
+        (u.get("input_tokens") or 0)              * r["input"]           / 1_000_000
+        + (u.get("output_tokens") or 0)           * r["output"]          / 1_000_000
+        + (u.get("cache_read_input_tokens") or 0) * r["cache_read"]      / 1_000_000
+        + tokens_5m                               * r["cache_write"]     / 1_000_000
+        + tokens_1h                               * r["cache_write_1h"]  / 1_000_000
     )
     # Fast mode (Opus 4.6/4.7/4.8 research preview, usage.speed == "fast") is a
     # premium rate tier that scales EVERY token category uniformly — prompt-
@@ -714,8 +724,8 @@ def _cost(u: dict, model: str) -> float:
             # when the iteration record is partial).
             adv_rates = _sm()._pricing_for(it.get("model") or model)
             advisor += (
-                it.get("input_tokens", 0)  * adv_rates["input"]  / 1_000_000
-              + it.get("output_tokens", 0) * adv_rates["output"] / 1_000_000
+                (it.get("input_tokens") or 0)  * adv_rates["input"]  / 1_000_000
+              + (it.get("output_tokens") or 0) * adv_rates["output"] / 1_000_000
             )
     # Server-side web_search is billed per request ($0.01/search) OUTSIDE the
     # token rate — a flat charge, NOT a token cost — so it is added here AFTER
@@ -767,14 +777,16 @@ def _no_cache_cost(u: dict, model: str) -> float:
     # would silently undercount if Anthropic ever stops populating it while
     # keeping the nested ``cache_creation.ephemeral_*`` fields.
     cw_5m, cw_1h = _cache_write_split(u)
+    # ``… or 0`` guards present-but-null token fields — see the matching note in
+    # ``_cost``; parity matters so the savings delta stays correct.
     total_input = (
-        u.get("input_tokens", 0)
-        + u.get("cache_read_input_tokens", 0)
+        (u.get("input_tokens") or 0)
+        + (u.get("cache_read_input_tokens") or 0)
         + cw_5m + cw_1h
     )
     primary = (
         total_input * r["input"] / 1_000_000
-        + u.get("output_tokens", 0) * r["output"] / 1_000_000
+        + (u.get("output_tokens") or 0) * r["output"] / 1_000_000
     )
     # Fast-mode multiplier on ``primary`` only — same rule as ``_cost`` (parent
     # turn scaled, advisor unscaled). Required for parity: the cache-savings
@@ -793,8 +805,8 @@ def _no_cache_cost(u: dict, model: str) -> float:
         if it.get("type") == "advisor_message":
             adv_rates = _sm()._pricing_for(it.get("model") or model)
             advisor += (
-                it.get("input_tokens", 0)  * adv_rates["input"]  / 1_000_000
-              + it.get("output_tokens", 0) * adv_rates["output"] / 1_000_000
+                (it.get("input_tokens") or 0)  * adv_rates["input"]  / 1_000_000
+              + (it.get("output_tokens") or 0) * adv_rates["output"] / 1_000_000
             )
     # web_search per-request charge (see _cost) — identical in the no-cache
     # counterfactual (server-tool billing is unaffected by prompt caching), so
@@ -811,10 +823,14 @@ def _build_turn_record(global_index: int, entry: dict,
                        tz_offset_hours: float = 0.0) -> dict:
     msg = entry["message"]
     u = msg["usage"]
-    model = msg.get("model", "unknown")
-    inp = u.get("input_tokens", 0)
-    out = u.get("output_tokens", 0)
-    crd = u.get("cache_read_input_tokens", 0)
+    # ``… or "unknown"`` / ``… or 0`` guard present-but-null values (a hand-edited
+    # or truncated transcript can carry ``"model": null`` or ``"input_tokens": null``);
+    # ``.get(k, default)`` only covers a MISSING key, so a literal null would
+    # propagate ``None`` into ``_pricing_for(None)`` / arithmetic and crash.
+    model = msg.get("model") or "unknown"
+    inp = u.get("input_tokens") or 0
+    out = u.get("output_tokens") or 0
+    crd = u.get("cache_read_input_tokens") or 0
     cwr_5m, cwr_1h = _cache_write_split(u)
     cwr = cwr_5m + cwr_1h
     if cwr == 0:

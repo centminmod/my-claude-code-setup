@@ -40,6 +40,17 @@ from typing import Any
 # _DEFAULT_PRICING. Cache-break impact previously hard-coded the Opus 4.7 rate
 # ($5/M) for every turn, overstating cost by 67% on Sonnet turns and 400% on
 # Haiku turns.
+#
+# Non-Anthropic models (glm-*, deepseek/*, openai/*, qwen, kimi, minimax, …)
+# are intentionally ABSENT from this table and fall through to the $3 default.
+# This is DORMANT, not a mispricing: the only two consumers of this rate are
+# `cache_break` impact and `idle_gap_cache_decay` (see the three call sites of
+# `_input_rate_for_model`), and BOTH require prompt-cache activity (cache writes
+# / breaks). Those third-party models have no prompt caching (cache columns are
+# $0 in session-metrics' _PRICING), so neither finding ever fires for them and
+# the $3 default is never actually multiplied against their tokens. Documented
+# in tests/test_pricing.py:test_audit_extract_pricing_parity_forward (non-Anthropic
+# explicitly out of scope).
 # NOTE: the bare "claude-opus-4" prefix entry was removed (matches the
 # removal in session-metrics.py:_PRICING done in v1.41.2). Without that entry,
 # any future Opus 4 minor (e.g. claude-opus-4-2) substring-falls through to

@@ -75,6 +75,17 @@ def _build_chart_html(
   var DATA = {data_json};
   var X_TITLE = '{x_title}';
 
+  // HTML-escape untrusted strings (e.g. model ids) before they enter the
+  // tooltip HTML string below. Mirrors the esc() helper in the chartrail /
+  // costail rails (_html_sections.py) — the JSON close-tag escape on
+  // ``data_json`` only blocks <script> breakout, not attribute injection in
+  // the tooltip formatter, so model names must be escaped JS-side too.
+  function esc(s) {{
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }}
+
   function renderPage(pg) {{
     var d = DATA[pg];
     var c = Highcharts.chart('hc-chart-' + pg, {{
@@ -125,7 +136,7 @@ def _build_chart_html(
           var s = '<b>' + this.x + '</b>';
           if (d.models.length && d.models[this.points[0].point.index]) {{
             s += '&nbsp; <span style="color:#a5d6ff;font-size:10px">' +
-                 d.models[this.points[0].point.index] + '</span>';
+                 esc(d.models[this.points[0].point.index]) + '</span>';
           }}
           s += '<br/>';
           this.points.forEach(function (p) {{

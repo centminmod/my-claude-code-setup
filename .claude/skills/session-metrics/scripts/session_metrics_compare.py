@@ -2034,8 +2034,12 @@ def render_compare_json(report: dict) -> str:
     (no raw epoch-seconds lists; timestamps are ISO-8601 strings).
     Shape differs between Mode 1 (paired/unmatched) and Mode 2
     (aggregate) — consumers should branch on ``compare_mode``.
+
+    ``allow_nan=False`` matches the main exporter (``_json_export.py``): a
+    poisoned NaN/Infinity float fails loudly rather than emitting the
+    non-standard ``NaN`` / ``Infinity`` tokens that break strict JSON parsers.
     """
-    return json.dumps(report, indent=2)
+    return json.dumps(report, indent=2, allow_nan=False)
 
 
 def render_compare_csv(report: dict) -> str:

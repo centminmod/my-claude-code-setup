@@ -3,6 +3,50 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.83.0 — 2026-06-20
+
+### Audit remediation: chart-tooltip escaping, null-value hardening, share-safe redaction (minor)
+
+A penta-AI code audit (Codex GPT-5.5, DeepSeek V4 Pro, z.ai GLM 5.2, plus a
+code-searcher fan-out) found the core token/cost pipeline correct (suite passed)
+and surfaced edge-case hardening plus one chart-tooltip defense-in-depth gap.
+
+- **Highcharts tooltip XSS / defense-in-depth.** The 3D bar-chart tooltip
+  formatter concatenated the model id (from `message.model`) into its HTML
+  string without escaping, unlike the chartrail/costail rails which use a JS
+  `esc()` helper. Added the same `esc()` to the Highcharts tooltip. Live
+  exploitability was low (Highcharts' AST sanitiser strips event handlers; no
+  `useHTML`), but the inconsistency is now closed. (uPlot/Chart.js tooltips
+  render via `textContent` and were already safe.)
+- **Null-value hardening.** `"input_tokens": null` or `"model": null` in a
+  hand-edited / truncated transcript no longer crashes with `TypeError` —
+  `_cost`, `_no_cache_cost`, and `_build_turn_record` coerce present-but-null
+  values (`… or 0` / `… or "unknown"`). `.get(k, default)` only covered a
+  *missing* key.
+- **Empty `cache_creation: {}` fallback.** `_cache_write_split` falls back to
+  the flat `cache_creation_input_tokens` (5m tier) when the nested object is
+  empty or all-zero, instead of silently zeroing the cache-write cost on a
+  partial transcript.
+- **`--export-share-safe` redaction gap.** The publication bundle now also
+  masks `tool_use_detail[].input_preview` (Bash commands, paths, URLs) and
+  workflow `agent_details[].promptPreview`/`resultPreview` via a new
+  `render_json(redact_tool_io=…)` path. Plain `--redact-user-prompts`
+  (cost-analysis use) keeps those previews visible as before.
+- **MultiEdit re-access.** `MultiEdit` is now recognised by
+  `_summarise_tool_input` (file-path preview) and `_detect_file_reaccesses`,
+  matching `_health.py`.
+- **compare-mode JSON.** `render_compare_json` now passes `allow_nan=False`,
+  matching the main exporter (a poisoned NaN/Infinity fails loudly rather than
+  emitting invalid JSON tokens).
+- **Docs.** `references/jsonl-schema.md` corrected — the 5m/1h ephemeral split
+  and the fast-mode multiplier are shipped, not pending. `audit-extract.py` now
+  documents that its $3 default for non-Anthropic models is dormant by design
+  (consumed only by cache-activity findings that no-caching providers never
+  trigger).
+
+No change to headline cost numbers for normal sessions. Six regression tests
+added; suite 1035 passed / 1 skipped.
+
 ## v1.82.0 — 2026-06-19
 
 ### Bounded task-breakdown worksheet + summary-only report-back (minor)
