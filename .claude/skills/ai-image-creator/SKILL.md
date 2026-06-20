@@ -1,6 +1,6 @@
 ---
 name: ai-image-creator
-description: Generate PNG images using AI (multiple models via OpenRouter including Gemini, FLUX.2, Riverflow, SeedDream, GPT-5 Image, GPT-5.4 Image 2, proxied through Cloudflare AI Gateway BYOK). Also analyze/describe existing images using multimodal AI vision. Use when user asks to "generate an image", "create a PNG", "make an icon", "make it transparent", "describe this image", "analyze this image", "what's in this image", "explain this image", or needs AI-generated visual assets for the project. Supports model selection via keywords (gemini, geminipro, riverflow, flux2, seedream, gpt5, gpt5.4), configurable aspect ratios/resolutions, transparent backgrounds (-t), reference image editing (-r), image analysis (--analyze), and per-project cost tracking (--costs).
+description: Generate PNG images using AI (multiple models via OpenRouter including Gemini, FLUX.2, Riverflow, SeedDream, GPT-5 Image, GPT-5.4 Image 2, proxied through Cloudflare AI Gateway BYOK). Also analyze/describe existing images using multimodal AI vision, and analyze video (--analyze-video) via OpenRouter video-input models (mimo, gemini, qwen, seed, minimax) to get text descriptions for video prompts. Use when user asks to "generate an image", "create a PNG", "make an icon", "make it transparent", "describe this image", "analyze this image", "what's in this image", "explain this image", "describe this video", "analyze this video", "what happens in this video", or needs AI-generated visual assets for the project. Supports model selection via keywords (gemini, geminipro, riverflow, flux2, seedream, gpt5, gpt5.4), configurable aspect ratios/resolutions, transparent backgrounds (-t), reference image editing (-r), image analysis (--analyze), video analysis (--analyze-video), and per-project cost tracking (--costs).
 allowed-tools: Bash, Read, Write
 compatibility: Requires uv (Python runner) and network access. Environment variables for CF AI Gateway or direct API keys must be configured in shell profile (~/.zshrc on macOS, ~/.bashrc on Linux, or System Environment Variables on Windows).
 metadata:
@@ -28,6 +28,8 @@ When the user mentions a model keyword in their image request, use the correspon
 ## Instructions
 
 > **Routing check:** If the user asks to **describe, analyze, or explain an existing image** (not generate a new one), skip directly to the **Image Analysis (`--analyze`)** section below. No prompt enhancement or output path needed.
+>
+> **Video routing:** If the user asks to **describe, analyze, or explain a video** (or wants a text description of a clip to seed/extend a video prompt), skip directly to the **Video Analysis (`--analyze-video`)** section below.
 
 ### Step 1: Write Prompt
 
@@ -161,6 +163,10 @@ If the user needs resizing, format conversion, or other manipulation, first dete
 | `--model` | `-m` | No | `gemini` | Model keyword (`gemini`, `geminipro`, `riverflow`, `flux2`, `seedream`, `gpt5`, `gpt5.4`) or full model ID |
 | `--ref` | `-r` | No | -- | Reference image file (repeatable). For editing/style transfer. Multimodal models only (gemini, geminipro, gpt5, gpt5.4) |
 | `--analyze` | -- | No | -- | Analyze/describe a reference image (text-only output, no image generated). Requires `-r`. Multimodal models only |
+| `--analyze-video` | -- | No | -- | Analyze/describe a video. Pass the video via `-r` (local file or URL). OpenRouter only. Choose a model/preset with `-m` (default `gemini3.5-flash`). Returns **structured JSON** by default |
+| `--prose` | -- | No | -- | (`--analyze-video` only) Return free-text prose instead of the default structured JSON |
+| `--contact-sheet` | -- | No | -- | (`--analyze-video`, local file only) Extract evenly-spaced keyframes with ffmpeg and save a labeled contact-sheet image to `PATH` — a human ground-truth reference. Skipped for URL sources / if ffmpeg is missing |
+| `--verify` | -- | No | -- | (`--analyze-video`, local file only) Second pass that checks the analysis against extracted frames (no video re-sent) and classifies each claim `supported`/`contradicted`/`not_visible`. Adds a `verification` object. Costs one extra model call |
 | `--transparent` | `-t` | No | -- | Generate with transparent background. Requires ffmpeg + imagemagick |
 | `--costs` | -- | No | -- | Display generation/cost history for this project and exit |
 | `--list-models` | -- | No | -- | List available model keywords and exit |
@@ -245,6 +251,87 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
 **Incompatible flags:** `--analyze` cannot be combined with `-t`, `-a`, or `-s`. (`-o` is accepted but ignored in analyze mode, which returns text only.)
 
 For advanced analysis prompt patterns (structured output, comparison, targeted analysis), read `references/analyze-reference.md`.
+
+## Video Analysis (`--analyze-video`)
+
+Describe or analyze a **video** using OpenRouter video-input LLMs (no image generated). Use this to turn an existing clip into a description you can feed back as a prompt to **generate or extend** a video (e.g. with the `ai-video-creator` skill).
+
+**Structured JSON is the default.** All 15 video models support strict structured outputs (`response_format` json_schema, verified), so by default `analysis` is a **structured object** with these fields: `summary`, `setting`, `subjects[]` (each with `role`/`appearance`/`confidence`), `shot_timeline[]` (`timestamp`/`action`/`camera`), `camera_techniques[]`, `editing_stylization[]`, `lighting`, `color_palette[]`, `mood`, `uncertain_details[]`, and a distilled `video_generation_prompt`. The `editing_stylization` and `uncertain_details` fields specifically counter the two main failure modes (missed freeze-frame/black-and-white stylization, and confabulated details). Pass `--prose` for a free-text description instead. The envelope's `structured` field is `true` when JSON parsed cleanly.
+
+Pass the video via `-r` — either a **local file** (mp4/mov/webm/mkv/avi; sent as a base64 data URL) or a **URL** (publicly accessible, including YouTube). OpenRouter only; no `-o`, prompt enhancement, or output path needed.
+
+**Model selection (`-m`)** — three presets cover the common cases; or pick any model by keyword (see `--list-models`):
+
+| Preset | Resolves to | When to use |
+|--------|-------------|-------------|
+| `video-default` (or omit `-m`) | `gemini3.5-flash` (Google Gemini 3.5 Flash) | **Default** — best accuracy + fastest; reads audio. ~11× the cost of the cheap tier |
+| `video-cheap` | `qwen3.5-flash` (Qwen3.5 Flash) | Rock-bottom cost for quick scene summaries (or `mimo` for a cheap, more detailed read) |
+| `video-quality` | `gemini3-pro` (Google Gemini 3.1 Pro) | Highest-accuracy reading when it matters most |
+
+All 15 video-capable models are selectable by keyword: `qwen3.5-flash`, `seed-1.6-flash`, `seed-2.0-mini`, `mimo`, `qwen3.6-35b`, `qwen3.6-flash`, `step-3.7-flash`, `gemini3-flash-lite`, `seed-2.0-lite`, `seed-1.6`, `qwen3.5-plus`, `minimax-m3`, `qwen3.6-plus`, `gemini3.5-flash`, `gemini3-pro` (cheapest → priciest). Run `--list-models` for IDs and per-1M-token pricing.
+
+```bash
+# Default model (gemini3.5-flash), structured JSON output
+uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
+  --analyze-video -r "clip.mp4"
+
+# Free-text prose instead of JSON
+uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
+  --analyze-video -r "clip.mp4" --prose
+
+# Rock-bottom cost preset
+uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
+  --analyze-video -r "clip.mp4" -m video-cheap
+
+# Highest-accuracy preset on a YouTube URL with a custom focus
+uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
+  --analyze-video -r "https://youtu.be/VIDEO_ID" -m video-quality \
+  -p "Focus on camera movement and lighting"
+```
+
+**JSON output format** (default — `analysis` is a structured object):
+
+```json
+{"ok": true, "analyze": true, "analyze_video": true, "structured": true, "analysis": {"summary": "...", "setting": "...", "subjects": [{"role": "protagonist", "appearance": "...", "confidence": "high"}], "shot_timeline": [{"timestamp": "0:00", "action": "...", "camera": "..."}], "camera_techniques": ["..."], "editing_stylization": ["monochrome freeze-frame", "..."], "lighting": "...", "color_palette": ["..."], "mood": "...", "uncertain_details": ["..."], "video_generation_prompt": "..."}, "provider": "openrouter", "model": "google/gemini-3.5-flash", "mode": "gateway", "elapsed_seconds": 16.9, "video_source": "clip.mp4"}
+```
+
+With `--prose`, `analysis` is a plain text string and `structured` is `false`.
+
+### Frame grounding (`--contact-sheet`, `--verify`)
+
+The model samples its own frames internally, but it can still slip a confabulation into a
+single shot (e.g. a "golden glowing eye" in the final beat that isn't there). Two opt-in,
+**local-file-only** aids ground the analysis against real pixels using ffmpeg-extracted
+keyframes:
+
+- **`--contact-sheet PATH`** — extracts ~12 evenly-spaced keyframes (always including first
+  and last; capped uniform sampling, not scene-detect) and tiles them into one labeled image
+  at `PATH`. This is the highest-leverage aid: a human (or you) can eyeball the whole clip at
+  a glance to sanity-check the description. Built with ImageMagick `montage` (timestamp
+  labels) or, if absent, ffmpeg's `tile` filter. The path is echoed back as `contact_sheet`
+  in the JSON envelope.
+- **`--verify`** — runs a cheap **second pass** that sends the contact sheet + a few full
+  keyframes (with timestamps) and the pass-1 analysis back to the **same model**, and asks it
+  to classify each claim `supported` / `contradicted` / `not_visible` strictly from the
+  frames. **The video is not re-sent** (that would just re-confabulate from the same pixels),
+  and undiscernible details stay `not_visible` rather than being "resolved" into a guess. Adds
+  a `verification` object: `{claims[]{claim,verdict,evidence}, corrections[], overall_accuracy}`.
+
+Both are skipped with a warning (never a hard error) for URL/YouTube sources or if ffmpeg is
+missing — the analysis itself always proceeds. Extracted frames go to a temp dir that is
+cleaned up automatically; only the `--contact-sheet` image is kept.
+
+```bash
+# Save a ground-truth contact sheet alongside the analysis, and verify the claims
+uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
+  --analyze-video -r "clip.mp4" \
+  --contact-sheet "exports/clip_frames.png" --verify
+```
+
+**Notes:**
+- **Incompatible flags:** cannot be combined with `--analyze`, `-t`, `-a`, or `-s`, and requires `--provider openrouter`.
+- **Large local files** (>20 MB) trigger a warning — base64 payloads can be slow or rejected; prefer a hosted/YouTube URL or a shorter/lower-res clip.
+- **Context limits:** Seed/Step models cap at ~256K tokens (fine for short clips); the 1M-context models (Qwen, Gemini, MiMo, MiniMax) are safer for longer footage.
 
 ## Cost Tracking (`--costs`)
 
