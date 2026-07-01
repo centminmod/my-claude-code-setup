@@ -107,7 +107,7 @@ def _footer_text(totals: dict, models: dict[str, dict],
         total_cost  = sum(float(i.get("cost_usd", 0.0)) for i in models.values()) or 0.0
         for m, info in sorted(models.items(),
                               key=lambda x: -float(x[1].get("cost_usd", 0.0))):
-            r = _sm()._pricing_for(m)
+            r = info.get("rates") or _sm()._pricing_for(m)
             cnt = int(info.get("turns", 0))
             cost = float(info.get("cost_usd", 0.0))
             t_pct = 100.0 * cnt / total_turns

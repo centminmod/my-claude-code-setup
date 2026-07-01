@@ -1015,7 +1015,7 @@ def render_md(report: dict) -> str:
         _c_total = sum(float(i.get("cost_usd", 0.0)) for i in report["models"].values()) or 0.0
         for m, info in sorted(report["models"].items(),
                               key=lambda x: -float(x[1].get("cost_usd", 0.0))):
-            r = _sm()._pricing_for(m)
+            r = info.get("rates") or _sm()._pricing_for(m)
             cnt = int(info.get("turns", 0))
             cost = float(info.get("cost_usd", 0.0))
             t_pct = 100.0 * cnt / _t_total

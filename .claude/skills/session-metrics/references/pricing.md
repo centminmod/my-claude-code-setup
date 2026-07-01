@@ -31,6 +31,8 @@ of TTL.
 | `claude-haiku-4-5-20251001` | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
 | `claude-haiku-4-5`          | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
 | `claude-fable-5`            | fable-5    | 10.00 |  50.00 |       1.00 |          12.50 |          20.00 |
+| `claude-sonnet-5` (intro †) | sonnet-5   |  2.00 |  10.00 |       0.20 |           2.50 |           4.00 |
+| `claude-sonnet-5` (std †)   | sonnet-5   |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
 
 > **Important — pricing tier change at Opus 4.5**: Opus 4.5 / 4.6 / 4.7 / 4.8
 > moved to a new cheaper tier ($5 input / $25 output). Opus 4 and 4.1 retain the
@@ -53,6 +55,23 @@ of TTL.
 > standard ratios off the $10 base (read 0.1× = $1, 5m-write 1.25× = $12.50,
 > 1h-write 2× = $20). A future un-keyed `claude-fable-6` routes to a dedicated
 > family fallback at the Fable 5 tier (flagged), not to the Sonnet default.
+>
+> **† Sonnet 5 introductory pricing (date-effective, v1.84.0)**: `claude-sonnet-5`
+> shipped at an **introductory** $2/$10 (input/output) rate **through 2026-08-31**,
+> reverting to the **standard** $3/$15 on **2026-09-01**. Because the tool reprices
+> historical transcripts, the correct rate depends on **each turn's own UTC date**,
+> not on when the report is run — so this is the first entry priced through the
+> date-effective layer (`_PRICING_SCHEDULES` + `_pricing_for_at` in
+> `session-metrics.py`), not the flat `_PRICING` table alone. A turn whose UTC date
+> is before 2026-09-01 is billed at the intro row above; on/after, the std row. The
+> flat `_PRICING` entry stays at the standard $3/$15, which is also the fallback for
+> any turn with a missing / unparseable / timezone-naive timestamp (conservative —
+> never under-priced against the discount). Anthropic stated "through August 31,
+> 2026" with no timezone; 2026-09-01 UTC is treated as the first standard-rate day
+> (≤ ~1 day boundary imprecision). Cache tiers scale off the intro $2 input via the
+> usual 0.1× / 1.25× / 2× ratios. The sibling `audit-extract.py` estimate table is
+> time-blind and always uses $3 (documented there; audit impact estimates are
+> approximate by design).
 
 ## Effort support by model
 
@@ -86,7 +105,6 @@ case Anthropic re-tiers a generation.
 | `claude-opus-5`    | Opus new $5/$25   | **bare-major** — catches all `5.x` minors + `[1m]` |
 | `claude-sonnet-4-8`| Sonnet $3/$15     | (`claude-sonnet-4-7` already shipped) |
 | `claude-sonnet-4-9`| Sonnet $3/$15     | |
-| `claude-sonnet-5`  | Sonnet $3/$15     | **bare-major** — Sonnet is single-tier across minors |
 | `claude-haiku-4-6` | Haiku $1/$5       | |
 | `claude-haiku-4-7` | Haiku $1/$5       | |
 | `claude-haiku-4-8` | Haiku $1/$5       | |

@@ -3,6 +3,37 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.84.0 — 2026-07-02
+
+### Date-effective pricing: Claude Sonnet 5 introductory rate (minor)
+
+Claude Sonnet 5 (`claude-sonnet-5`) shipped at an **introductory** $2/$10
+(input/output per Mtok) **through 2026-08-31**, reverting to the **standard**
+$3/$15 on **2026-09-01**. Because the skill reprices historical transcripts, the
+correct rate depends on **each turn's own UTC date**, not on when the report is
+run. Pricing is now date-aware for any model whose published rate changes on a
+calendar boundary.
+
+- **New date-effective layer.** `_PRICING_SCHEDULES` (in `session-metrics.py`)
+  holds per-model half-open `[from, until)` UTC windows; `_pricing_for_at(model,
+  date)` overlays them on the flat `_PRICING` table. The flat `_pricing_for` is
+  unchanged and still returns the standard $3/$15 for `claude-sonnet-5` — which
+  is exactly the fallback for a turn whose timestamp is missing, unparseable, or
+  timezone-naive (conservative: never under-priced against the discount).
+- **Turn timestamp threaded** into `_cost` / `_no_cache_cost` / `_advisor_info`
+  and the session-block + `extra_1h` cost paths. New `_effective_date()` helper
+  reduces a turn's ISO timestamp to a UTC calendar date; the resolver caches on
+  `(model, date)` so the lru_cache key stays tiny.
+- **Rate-card display** shows each model's rate as of its most recent turn in the
+  report, so an all-intro-window session's Models table matches its costs.
+- **Boundary honesty.** Anthropic stated "through August 31, 2026" with no
+  timezone; 2026-09-01 UTC is treated as the first standard-rate day (≤ ~1 day
+  imprecision). Documented at the schedule and in `references/pricing.md`.
+- **audit-extract.py** is left time-blind (always $3 for Sonnet 5) — its
+  cache-break / idle-gap figures are estimates and approximate by design; the
+  main report's per-turn costs are exact. No `_SCRIPT_VERSION` bump (the parse
+  cache stores raw tokens, re-costed on load). 18 new tests.
+
 ## v1.83.0 — 2026-06-20
 
 ### Audit remediation: chart-tooltip escaping, null-value hardening, share-safe redaction (minor)

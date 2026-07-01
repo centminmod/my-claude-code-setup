@@ -134,6 +134,44 @@ def _pricing_for(model: str) -> dict[str, float]:
     return _sm()._DEFAULT_PRICING
 
 
+@functools.lru_cache(maxsize=256)
+def _pricing_for_at(model: str, pricing_date=None) -> dict[str, float]:
+    """Date-effective wrapper over ``_pricing_for``.
+
+    Returns the flat ``_pricing_for(model)`` rate UNLESS ``model`` has a
+    ``_PRICING_SCHEDULES`` window covering ``pricing_date`` (a
+    ``datetime.date`` derived from the turn's timestamp via
+    ``_effective_date``), in which case that window's rates apply.
+
+    ``pricing_date is None`` (missing / unparseable / timezone-naive turn
+    timestamp, or a caller with no temporal context) → the flat rate. This is
+    deliberate: an unknown-date turn is priced at the standard (non-discount)
+    rate so a limited-time promo never causes a silent under-count.
+
+    Cached on ``(model, pricing_date)``. ``pricing_date`` is a ``date`` (or
+    ``None``) — hashable — and real workloads span very few distinct dates, so
+    the cache stays tiny. Model resolution, the ``[1m]`` / date-suffix prefix
+    behaviour, and the unknown-model advisory all remain the sole
+    responsibility of ``_pricing_for`` (called through here), so this wrapper
+    adds no new resolution surface. Tests that patch ``_PRICING_SCHEDULES``
+    must call ``_pricing_for_at.cache_clear()`` (see the autouse conftest
+    fixture, which clears it alongside ``_pricing_for``).
+    """
+    base = _pricing_for(model)
+    if pricing_date is None:
+        return base
+    for key, windows in _sm()._PRICING_SCHEDULES.items():
+        if model == key or model.startswith(key):
+            for w in windows:
+                lo = w.get("from")
+                hi = w.get("until")
+                if (lo is None or pricing_date >= lo) and \
+                   (hi is None or pricing_date < hi):
+                    return w["rates"]
+            break  # model owns a schedule but no window covers this date → base
+    return base
+
+
 def _load_pricing_supplement(path: str, unresolved_only: bool = True) -> None:
     """C.6: supplement ``_PRICING`` from a JSON file for unresolved models only.
 
@@ -639,7 +677,7 @@ def _build_session_blocks(
             # if transcripts ever stop dual-populating it.
             cwr_5m, cwr_1h = _sm()._cache_write_split(u)
             b["cache_write"] += cwr_5m + cwr_1h
-            b["cost_usd"]    += _sm()._cost(u, model)
+            b["cost_usd"]    += _sm()._cost(u, model, turn.get("timestamp"))
             b["models"][model] = b["models"].get(model, 0) + 1
 
     for b in blocks:
@@ -829,7 +867,7 @@ def _totals_from_turns(turn_records: list[dict]) -> dict:
         # same tokens at the 5m rate). Meaningful only when cache_write_1h > 0.
         tokens_1h = r.get("cache_write_1h_tokens", 0)
         if tokens_1h:
-            rates = _pricing_for(r["model"])
+            rates = _pricing_for_at(r["model"], _sm()._effective_date(r.get("timestamp")))
             extra = tokens_1h * (rates["cache_write_1h"] - rates["cache_write"]) / 1_000_000
             # Fast mode scales every rate uniformly, so the 1h-vs-5m premium
             # delta scales too — mirror _cost's per-turn multiplier or this KPI
@@ -933,9 +971,21 @@ def _model_breakdown(turn_records: list[dict]) -> dict[str, dict]:
         # `_build_by_workflow`.
         if r["model"] == _sm()._SYNTHETIC_MODEL:
             continue
-        m = out.setdefault(r["model"], {"turns": 0, "cost_usd": 0.0})
+        m = out.setdefault(r["model"], {"turns": 0, "cost_usd": 0.0, "_last_date": None})
         m["turns"] += 1
         m["cost_usd"] += float(r.get("cost_usd", 0.0))
+        d = _sm()._effective_date(r.get("timestamp"))
+        if d is not None and (m["_last_date"] is None or d > m["_last_date"]):
+            m["_last_date"] = d
+    # Stamp the rate-card rate the renderers display. For a model whose rate is
+    # date-effective (see _PRICING_SCHEDULES), we show the rate in effect on its
+    # MOST RECENT turn in this report: an all-introductory-window model shows the
+    # discounted rate (matching its computed cost), and once it has any turn at
+    # or after a price change the current rate shows. A model whose turns straddle
+    # a boundary can't be one number — latest-turn is the honest single choice;
+    # the per-turn ``cost_usd`` column remains exact regardless.
+    for m, info in out.items():
+        info["rates"] = _pricing_for_at(m, info.pop("_last_date"))
     return out
 
 

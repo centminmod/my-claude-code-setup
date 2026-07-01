@@ -5,7 +5,7 @@ import re
 import sys
 from datetime import timedelta, timezone
 
-from _dt import _parse_iso_dt
+from _dt import _effective_date, _parse_iso_dt
 
 
 def _sm():
@@ -686,8 +686,9 @@ def _cache_write_split(u: dict) -> tuple[int, int]:
     return int(u.get("cache_creation_input_tokens", 0) or 0), 0
 
 
-def _cost(u: dict, model: str) -> float:
-    r = _sm()._pricing_for(model)
+def _cost(u: dict, model: str, ts: str | None = None) -> float:
+    pricing_date = _effective_date(ts)
+    r = _sm()._pricing_for_at(model, pricing_date)
     tokens_5m, tokens_1h = _cache_write_split(u)
     # ``… or 0`` (not ``.get(k, 0)``) so an explicit ``"input_tokens": null`` in a
     # hand-edited / truncated transcript collapses to 0 instead of propagating
@@ -722,7 +723,7 @@ def _cost(u: dict, model: str) -> float:
             # missing-key and empty-string to the parent turn's model so the
             # advisor charge tracks the parent's rate (the correct fallback
             # when the iteration record is partial).
-            adv_rates = _sm()._pricing_for(it.get("model") or model)
+            adv_rates = _sm()._pricing_for_at(it.get("model") or model, pricing_date)
             advisor += (
                 (it.get("input_tokens") or 0)  * adv_rates["input"]  / 1_000_000
               + (it.get("output_tokens") or 0) * adv_rates["output"] / 1_000_000
@@ -735,7 +736,7 @@ def _cost(u: dict, model: str) -> float:
     return primary + advisor + web_search * _sm()._WEB_SEARCH_REQUEST_USD
 
 
-def _advisor_info(u: dict, model: str) -> tuple[int, float, str | None, int, int]:
+def _advisor_info(u: dict, model: str, ts: str | None = None) -> tuple[int, float, str | None, int, int]:
     """Extract advisor metadata from usage.iterations.
 
     Returns ``(call_count, advisor_cost_usd, advisor_model, input_tokens,
@@ -752,13 +753,14 @@ def _advisor_info(u: dict, model: str) -> tuple[int, float, str | None, int, int
     advisor_model: str | None = None
     inp = 0
     out = 0
+    pricing_date = _effective_date(ts)
     for it in u.get("iterations") or []:
         if it.get("type") == "advisor_message":
             calls += 1
             adv_model = it.get("model") or ""
             if adv_model and advisor_model is None:
                 advisor_model = adv_model
-            adv_rates = _sm()._pricing_for(adv_model or model)
+            adv_rates = _sm()._pricing_for_at(adv_model or model, pricing_date)
             cost += (
                 it.get("input_tokens", 0) * adv_rates["input"]  / 1_000_000
               + it.get("output_tokens", 0) * adv_rates["output"] / 1_000_000
@@ -768,8 +770,9 @@ def _advisor_info(u: dict, model: str) -> tuple[int, float, str | None, int, int
     return calls, cost, advisor_model, inp, out
 
 
-def _no_cache_cost(u: dict, model: str) -> float:
-    r = _sm()._pricing_for(model)
+def _no_cache_cost(u: dict, model: str, ts: str | None = None) -> float:
+    pricing_date = _effective_date(ts)
+    r = _sm()._pricing_for_at(model, pricing_date)
     # Route the cache-creation token count via _cache_write_split for parity
     # with _cost (which also reads through the same helper). Empirically
     # equal today (55/55 turns per CLAUDE-activeContext.md:430-432), but
@@ -803,7 +806,7 @@ def _no_cache_cost(u: dict, model: str) -> float:
     advisor = 0.0
     for it in u.get("iterations") or []:
         if it.get("type") == "advisor_message":
-            adv_rates = _sm()._pricing_for(it.get("model") or model)
+            adv_rates = _sm()._pricing_for_at(it.get("model") or model, pricing_date)
             advisor += (
                 (it.get("input_tokens") or 0)  * adv_rates["input"]  / 1_000_000
               + (it.get("output_tokens") or 0) * adv_rates["output"] / 1_000_000
@@ -841,9 +844,14 @@ def _build_turn_record(global_index: int, entry: dict,
         ttl = "1h"
     else:
         ttl = "mix"
-    c = _cost(u, model)
-    nc = _no_cache_cost(u, model)
-    adv_calls, adv_cost, adv_model, adv_inp, adv_out = _advisor_info(u, model)
+    # Turn timestamp threads into pricing so date-effective rates (e.g. a
+    # limited-time introductory promo, see _PRICING_SCHEDULES) charge each turn
+    # at the rate in effect on its own date — correct even when this transcript
+    # is reprocessed months later. Missing/naive timestamp → standard rate.
+    ts = entry.get("timestamp")
+    c = _cost(u, model, ts)
+    nc = _no_cache_cost(u, model, ts)
+    adv_calls, adv_cost, adv_model, adv_inp, adv_out = _advisor_info(u, model, ts)
     # Content-block distribution: assistant blocks come from this turn's own
     # message.content; tool_result / image blocks are attributed from the user
     # entry that immediately preceded this turn in the raw JSONL stream.

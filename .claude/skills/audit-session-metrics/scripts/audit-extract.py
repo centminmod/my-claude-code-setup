@@ -90,6 +90,15 @@ _INPUT_RATE_PER_M_BY_MODEL: tuple[tuple[str, float], ...] = (
     # are intentionally NOT listed: the bare family needles above already resolve
     # them to the correct tier, and a major-only needle here would trip the
     # `test_audit_extract_no_undocumented_loose_prefixes` drift guard.
+    #
+    # DATE-EFFECTIVE PRICING NOT MODELLED HERE (v1.84.0): the main script prices
+    # claude-sonnet-5 at its introductory $2/M through 2026-08-31 and $3/M from
+    # 2026-09-01 (see session-metrics.py:_PRICING_SCHEDULES / _pricing_for_at).
+    # This standalone table is time-blind and always uses the standard $3/M, so
+    # cache-break / idle-gap ESTIMATES for intro-window Sonnet 5 turns can run up
+    # to ~50% high. This is the same "approximate by design" under-direction the
+    # Opus 4.0 asymmetry note above already accepts; the main report's per-turn
+    # cost figures remain exact.
 )
 _DEFAULT_INPUT_RATE_PER_M = 3.00
 

@@ -32,6 +32,7 @@ import importlib.util as _ilu
 import re
 import secrets  # accessed as sm.secrets by tests; actual use is in _data.py  # noqa: F401
 import sys
+from datetime import date as _date
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo / sm.ZoneInfoNotFoundError by tests  # noqa: F401
 
@@ -42,19 +43,19 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.83.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.84.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
 # whether to supply `--refresh-pricing` for any unresolved models.
-_PRICING_SNAPSHOT_DATE = "2026-04-17"
+_PRICING_SNAPSHOT_DATE = "2026-07-02"
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
 # See references/pricing.md for notes and source.
 # ---------------------------------------------------------------------------
 # Per-million-token rates (USD). Source: https://platform.claude.com/docs/en/about-claude/pricing
-# Snapshot: 2026-04-17. Two cache-write tiers: `cache_write` = 5-minute TTL
+# Snapshot: 2026-07-02. Two cache-write tiers: `cache_write` = 5-minute TTL
 # (1.25x base input), `cache_write_1h` = 1-hour TTL (2x base input). The
 # per-entry split is read from `usage.cache_creation.ephemeral_{5m,1h}_input_tokens`
 # when present; legacy transcripts without the nested object fall back to the
@@ -167,6 +168,47 @@ _DEFAULT_PRICING = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_w
 # and pollute the unknown-model advisory. Short-circuited in `_pricing_for`.
 _ZERO_PRICING = {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0, "cache_write_1h": 0.0}
 _SYNTHETIC_MODEL = "<synthetic>"
+
+# ---------------------------------------------------------------------------
+# Date-effective pricing overrides  (v1.84.0)
+# ---------------------------------------------------------------------------
+# Most models hold one rate for their whole life, so the flat `_PRICING` table
+# above is sufficient. When a model's PUBLISHED rate changes on a calendar date
+# (a limited-time introductory promo, or a scheduled list-price change), the
+# flat entry alone can't price historical transcripts correctly — a session
+# analysed months later must still price each turn at the rate in effect on
+# that turn's own date. This table carries those exceptions.
+#
+# Shape: model-key -> list of half-open windows [from, until) (UTC dates).
+#   * ``from``  = None means "open start" (any date before ``until``).
+#   * ``until`` = None means "open end"   (any date from ``from`` onward).
+# A turn whose UTC date (see `_effective_date`) falls in a window is priced at
+# that window's `rates`; outside every window — and whenever the turn timestamp
+# is missing / unparseable / timezone-naive — the flat `_PRICING` entry applies
+# (the conservative default: an unknown-date turn is never under-priced against
+# a discount). The key is matched exactly OR as a prefix, mirroring the flat
+# table, so date-suffixed and `[1m]` variants of a scheduled model inherit the
+# same window.
+#
+# claude-sonnet-5 INTRODUCTORY pricing: $2/$10 input/output (with cache tiers
+# scaled off the $2 input via the standard 0.1x / 1.25x / 2x ratios) through
+# 2026-08-31, reverting to the standard $3/$15 flat entry above on 2026-09-01.
+# Anthropic announced "introductory pricing … through August 31, 2026" without
+# naming a timezone, so we treat 2026-09-01 (UTC) as the first standard-rate
+# day. The residual boundary imprecision is at most ~1 calendar day around the
+# real cutover — negligible next to the 50% overcount that pricing every
+# intro-window Sonnet 5 turn at the standard rate would introduce.
+# Source: https://www.anthropic.com/news/claude-sonnet-5
+_PRICING_SCHEDULES: dict[str, list[dict]] = {
+    "claude-sonnet-5": [
+        {
+            "from":  None,                 # open start (model did not exist earlier)
+            "until": _date(2026, 9, 1),    # first standard-rate day, UTC (exclusive)
+            "rates": {"input":  2.00, "output": 10.00, "cache_read": 0.20,
+                      "cache_write":  2.50, "cache_write_1h":  4.00},
+        },
+    ],
+}
 
 # Fast-mode (research preview) premium multipliers. Source: Anthropic pricing
 # (https://platform.claude.com/docs/en/about-claude/pricing § "Fast mode
@@ -404,6 +446,7 @@ del _co_m
 
 _dt_m = _load_leaf("_dt")
 _parse_iso_dt = _dt_m._parse_iso_dt
+_effective_date = _dt_m._effective_date
 del _dt_m
 
 _tz_m = _load_leaf("_tz")
@@ -717,6 +760,7 @@ del _rp_m
 
 _da_m = _load_leaf("_data")
 _pricing_for                = _da_m._pricing_for
+_pricing_for_at             = _da_m._pricing_for_at
 _load_pricing_supplement    = _da_m._load_pricing_supplement
 _fast_multiplier_for        = _da_m._fast_multiplier_for
 _parse_jsonl                = _da_m._parse_jsonl
