@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.84.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.84.1"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -541,6 +541,7 @@ _render_chart_chartjs         = _ch_m._render_chart_chartjs
 _render_chart_none            = _ch_m._render_chart_none
 CHART_RENDERERS               = _ch_m.CHART_RENDERERS
 _build_chart_html             = _ch_m._build_chart_html
+_json_for_script              = _ch_m._json_for_script
 _svg_scale                    = _ch_m._svg_scale
 _build_cache_efficiency_svg   = _ch_m._build_cache_efficiency_svg
 del _ch_m

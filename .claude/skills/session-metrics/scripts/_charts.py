@@ -13,6 +13,25 @@ def _sm():
 _CHART_PAGE = 60   # max data points per chart panel before splitting into multiple
 
 
+def _json_for_script(value, **kwargs):
+    r"""Serialize ``value`` to JSON safe to embed inside an HTML ``<script>``.
+
+    Escapes every ``<`` to ``<`` (a valid JSON *and* JS string escape) so a
+    ``</script>``, ``<!--``, or ``<script`` token in the data can't drive the
+    HTML tokenizer out of the surrounding script element. The former approach
+    escaped only ``</`` (to ``<\/``), which stopped a literal ``</script>`` but
+    left the ``<!-- ... <script`` sequence able to trip the WHATWG "script data
+    double escaped" state — in which the intended ``</script>`` close is ignored
+    and the blob swallows the rest of the document (drawer markup + every later
+    script). Neutralising every ``<`` closes all three trigger tokens at once,
+    and safely subsumes ``<\/`` (JSON does not require ``/`` to be escaped).
+
+    Relies on ``json.dumps`` default ``ensure_ascii=True`` so U+2028/U+2029 are
+    emitted as `` ``/`` `` text — do NOT pass ``ensure_ascii=False``.
+    """
+    return json.dumps(value, **kwargs).replace("<", "\\u003c")
+
+
 def _build_chart_html(
     cats: list, cache_rd: list, cache_wr: list,
     output: list, input_: list, cost: list, x_title: str,
@@ -50,11 +69,11 @@ def _build_chart_html(
             "cost":     cost[s:e],
             "models":   models_py[s:e] if models_py else [],
         })
-    # Escape ``</`` → ``<\/`` so a ``</script>`` token in chart data (e.g. a
-    # crafted/odd model id or a malformed timestamp) can't close this executable
-    # <script> block and break out into the HTML body. Mirrors the turn-drawer /
-    # timeline JSON payloads in _html_sections.py (v1.80.1).
-    data_json = json.dumps(pages_data, separators=(",", ":")).replace("</", "<\\/")
+    # Escape every ``<`` (to ``<``) so a ``</script>`` / ``<!--`` /
+    # ``<script`` token in chart data (e.g. a crafted/odd model id or a
+    # malformed timestamp) can't drive the HTML parser out of this executable
+    # <script> block. See _json_for_script for the full rationale.
+    data_json = _json_for_script(pages_data, separators=(",", ":"))
 
     # --- Container divs ---------------------------------------------------
     divs: list[str] = []
@@ -399,10 +418,10 @@ def _build_lib_chart_pages(series: dict, x_title: str) -> tuple[str, str]:
         "cost":   series["cost"][s:e],
         "models": series["models"][s:e],
     } for s, e in slices]
-    # Escape ``</`` → ``<\/`` so chart data can't break out of the executable
-    # <script> block in the uPlot / Chart.js renderers (v1.80.1; see
-    # _build_chart_html for the full rationale).
-    data_json = json.dumps(pages_data, separators=(",", ":")).replace("</", "<\\/")
+    # Escape every ``<`` (to ``<``) so chart data can't break out of the
+    # executable <script> block in the uPlot / Chart.js renderers (see
+    # _json_for_script for the full rationale).
+    data_json = _json_for_script(pages_data, separators=(",", ":"))
 
     divs: list[str] = []
     for pg, (s, e) in enumerate(slices):

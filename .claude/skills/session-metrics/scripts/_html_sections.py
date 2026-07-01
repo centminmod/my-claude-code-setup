@@ -391,7 +391,7 @@ def _build_tod_epoch_blob(tod: dict) -> str:
     if not epoch_secs:
         return ""
     return ('<script type="application/json" id="tod-epoch-secs">'
-            + json.dumps(epoch_secs, separators=(",", ":"))
+            + _sm()._json_for_script(epoch_secs, separators=(",", ":"))
             + "</script>")
 
 
@@ -419,17 +419,17 @@ def _build_hour_of_day_html(tod: dict, tz_label: str = "UTC",
     peak_json = "null"
     peak_legend = ""
     if peak:
-        # Escape ``</`` → ``<\/`` for parity with the chart-data / turn-drawer
-        # payloads: this blob is inlined into an executable <script> below
-        # (``var PEAK=…``), so a ``</script>`` token must not be able to close
-        # the block. Only reachable today if tz_label validation were ever
-        # loosened, but kept consistent defensively (v1.80.1).
-        peak_json = json.dumps({
+        # This blob is inlined into an executable <script> below (``var
+        # PEAK=…``); _json_for_script escapes every ``<`` so a ``</script>`` /
+        # ``<!--`` / ``<script`` token can't drive the HTML parser out of the
+        # block. Only reachable today if tz_label validation were ever loosened,
+        # but kept consistent defensively.
+        peak_json = _sm()._json_for_script({
             "start":   peak["start"],
             "end":     peak["end"],
             "tz_off":  peak["tz_offset_hours"],
             "tz_label": peak["tz_label"],
-        }, separators=(",", ":")).replace("</", "<\\/")
+        }, separators=(",", ":"))
         peak_legend = (
             f'<span style="color:#8b949e;font-size:11px;display:inline-flex;'
             f'align-items:center;gap:6px">'
@@ -4477,8 +4477,8 @@ def _build_chartrail_section_html(chartrail_data: list) -> str:
     """
     if not chartrail_data:
         return ""
-    rail_json = json.dumps(chartrail_data, separators=(",", ":"),
-                            default=str).replace("</", "<\\/")
+    rail_json = _sm()._json_for_script(chartrail_data, separators=(",", ":"),
+                                       default=str)
     n_turns = len(chartrail_data)
     return (
         '<section class="section">\n'
@@ -4685,11 +4685,11 @@ def _build_daily_cost_rail_html(daily_data: list) -> str:
     """
     if not daily_data:
         return ""
-    rail_json = json.dumps(
+    rail_json = _sm()._json_for_script(
         [{"n": i, "date": d.get("date", ""), "cost": float(d.get("cost", 0.0))}
          for i, d in enumerate(daily_data, 1)],
         separators=(",", ":"),
-    ).replace("</", "<\\/")
+    )
     n_days = len(daily_data)
     return (
         '<section class="section">\n'
@@ -5799,10 +5799,12 @@ document.querySelectorAll('tr.session-header[data-toggle]').forEach(function (hd
                         "att_tokens": t.get("attributed_subagent_tokens", 0),
                         "att_count":  t.get("attributed_subagent_count", 0),
                     })
-        # `</` sequences would close the surrounding <script> tag early.
-        # Replace them with `<\/` (still valid JSON inside a string literal).
-        payload_json = json.dumps(turn_data, separators=(",", ":"), default=str)
-        payload_json = payload_json.replace("</", "<\\/")
+        # This blob embeds verbatim transcript text; a `</script>`, `<!--`, or
+        # `<script` token in it would otherwise let the HTML parser escape the
+        # surrounding <script>. _json_for_script escapes every `<` to `<`
+        # (valid JSON inside a string literal) to neutralise all three.
+        payload_json = _sm()._json_for_script(turn_data, separators=(",", ":"),
+                                              default=str)
         turn_data_json_html = (
             f'<script type="application/json" id="turn-data">{payload_json}</script>'
         )

@@ -3,6 +3,36 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.84.1 — 2026-07-02
+
+### Fix: HTML exports broken by `<!-- … <script` in transcript text (patch)
+
+Large JSON blobs embedded in the HTML report's `<script>` elements
+(`turn-data`, `chartrail-data`, `costail-data`, the `PEAK` band, and the chart
+`DATA` payloads) were escaped only with `</` → `<\/`. That stops a literal
+`</script>` but not the WHATWG "script data (double) escaped" tokenizer states:
+when captured prompt/assistant text contained an HTML comment opener `<!--`
+followed by `<script` with no `-->` before the blob's close, the browser ignored
+the intended `</script>` and the blob swallowed the rest of the document — the
+per-turn drawer markup and every downstream render/interaction script. Symptom:
+**chartrail bars don't render and clicking a timeline row no longer opens the
+detail drawer**, both at once, on sessions whose text discusses HTML/JS.
+
+- New shared `_json_for_script()` helper escapes **every** `<` → `<` (valid
+  JSON and JS string escape), neutralising `</script`, `<!--`, and `<script` in
+  one stroke. All six embed sites route through it (plus the integer-only
+  `tod-epoch-secs` blob, for a single invariant).
+- Relies on `json.dumps` default `ensure_ascii=True`, so U+2028/U+2029 are
+  already emitted escaped; no separate handling needed.
+- Long-standing latent bug (present since the drawer/chartrail features landed,
+  2026-04-22/25) — **not** a regression from v1.83.0/v1.84.0.
+- Regression test added for the `<!-- … <script` double-escape trigger; the
+  prior escape tests only covered the literal `</script>` case (the blind spot
+  that let this ship). Verified end-to-end in a browser: the previously-broken
+  export now parses all scripts, renders bars, and opens the drawer on row click.
+- Diagnosis cross-checked via a quad-AI consult (Codex GPT-5.5, GLM 5.2,
+  code-searcher) — unanimous confirmation of root cause and fix.
+
 ## v1.84.0 — 2026-07-02
 
 ### Date-effective pricing: Claude Sonnet 5 introductory rate (minor)
