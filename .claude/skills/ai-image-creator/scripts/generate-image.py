@@ -291,22 +291,39 @@ ENV_CF_GATEWAY_ID = "AI_IMG_CREATOR_CF_GATEWAY_ID"
 ENV_CF_TOKEN = "AI_IMG_CREATOR_CF_TOKEN"
 ENV_OPENROUTER_KEY = "AI_IMG_CREATOR_OPENROUTER_KEY"
 ENV_GEMINI_KEY = "AI_IMG_CREATOR_GEMINI_KEY"
+# Cloudflare AI Gateway BYOK aliases — the names the stored provider keys live
+# under in CF. setup-guide.md instructs "aistudio" for Google AI Studio and
+# "default" for OpenRouter; override here if different aliases were used.
+ENV_CF_BYOK_ALIAS = "AI_IMG_CREATOR_CF_BYOK_ALIAS"                      # Google AI Studio (default "aistudio")
+ENV_CF_BYOK_ALIAS_OPENROUTER = "AI_IMG_CREATOR_CF_BYOK_ALIAS_OPENROUTER"  # OpenRouter (default "default")
+
+# Keys the CWD .env (a possibly untrusted directory) is allowed to set. The
+# skill-dir .env is trusted and may set anything; a planted .env in some other
+# working directory could otherwise inject arbitrary env vars.
+_CWD_DOTENV_ALLOWED_KEYS = {
+    ENV_CF_ACCOUNT_ID, ENV_CF_GATEWAY_ID, ENV_CF_TOKEN,
+    ENV_OPENROUTER_KEY, ENV_GEMINI_KEY,
+    ENV_CF_BYOK_ALIAS, ENV_CF_BYOK_ALIAS_OPENROUTER,
+}
+
 
 def _load_dotenv() -> None:
     """Load .env files into os.environ (stdlib only, no pip deps).
 
     Search order (first found wins per key):
-      1. .env in the same directory as this script (skill-level)
-      2. .env in the current working directory (project-level)
-    Keys already present in os.environ are never overwritten.
+      1. .env in the same directory as this script (skill-level, trusted)
+      2. .env in the current working directory (project-level, restricted)
+    Keys already present in os.environ are never overwritten. The CWD .env is
+    restricted to `_CWD_DOTENV_ALLOWED_KEYS` so a planted .env in an untrusted
+    working directory can't inject arbitrary env vars.
     """
-    candidates = [
-        Path(__file__).parent / ".env",
-        Path.cwd() / ".env",
-    ]
-    for env_file in candidates:
+    skill_env = Path(__file__).parent / ".env"
+    cwd_env = Path.cwd() / ".env"
+    for env_file in (skill_env, cwd_env):
         if not env_file.is_file():
             continue
+        restricted = env_file != skill_env
+        loaded: list[str] = []
         with env_file.open() as f:
             for line in f:
                 line = line.strip()
@@ -315,13 +332,21 @@ def _load_dotenv() -> None:
                 key, _, val = line.partition("=")
                 key = key.strip()
                 val = val.strip().strip("'\"")
-                if key and key not in os.environ:
-                    os.environ[key] = val
+                if not key or key in os.environ:
+                    continue
+                if restricted and key not in _CWD_DOTENV_ALLOWED_KEYS:
+                    log.debug(f"Ignoring non-allowlisted key '{key}' from CWD .env")
+                    continue
+                os.environ[key] = val
+                loaded.append(key)
+        if loaded:
+            log.debug(f"Loaded {len(loaded)} key(s) from {env_file}: {', '.join(loaded)}")
 
-_load_dotenv()
 
 # Logger — configured in main() based on --debug / --verbose flags
 log = logging.getLogger("ai-image-creator")
+
+_load_dotenv()
 
 
 MIME_MAP = {
@@ -455,6 +480,54 @@ def resolve_video_model(model_arg: str | None) -> str:
     sys.exit(1)
 
 
+# ─────────────────────────────────────────────
+# Path containment (defends an agent acting on untrusted instructions)
+# ─────────────────────────────────────────────
+
+# Set once in main() from --allow-external-input / --allow-external-output.
+_ALLOW_EXTERNAL_INPUT = False
+_ALLOW_EXTERNAL_OUTPUT = False
+
+
+def _is_within_cwd(resolved: Path) -> bool:
+    try:
+        resolved.relative_to(Path.cwd().resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _contain_input_path(path_str: str, allow_external: bool) -> Path:
+    """Resolve a local input path (FOLLOWING symlinks) and enforce containment.
+
+    Blocks base64-ing e.g. ~/.ssh/id_rsa into an outbound API request body
+    unless the caller explicitly opts in with --allow-external-input.
+    """
+    resolved = Path(path_str).resolve()
+    if not allow_external and not _is_within_cwd(resolved):
+        print(
+            f"ERROR: Refusing to read '{path_str}' — resolves to {resolved}, "
+            f"outside the project tree. Pass --allow-external-input to override.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return resolved
+
+
+def _contain_output_path(path_str: str, allow_external: bool) -> Path:
+    """Resolve --output and enforce containment (no arbitrary overwrite of e.g.
+    ~/.zshrc) unless --allow-external-output is passed."""
+    resolved = Path(path_str).resolve()
+    if not allow_external and not _is_within_cwd(resolved):
+        print(
+            f"ERROR: Refusing to write '{path_str}' — resolves to {resolved}, "
+            f"outside the project tree. Pass --allow-external-output to override.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return resolved
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments.
 
@@ -464,6 +537,14 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(
         description="Generate PNG images using AI (multiple models via OpenRouter/Google AI Studio)"
+    )
+    parser.add_argument(
+        "--allow-external-input", action="store_true",
+        help="Allow reading reference/video inputs from outside the project tree",
+    )
+    parser.add_argument(
+        "--allow-external-output", action="store_true",
+        help="Allow writing --output to a path outside the project tree",
     )
     parser.add_argument(
         "-o", "--output", required=False, default=None, help="Output PNG file path (required unless --list-models)"
@@ -490,7 +571,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-s", "--image-size",
         default=None,
-        help="Image resolution (OpenRouter only): 0.5K, 1K, 2K, 4K",
+        help="Image resolution (OpenRouter only): 1K, 2K, 4K. 0.5K is accepted "
+             "only on the Gemini 3.1 Flash preview build "
+             "(-m google/gemini-3.1-flash-image-preview-20260226).",
     )
     parser.add_argument(
         "-m", "--model",
@@ -753,9 +836,15 @@ def build_headers(provider: str, mode: str, config: dict[str, str]) -> dict[str,
     if mode == "gateway":
         headers["cf-aig-authorization"] = f"Bearer {config['cf_token']}"
         if provider == "google":
-            headers["cf-aig-byok-alias"] = "aistudio"
-        if provider == "openrouter" and config.get("direct_key"):
-            headers["Authorization"] = f"Bearer {config['direct_key']}"
+            headers["cf-aig-byok-alias"] = os.environ.get(ENV_CF_BYOK_ALIAS, "aistudio").strip() or "aistudio"
+        else:  # openrouter
+            # BYOK: the OpenRouter key is stored in Cloudflare under this alias and
+            # injected server-side, so we do NOT forward Authorization (the key
+            # stays in CF, per setup-guide.md's "never sent in request headers").
+            # Verified live (free /key probe): a gateway call authenticates with
+            # cf-aig-byok-alias + no Authorization — no dual-header needed. The
+            # direct_key, if present, is still used by the direct-mode fallback.
+            headers["cf-aig-byok-alias"] = os.environ.get(ENV_CF_BYOK_ALIAS_OPENROUTER, "default").strip() or "default"
     else:
         if provider == "openrouter":
             headers["Authorization"] = f"Bearer {config['direct_key']}"
@@ -1269,12 +1358,9 @@ def process_transparent(input_path: Path, output_path: Path) -> None:
 
         # Step 3: ImageMagick trim transparent padding
         log.info("ImageMagick trim")
-        trim_args = [magick_cmd]
-        if magick_cmd == "magick":
-            trim_args += [str(tmp_keyed_path), "-fuzz", "15%", "-trim", "+repage", str(output_path)]
-        else:
-            # ImageMagick 6 (convert)
-            trim_args += [str(tmp_keyed_path), "-fuzz", "15%", "-trim", "+repage", str(output_path)]
+        # IM7 (`magick`) and IM6 (`convert`) differ only in the executable —
+        # the trim arguments are identical, so build them once.
+        trim_args = [magick_cmd, str(tmp_keyed_path), "-fuzz", "15%", "-trim", "+repage", str(output_path)]
 
         result = subprocess.run(trim_args, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:
@@ -1481,7 +1567,12 @@ def log_cost_entry(
     """
     costs_path = get_costs_path()
 
-    # Extract token usage (provider-specific format)
+    # Extract token usage (provider-specific format).
+    # NOTE: OpenRouter now returns usage automatically (the old request-side
+    # `usage: {include: true}` is deprecated and has no effect), but image-gen
+    # responses and Cloudflare-gateway responses frequently omit the `usage`
+    # block entirely — so token_usage is best-effort and may legitimately be {}
+    # / report 0 tokens. `--costs` totals can therefore under-count.
     token_usage: dict[str, int] = {}
     if provider == "openrouter":
         usage = response.get("usage", {})
@@ -1606,6 +1697,11 @@ def main() -> None:
     """Main entry point — parse args, generate image, write output."""
     args = parse_args()
 
+    # Apply path-containment policy (defends against untrusted-instruction abuse).
+    global _ALLOW_EXTERNAL_INPUT, _ALLOW_EXTERNAL_OUTPUT
+    _ALLOW_EXTERNAL_INPUT = getattr(args, "allow_external_input", False)
+    _ALLOW_EXTERNAL_OUTPUT = getattr(args, "allow_external_output", False)
+
     # Configure logging
     setup_logging(debug=args.debug, verbose=args.verbose)
 
@@ -1694,8 +1790,8 @@ def main() -> None:
         print("ERROR: --output is required (unless using --list-models, --costs, --analyze, or --analyze-video)", file=sys.stderr)
         sys.exit(1)
 
-    # Validate output path
-    output_path = Path(args.output) if args.output else None
+    # Validate output path (contained to the project tree unless opted out)
+    output_path = _contain_output_path(args.output, _ALLOW_EXTERNAL_OUTPUT) if args.output else None
     if output_path and output_path.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
         print(
             "WARNING: Output file does not have an image extension. "
@@ -1735,8 +1831,10 @@ def main() -> None:
     video_source: str | None = None
     if args.analyze_video:
         vsrc = str(args.ref[0])
+        if vsrc.startswith("http://"):
+            print(f"WARNING: cleartext http:// video URL (prefer https): {vsrc}", file=sys.stderr)
         if not vsrc.startswith(("http://", "https://")):
-            vpath = Path(vsrc)
+            vpath = _contain_input_path(vsrc, _ALLOW_EXTERNAL_INPUT)
             # is_file() (not exists()) so a directory/special file fails here with
             # a clear error instead of an uncaught IsADirectoryError at read time.
             if not vpath.is_file():
@@ -1798,20 +1896,27 @@ def main() -> None:
     if ref_images:
         # Check model supports multimodal input
         if "text" not in modalities:
+            _mm_hint = (
+                "Use --model gemini or geminipro"
+                if args.provider == "google"
+                else "Use --model gemini, geminipro, gpt5, or gpt5.4"
+            )
             print(
                 f"ERROR: Reference images (-r) require a multimodal model. "
                 f"'{model}' only supports image output.\n"
-                f"Use --model gemini, geminipro, gpt5, or gpt5.4 for image editing/style transfer.",
+                f"{_mm_hint} for image editing/style transfer "
+                f"(--analyze / -r is OpenRouter-oriented; gpt5/gpt5.4 need --provider openrouter).",
                 file=sys.stderr,
             )
             sys.exit(1)
 
-        # Validate all ref files exist
+        # Validate all ref files exist and stay within the project tree
         for ref_path in ref_images:
-            if not Path(ref_path).exists():
+            resolved_ref = _contain_input_path(ref_path, _ALLOW_EXTERNAL_INPUT)
+            if not resolved_ref.exists():
                 print(f"ERROR: Reference image not found: {ref_path}", file=sys.stderr)
                 sys.exit(1)
-            if Path(ref_path).suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+            if resolved_ref.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
                 print(f"WARNING: Unusual image extension: {ref_path}", file=sys.stderr)
 
         print(f"Reference images: {len(ref_images)} file(s)", file=sys.stderr)
@@ -1826,19 +1931,21 @@ def main() -> None:
             sys.exit(1)
         print("Transparent mode: enabled", file=sys.stderr)
 
-    # Default prompt for analyze / analyze-video mode (if user didn't provide one)
+    # Default prompt for analyze / analyze-video mode (if user didn't provide one).
+    # Always assign the analyze default here — do NOT fall through to a stale
+    # tmp/prompt.txt left over from a prior generation, which resolve_prompt would
+    # otherwise silently pick up as the analysis instruction. To supply a custom
+    # analysis prompt, pass --prompt or --prompt-file explicitly.
     if (args.analyze or args.analyze_video) and not args.prompt and not args.prompt_file:
-        default_prompt_path = Path(__file__).parent.parent / "tmp" / "prompt.txt"
-        if not default_prompt_path.exists():
-            if args.analyze_video:
-                args.prompt = DEFAULT_VIDEO_PROMPT_JSON if video_json_mode else DEFAULT_VIDEO_PROMPT_PROSE
-                log.debug(f"Using default analyze-video prompt ({'json' if video_json_mode else 'prose'})")
-            else:
-                args.prompt = (
-                    "Describe this image in detail. Include the subject, style, colors, "
-                    "composition, mood, and any text visible in the image."
-                )
-                log.debug("Using default analyze prompt")
+        if args.analyze_video:
+            args.prompt = DEFAULT_VIDEO_PROMPT_JSON if video_json_mode else DEFAULT_VIDEO_PROMPT_PROSE
+            log.debug(f"Using default analyze-video prompt ({'json' if video_json_mode else 'prose'})")
+        else:
+            args.prompt = (
+                "Describe this image in detail. Include the subject, style, colors, "
+                "composition, mood, and any text visible in the image."
+            )
+            log.debug("Using default analyze prompt")
 
     # Resolve prompt
     prompt = resolve_prompt(args)
@@ -2010,7 +2117,25 @@ def main() -> None:
                 )
                 vstart = time.time()
                 try:
-                    vresponse = make_request(url, headers, vbody)
+                    try:
+                        vresponse = make_request(url, headers, vbody)
+                    except RuntimeError as ve:
+                        # Match the main call's contract: a transient gateway
+                        # failure on the verify pass retries direct rather than
+                        # degrading. (If the main call already fell back, mode is
+                        # "direct" and url/headers are direct — no double attempt.)
+                        if mode == "gateway" and config.get("direct_key"):
+                            print(
+                                f"Verify gateway request failed: {ve}\nFalling back to direct API...",
+                                file=sys.stderr,
+                            )
+                            vresponse = make_request(
+                                build_direct_url(args.provider, model),
+                                build_headers(args.provider, "direct", config),
+                                vbody,
+                            )
+                        else:
+                            raise
                     vtext = extract_text_openrouter(vresponse)
                     try:
                         verification = json.loads(vtext)

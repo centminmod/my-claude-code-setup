@@ -1,6 +1,6 @@
 ---
 name: ai-image-creator
-description: Generate PNG images using AI (multiple models via OpenRouter including Gemini, FLUX.2, Riverflow, SeedDream, GPT-5 Image, GPT-5.4 Image 2, proxied through Cloudflare AI Gateway BYOK). Also analyze/describe existing images using multimodal AI vision, and analyze video (--analyze-video) via OpenRouter video-input models (mimo, gemini, qwen, seed, minimax) to get text descriptions for video prompts. Use when user asks to "generate an image", "create a PNG", "make an icon", "make it transparent", "describe this image", "analyze this image", "what's in this image", "explain this image", "describe this video", "analyze this video", "what happens in this video", or needs AI-generated visual assets for the project. Supports model selection via keywords (gemini, geminipro, riverflow, flux2, seedream, gpt5, gpt5.4), configurable aspect ratios/resolutions, transparent backgrounds (-t), reference image editing (-r), image analysis (--analyze), video analysis (--analyze-video), and per-project cost tracking (--costs).
+description: Generate, edit-from-reference, or analyze images with AI via OpenRouter (gemini, geminipro, riverflow, flux2, seedream, gpt5, gpt5.4; Cloudflare AI Gateway BYOK). Also analyze a video (--analyze-video, read-only — no video generated) into a text description for video prompts. Use when the user asks to generate an image, create a PNG, make an icon, make it transparent, edit with a reference, design a logo/banner, describe/analyze/explain an image ("what's in this image"), or describe/analyze a video ("what happens in this video").
 allowed-tools: Bash, Read, Write
 compatibility: Requires uv (Python runner) and network access. Environment variables for CF AI Gateway or direct API keys must be configured in shell profile (~/.zshrc on macOS, ~/.bashrc on Linux, or System Environment Variables on Windows).
 metadata:
@@ -70,7 +70,7 @@ Professional prompt patterns are available in 3 reference files. These are **not
 | "chart", "infographic", "data", "diagram" | `infographic` | `prompt-core.md` + `prompt-categories.md` § infographic |
 | "t-shirt", "mug design", "poster", "POD", "print-on-demand" | `pod_design` | `prompt-core.md` + `prompt-platforms.md` + `prompt-categories.md` § pod_design |
 | "consistent character", "same character/product across frames", "comic strip", "storyboard", "frame set", "start and last frame", "panels", "before/after" | `frame_consistency` | Read `references/consistency-presets.md` — keep people/objects/scenes consistent across a SET of frames (for video first/last frames or stitched comic strips) |
-| "describe", "analyze", "what's in this image", "explain image" | `analyze` | Skip prompt enhancement — use `--analyze` mode directly. Read `references/analyze-reference.md` for advanced analysis patterns |
+| "describe", "analyze", "what's in this image", "explain image" | `analyze` | Handled by the top **Routing check** — read `references/analyze-reference.md` only for advanced/structured analysis patterns |
 | No match / simple request | — | Skip patterns, generate directly |
 
 **When to skip enhancement:**
@@ -159,7 +159,7 @@ If the user needs resizing, format conversion, or other manipulation, first dete
 | `--prompt-file` | -- | No | `../tmp/prompt.txt` | Path to prompt file |
 | `--provider` | -- | No | `openrouter` | `openrouter` or `google` |
 | `--aspect-ratio` | `-a` | No | model default | OpenRouter only: `1:1`, `16:9`, `9:16`, `3:2`, `2:3`, `4:3`, `3:4`, `4:5`, `5:4`, `21:9` |
-| `--image-size` | `-s` | No | model default | OpenRouter only: `0.5K`, `1K`, `2K`, `4K` |
+| `--image-size` | `-s` | No | model default | OpenRouter only: `1K`, `2K`, `4K`. `0.5K` is accepted **only** on the Gemini 3.1 Flash preview build (`-m google/gemini-3.1-flash-image-preview-20260226`); every selectable keyword rejects it |
 | `--model` | `-m` | No | `gemini` | Model keyword (`gemini`, `geminipro`, `riverflow`, `flux2`, `seedream`, `gpt5`, `gpt5.4`) or full model ID |
 | `--ref` | `-r` | No | -- | Reference image file (repeatable). For editing/style transfer. Multimodal models only (gemini, geminipro, gpt5, gpt5.4) |
 | `--analyze` | -- | No | -- | Analyze/describe a reference image (text-only output, no image generated). Requires `-r`. Multimodal models only |
@@ -270,6 +270,8 @@ Pass the video via `-r` — either a **local file** (mp4/mov/webm/mkv/avi; sent 
 
 All 15 video-capable models are selectable by keyword: `qwen3.5-flash`, `seed-1.6-flash`, `seed-2.0-mini`, `mimo`, `qwen3.6-35b`, `qwen3.6-flash`, `step-3.7-flash`, `gemini3-flash-lite`, `seed-2.0-lite`, `seed-1.6`, `qwen3.5-plus`, `minimax-m3`, `qwen3.6-plus`, `gemini3.5-flash`, `gemini3-pro` (cheapest → priciest). Run `--list-models` for IDs and per-1M-token pricing.
 
+> **Bare family names are not keywords.** `-m gemini`, `-m seed`, or `-m qwen` (the *image*-model families) are **not** valid `--analyze-video` selectors and error with "unknown video model". Use a preset (`video-default`/`video-cheap`/`video-quality`) or a full keyword from the list above (e.g. `gemini3.5-flash`, `seed-1.6-flash`).
+
 ```bash
 # Default model (gemini3.5-flash), structured JSON output
 uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
@@ -342,6 +344,8 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py --costs
 ```
 
 Shows per-model breakdown: generation count, total tokens, elapsed time, and recent entries. **Security:** Only non-sensitive data is logged (model, tokens, timing, file path). No API keys or credentials are ever stored.
+
+> **Token totals may under-count.** OpenRouter image-generation responses (and Cloudflare-gateway responses) often omit the `usage` block, so those entries log 0 tokens. Elapsed time and generation counts are always accurate; treat token totals as best-effort.
 
 Consider adding `.ai-image-creator/` to your `.gitignore`.
 

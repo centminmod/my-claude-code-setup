@@ -213,6 +213,30 @@ def run_magick(cmd: list[str], check: bool = True) -> subprocess.CompletedProces
     return result
 
 
+def measure_text_width(magick: str, font: str, pointsize: int, text: str) -> int | None:
+    """Render-measure the pixel width of `text` in the given font/size.
+
+    Returns the width in pixels, or None if measurement fails (the caller then
+    falls back to a coarse char-count estimate). Used so a long title doesn't
+    overrun the tagline on narrow compact banners.
+    """
+    if not text:
+        return 0
+    try:
+        result = subprocess.run(
+            [magick, "-background", "none", "-font", font,
+             "-pointsize", str(pointsize), f"label:{text}",
+             "-format", "%w", "info:"],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if result.returncode != 0:
+        return None
+    out = result.stdout.strip()
+    return int(out) if out.isdigit() else None
+
+
 def get_image_dimensions(path: Path, magick: str) -> tuple[int, int]:
     result = subprocess.run(
         [magick, "identify", "-format", "%w %h", str(path)],
@@ -340,8 +364,11 @@ def sanitize_config(config: dict) -> None:
     brand = config.get("brand", {})
     for field in ("title", "tagline", "url_text"):
         val = brand.get(field)
-        if isinstance(val, str) and val.startswith("@"):
-            errors.append(f"brand.{field} must not start with '@' (ImageMagick file-read)")
+        if isinstance(val, str) and val.startswith(("@", "-")):
+            errors.append(
+                f"brand.{field} must not start with '@' (ImageMagick file-read) "
+                f"or '-' (option-injection); prefix with a space or rephrase"
+            )
 
     for i, b in enumerate(config.get("banners", [])):
         name = str(b.get("name", ""))
@@ -487,7 +514,12 @@ def render_horizontal_compact(banner: dict, brand: dict, fonts: dict, logo_path:
     ]
 
     if tagline_size > 0 and banner.get("tagline_size_pct", 0) > 0:
-        tagline_x = text_x + int(title_size * len(brand.get("title", "")) * 0.55) + int(w * 0.02)
+        # Measure the real rendered title width; fall back to a char-count
+        # estimate only if ImageMagick label metrics are unavailable.
+        title_text = brand.get("title", "")
+        measured_w = measure_text_width(magick, fonts["title"], title_size, title_text)
+        title_w = measured_w if measured_w is not None else int(title_size * len(title_text) * 0.55)
+        tagline_x = text_x + title_w + int(w * 0.02)
         cmd.extend([
             "-font", fonts["tagline"],
             "-pointsize", str(tagline_size),
