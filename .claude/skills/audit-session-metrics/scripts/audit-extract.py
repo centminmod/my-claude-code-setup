@@ -46,9 +46,12 @@ from typing import Any
 # This is DORMANT, not a mispricing: the only two consumers of this rate are
 # `cache_break` impact and `idle_gap_cache_decay` (see the three call sites of
 # `_input_rate_for_model`), and BOTH require prompt-cache activity (cache writes
-# / breaks). Those third-party models have no prompt caching (cache columns are
-# $0 in session-metrics' _PRICING), so neither finding ever fires for them and
-# the $3 default is never actually multiplied against their tokens. Documented
+# / breaks). Those third-party models have no cache WRITES (cache_write columns
+# are $0 in session-metrics' _PRICING; kimi-k3 bills cache READS at $0.30/M but
+# still never writes), so neither finding ever fires for them — and if a
+# cache_break did fire on a kimi-k3 turn, the $3 default coincidentally equals
+# K3's $3.00/M input rate anyway. No table row needed; the $3 default is
+# never actually multiplied against their tokens. Documented
 # in tests/test_pricing.py:test_audit_extract_pricing_parity_forward (non-Anthropic
 # explicitly out of scope).
 # NOTE: the bare "claude-opus-4" prefix entry was removed (matches the

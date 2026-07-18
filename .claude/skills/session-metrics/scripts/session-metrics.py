@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.84.1"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.85.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -123,7 +123,8 @@ _PRICING: dict[str, dict[str, float]] = {
     # ratios off the $10 base input: read 0.1x = $1, 5m-write 1.25x = $12.50,
     # 1h-write 2x = $20. Review if Anthropic re-tiers at a future Fable major.
     "claude-fable-5":            {"input": 10.00, "output": 50.00, "cache_read": 1.00,  "cache_write": 12.50, "cache_write_1h": 20.00},
-    # --- Non-Anthropic models (OpenRouter rates, 2026-04-25; no prompt caching) ---
+    # --- Non-Anthropic models (OpenRouter rates, 2026-04-25; no prompt caching
+    #     except kimi-k3, which bills cache reads — see its entry below) ---
     # GLM models — Z.ai / Zhipu AI
     "glm-4.7":                   {"input":  0.38, "output":  1.74, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "glm-5":                     {"input":  0.60, "output":  2.08, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -150,6 +151,12 @@ _PRICING: dict[str, dict[str, float]] = {
     "moonshotai/kimi-k2.6":      {"input": 0.7448, "output":  4.655, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     # Moonshot Kimi K2.7 Code (OpenRouter, 2026-06)
     "moonshotai/kimi-k2.7-code": {"input":  0.75, "output":   3.50, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # Moonshot Kimi K3 (OpenRouter, 2026-07) — first non-Anthropic entry with a
+    # NON-ZERO cache_read: K3 transcripts populate cache_read_input_tokens and
+    # OpenRouter publishes a $0.30/M cache-read rate. cache_write stays 0 —
+    # transcripts show cache_creation always 0 and OpenRouter bills no write
+    # premium — so the cache_write columns remain unused for this model.
+    "moonshotai/kimi-k3":        {"input":  3.00, "output":  15.00, "cache_read": 0.30, "cache_write": 0.00, "cache_write_1h": 0.00},
     # Qwen 3.6 Plus
     "qwen/qwen3.6-plus":         {"input": 0.325,  "output":   1.95, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     # Qwen 3.7 Plus (OpenRouter, 2026-06)
@@ -263,6 +270,12 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # Moonshot Kimi K2.7 (Code) — distinct version string from K2.6; matches
     # the `-code` suffix variant the consult skills use (kimi-k2.7-code).
     (re.compile(r"kimi[-_/.]k2\.7(?!\d)",            re.I), _PRICING["moonshotai/kimi-k2.7-code"]),
+    # Moonshot Kimi K3 (integer version; (?!\d) blocks a `k30`+ glue-on, same
+    # policy as minimax-m3). NB: a future dotted minor (e.g. kimi-k3.5) WOULD
+    # match this entry — `.` is not a digit — and must get its own preceding
+    # (?!\d)-guarded pattern when it ships, per the reactive per-model policy
+    # documented for glm-5.1/glm-5.2 and in _pricing_for's F5 v1.80.1 note.
+    (re.compile(r"kimi[-_/.]k3(?!\d)",               re.I), _PRICING["moonshotai/kimi-k3"]),
     # Qwen 3.6 Plus
     (re.compile(r"qwen3\.6(?!\d).*plus\b",           re.I), _PRICING["qwen/qwen3.6-plus"]),
     # Qwen 3.7 Plus

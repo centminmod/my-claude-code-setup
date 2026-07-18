@@ -3,6 +3,19 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.85.0 — 2026-07-18
+
+### Feature: Moonshot Kimi K3 pricing (minor)
+
+Adds `moonshotai/kimi-k3` to `_PRICING` at OpenRouter rates ($3.00/M input,
+$15.00/M output, **$0.30/M cache-read** — the first non-Anthropic entry with a
+non-zero cache column, since K3 transcripts populate
+`cache_read_input_tokens`) plus a `kimi[-_/.]k3(?!\d)` pattern in
+`_PRICING_PATTERNS`. K3 turns no longer trip the unknown-model fallback
+warning. No audit-extract table change (non-Anthropic models remain
+intentionally absent; comment updated). Docs: pricing.md Kimi table + the
+stale 'caching is Claude-specific' note corrected.
+
 ## v1.84.1 — 2026-07-02
 
 ### Fix: HTML exports broken by `<!-- … <script` in transcript text (patch)

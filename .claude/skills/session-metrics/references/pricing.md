@@ -143,7 +143,11 @@ and for prefix-matching fallback when a model ID isn't explicitly listed.
 ## Non-Anthropic models
 
 These entries use OpenRouter as the pricing source of truth. Cache columns are
-all 0 (prompt caching is Claude-specific and not charged for by OpenRouter).
+0 for most entries, but caching is NOT Claude-specific: `moonshotai/kimi-k3`
+transcripts populate `cache_read_input_tokens` and OpenRouter bills K3 cache
+reads at $0.30/M, so that entry carries a non-zero `cache_read` (cache-write
+columns stay 0 — K3 transcripts show `cache_creation` always 0 and OpenRouter
+charges no write premium).
 The `gemma4` entry is a prefix fallback that covers Ollama local variants
 (`gemma4-26b-32k`, `gemma4-26b-48k`, `gemma4:e4b`, etc.) at the Gemma 4 26B A4B
 OpenRouter rate — a reasonable estimate for mixed-environment JSONL files.
@@ -221,6 +225,14 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 |------------------------------|--------|--------|---------------|
 | `moonshotai/kimi-k2.6`       | 0.7448 |  4.655 | `kimi[-_/.]k2\.6(?!\d)` |
 | `moonshotai/kimi-k2.7-code`  |  0.75  |  3.50  | `kimi[-_/.]k2\.7(?!\d)` |
+| `moonshotai/kimi-k3`         |  3.00  | 15.00  | `kimi[-_/.]k3(?!\d)` |
+
+> **K3 cache reads**: unlike every other non-Anthropic entry, `kimi-k3` has
+> `cache_read` = **0.30** $/M (live transcripts carry non-zero
+> `cache_read_input_tokens`; OpenRouter publishes the rate — snapshot
+> 2026-07-18 for this row). Cache-write columns remain 0. A future dotted
+> minor (`kimi-k3.5`) would match the integer-version `k3` regex and needs its
+> own preceding guard when it ships (same reactive policy as glm-5.1/5.2).
 
 ### MiniMax
 
