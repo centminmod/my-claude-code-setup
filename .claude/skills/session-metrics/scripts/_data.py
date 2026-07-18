@@ -122,10 +122,11 @@ def _pricing_for(model: str) -> dict[str, float]:
     for prefix, rates in _sm()._PRICING.items():
         if model.startswith(prefix):
             return rates
-    # Family fallback (v1.41.2): catches future Anthropic variants whose
+    # Family fallback (v1.41.2): catches future variants of known families
+    # (Anthropic majors/minors; un-tiered gpt-5.6 forms since v1.86.0) whose
     # exact / prefix entries don't exist yet. Returns a defensible family
-    # rate (NEW-tier Opus / Haiku tier) AND flags the model so the
-    # at-exit advisory tells the user to add an explicit entry.
+    # rate AND flags the model so the at-exit advisory tells the user to
+    # add an explicit entry.
     for pattern, rates in _sm()._PRICING_FAMILY_FALLBACKS:
         if pattern.search(model):
             _sm()._UNKNOWN_MODELS_SEEN.add(model)

@@ -3,6 +3,24 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.86.0 — 2026-07-18
+
+### Feature: OpenAI GPT-5.6 family pricing (minor)
+
+Adds the GPT-5.6 capability tiers to `_PRICING` at OpenRouter rates —
+`openai/gpt-5.6-sol` ($5.00/$30.00), `openai/gpt-5.6-terra` ($2.50/$15.00),
+`openai/gpt-5.6-luna` ($1.00/$6.00) — the **first GPT entries with billed
+prompt caching**: cache-read 0.1× input and cache-write 1.25× input per
+OpenRouter (one published write rate, so both 5m/1h write columns carry it).
+Tier regexes (`gpt-5\.6[-_/.]sol\b` etc.) resolve the OpenRouter IDs, their
+identically-priced `-pro` siblings, and the bare official Codex CLI slugs
+(`gpt-5.6-sol` / `-terra` / `-luna`). Future-proofing: a `gpt-5\.6(?!\d)`
+family fallback prices any un-tiered variant (bare `gpt-5.6`, a future
+`gpt-5.6-codex` / new tier name) at the Terra tier **with** the unknown-model
+warning — the first non-Anthropic entry in `_PRICING_FAMILY_FALLBACKS`.
+No audit-extract table change (non-Anthropic models remain intentionally
+absent). Docs: pricing.md OpenAI table + GPT-5.6 note.
+
 ## v1.85.0 — 2026-07-18
 
 ### Feature: Moonshot Kimi K3 pricing (minor)

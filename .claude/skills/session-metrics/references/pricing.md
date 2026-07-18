@@ -147,7 +147,11 @@ These entries use OpenRouter as the pricing source of truth. Cache columns are
 transcripts populate `cache_read_input_tokens` and OpenRouter bills K3 cache
 reads at $0.30/M, so that entry carries a non-zero `cache_read` (cache-write
 columns stay 0 — K3 transcripts show `cache_creation` always 0 and OpenRouter
-charges no write premium).
+charges no write premium). The GPT-5.6 family goes further: OpenRouter bills
+both cache reads (0.1× input) and cache writes (1.25× input) for all six
+GPT-5.6 IDs, so those entries carry non-zero `cache_read` AND `cache_write`
+columns (one published write rate — no 5m/1h split — so both write columns
+hold the same value).
 The `gemma4` entry is a prefix fallback that covers Ollama local variants
 (`gemma4-26b-32k`, `gemma4-26b-48k`, `gemma4:e4b`, etc.) at the Gemma 4 26B A4B
 OpenRouter rate — a reasonable estimate for mixed-environment JSONL files.
@@ -204,6 +208,22 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 |------------------------------|--------|---------|----------------------|
 | `openai/gpt-5.5-pro`         | 30.00  |  180.00 | `gpt-5\.5(?!\d).*pro\b` |
 | `openai/gpt-5.5`             |  5.00  |   30.00 | `gpt-5\.5(?!\d)`     |
+| `openai/gpt-5.6-sol`         |  5.00  |   30.00 | `gpt-5\.6[-_/.]sol\b`   |
+| `openai/gpt-5.6-terra`       |  2.50  |   15.00 | `gpt-5\.6[-_/.]terra\b` |
+| `openai/gpt-5.6-luna`        |  1.00  |    6.00 | `gpt-5\.6[-_/.]luna\b`  |
+
+> **GPT-5.6 family (snapshot 2026-07-18)**: three capability tiers — Sol,
+> Terra, Luna. The official Codex CLI slugs are the bare tier names
+> (`gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna`), which the tier regexes
+> resolve identically to the `openai/`-prefixed OpenRouter IDs. OpenRouter's
+> `-pro` siblings (`gpt-5.6-sol-pro` etc.) are priced identically to their
+> base tier and intentionally share its regex; if OpenAI ever re-prices a pro
+> variant it needs its own preceding pattern. All six IDs bill cache reads at
+> 0.1× input and cache writes at 1.25× input — the first GPT entries with
+> non-zero cache columns. An un-tiered `gpt-5.6` string (bare, or a future
+> variant like `gpt-5.6-codex`) prices at the Terra tier via the family
+> fallback **with** an unknown-model warning; `gpt-5.66`+ stays on default
+> Sonnet rates per the standard digit-boundary policy.
 
 ### DeepSeek V4
 

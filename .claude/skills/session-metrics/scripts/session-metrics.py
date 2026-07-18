@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.85.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.86.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -124,7 +124,8 @@ _PRICING: dict[str, dict[str, float]] = {
     # 1h-write 2x = $20. Review if Anthropic re-tiers at a future Fable major.
     "claude-fable-5":            {"input": 10.00, "output": 50.00, "cache_read": 1.00,  "cache_write": 12.50, "cache_write_1h": 20.00},
     # --- Non-Anthropic models (OpenRouter rates, 2026-04-25; no prompt caching
-    #     except kimi-k3, which bills cache reads — see its entry below) ---
+    #     except kimi-k3 (billed cache reads) and the gpt-5.6 family (billed
+    #     cache reads AND writes) — see their entries below) ---
     # GLM models — Z.ai / Zhipu AI
     "glm-4.7":                   {"input":  0.38, "output":  1.74, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "glm-5":                     {"input":  0.60, "output":  2.08, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -141,6 +142,18 @@ _PRICING: dict[str, dict[str, float]] = {
     # OpenAI GPT-5.5 family (via OpenRouter, 2026-04-25) — Pro before base
     "openai/gpt-5.5-pro":        {"input": 30.00, "output": 180.00, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "openai/gpt-5.5":            {"input":  5.00, "output":  30.00, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # OpenAI GPT-5.6 family (OpenRouter + official Codex CLI slugs, 2026-07) —
+    # three capability tiers (Sol > Terra > Luna). Each tier has an OpenRouter
+    # `-pro` sibling at IDENTICAL rates, deliberately covered by the same tier
+    # regex below; if OpenAI ever re-prices a pro variant it needs its own
+    # preceding pattern (reactive per-model policy, as glm-5.1/5.2). First GPT
+    # entries with billed prompt caching: cache_read = 0.1x input and
+    # cache_write = 1.25x input per OpenRouter. OpenRouter publishes ONE write
+    # rate (no 5m/1h split), so both cache_write columns carry it — whichever
+    # bucket a transcript reports is billed at the published rate.
+    "openai/gpt-5.6-sol":        {"input":  5.00, "output":  30.00, "cache_read": 0.50, "cache_write": 6.25,  "cache_write_1h": 6.25},
+    "openai/gpt-5.6-terra":      {"input":  2.50, "output":  15.00, "cache_read": 0.25, "cache_write": 3.125, "cache_write_1h": 3.125},
+    "openai/gpt-5.6-luna":       {"input":  1.00, "output":   6.00, "cache_read": 0.10, "cache_write": 1.25,  "cache_write_1h": 1.25},
     # DeepSeek V4
     "deepseek/deepseek-v4-pro":  {"input":  1.74, "output":   3.48, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "deepseek/deepseek-v4-flash":{"input":  0.14, "output":   0.28, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -259,6 +272,17 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # OpenAI GPT-5.5 — Pro before base
     (re.compile(r"gpt-5\.5(?!\d).*pro\b",            re.I), _PRICING["openai/gpt-5.5-pro"]),
     (re.compile(r"gpt-5\.5(?!\d)",                   re.I), _PRICING["openai/gpt-5.5"]),
+    # OpenAI GPT-5.6 — the official Codex CLI slugs are the bare tier names
+    # (gpt-5.6-sol / -terra / -luna); OpenRouter prefixes `openai/` and adds
+    # `-pro` siblings at identical rates, so each tier regex matches both base
+    # and pro forms. The tier token carries \b (blocks a `solstice`-style
+    # glue-on); the mandatory separator after `5.6` doubles as the digit guard
+    # (`gpt-5.66-sol` has no separator after the literal `5.6`, so it cannot
+    # match). An un-tiered `gpt-5.6*` string falls through to the Terra family
+    # fallback in _PRICING_FAMILY_FALLBACKS below (priced + warned).
+    (re.compile(r"gpt-5\.6[-_/.]sol\b",              re.I), _PRICING["openai/gpt-5.6-sol"]),
+    (re.compile(r"gpt-5\.6[-_/.]terra\b",            re.I), _PRICING["openai/gpt-5.6-terra"]),
+    (re.compile(r"gpt-5\.6[-_/.]luna\b",             re.I), _PRICING["openai/gpt-5.6-luna"]),
     # DeepSeek V4 (separator between provider prefix and v4 may vary)
     (re.compile(r"deepseek[-_/.]v4[-_/.].*pro\b",    re.I), _PRICING["deepseek/deepseek-v4-pro"]),
     (re.compile(r"deepseek[-_/.]v4[-_/.].*flash\b",  re.I), _PRICING["deepseek/deepseek-v4-flash"]),
@@ -376,6 +400,15 @@ _PRICING_FAMILY_FALLBACKS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # fallback; without it a future `claude-fable-6` would default to Sonnet $3
     # (a ~70% under-count on a $10 model). Holds the Fable 5 tier as the bet.
     (re.compile(r"^claude-fable-(?:[6-9]|\d{2,})(?:-|\[|$)", re.I), _PRICING["claude-fable-5"]),
+    # GPT-5.6 with an unrecognised or missing tier token (bare `gpt-5.6`, a
+    # future `gpt-5.6-codex` / new tier name): price at Terra — OpenAI's
+    # documented "balanced default" tier — and warn, rather than silently
+    # landing on Sonnet _DEFAULT_PRICING. First non-Anthropic entry in this
+    # list; the mechanism is family-agnostic. `(?!\d)` keeps `gpt-5.66`+ out
+    # (those fall to _DEFAULT_PRICING + warn, matching the gpt-5.55 boundary
+    # policy). Unanchored on purpose: provider-prefixed forms
+    # (`openai/gpt-5.6`) must also land here.
+    (re.compile(r"gpt-5\.6(?!\d)",                   re.I), _PRICING["openai/gpt-5.6-terra"]),
 ]
 
 # Module-level advisory state — populated during parsing, printed via atexit.
