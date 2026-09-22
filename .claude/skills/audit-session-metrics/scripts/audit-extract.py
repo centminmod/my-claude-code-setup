@@ -88,22 +88,21 @@ _INPUT_RATE_PER_M_BY_MODEL: tuple[tuple[str, float], ...] = (
     ("claude-3-5-sonnet", 3.00),
     ("claude-sonnet-4-9", 3.00),
     ("claude-sonnet-4-8", 3.00),
+    # Sonnet 5 is $2/M (v1.89.1) — below the bare `claude-sonnet` $3 needle, so
+    # it needs its own major-only row (allow-listed in the drift guard's
+    # ALLOWED_MAJOR_ONLY); `(?!\d)` keeps it off a hypothetical `claude-sonnet-50`.
+    ("claude-sonnet-5", 2.00),
     ("claude-sonnet", 3.00),
     ("claude-haiku", 1.00),
     ("claude-opus", 5.00),
-    # Bare-major future keys (claude-opus-5 / claude-sonnet-5 / claude-haiku-5)
-    # are intentionally NOT listed: the bare family needles above already resolve
-    # them to the correct tier, and a major-only needle here would trip the
+    # Bare-major future keys claude-opus-5 / claude-haiku-5 are intentionally NOT
+    # listed: the bare family needles above already resolve them to the correct
+    # tier, and an un-allow-listed major-only needle here would trip the
     # `test_audit_extract_no_undocumented_loose_prefixes` drift guard.
     #
-    # DATE-EFFECTIVE PRICING NOT MODELLED HERE (v1.84.0): the main script prices
-    # claude-sonnet-5 at its introductory $2/M through 2026-08-31 and $3/M from
-    # 2026-09-01 (see session-metrics.py:_PRICING_SCHEDULES / _pricing_for_at).
-    # This standalone table is time-blind and always uses the standard $3/M, so
-    # cache-break / idle-gap ESTIMATES for intro-window Sonnet 5 turns can run up
-    # to ~50% high. This is the same "approximate by design" under-direction the
-    # Opus 4.0 asymmetry note above already accepts; the main report's per-turn
-    # cost figures remain exact.
+    # This table is time-blind: session-metrics.py:_PRICING_SCHEDULES windows
+    # are not modelled. They currently cover only non-Anthropic GPT-5.6 models,
+    # which fall to the $3 default here anyway (see the note above the table).
 )
 _DEFAULT_INPUT_RATE_PER_M = 3.00
 

@@ -3,6 +3,48 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.89.1 — 2026-09-23
+
+### Pricing corrections: Sonnet 5 $2/$10 is standard, GPT-5.6 repricing, Opus 5 fast mode (patch)
+
+Three rates had drifted from the vendors' published pricing (re-verified
+2026-09-23; every Anthropic row now matches the rate card, so
+`_PRICING_SNAPSHOT_DATE` moves to 2026-09-23).
+
+- **Claude Sonnet 5 → $2/$10 standard.** Anthropic made the launch
+  "introductory" price permanent and cancelled the scheduled 2026-09-01 rise to
+  $3/$15. v1.84.0–v1.89.0 billed Sonnet 5 turns dated 2026-09-01 or later at
+  $3/$15, **a 50% over-count**. The flat `claude-sonnet-5` entry is now
+  $2 / $10 / $0.20 read / $2.50 5m-write / $4 1h-write, and its date window
+  is removed. audit-extract gains a `claude-sonnet-5` row ($2), allow-listed in
+  the dev drift guard's `ALLOWED_MAJOR_ONLY`.
+- **OpenAI GPT-5.6 repriced (date-effective).** Current flat rates: Terra $2/$12
+  (was $2.50/$15), Luna $0.20/$1.20 (was $1/$6), Sol $5/$30 unchanged. Cache
+  read is 0.1× and cache write 1.25× input on every row. New
+  `_PRICING_SCHEDULES` windows:
+  - Terra and Luna turns dated before **2026-07-30** (the price-cut date) keep
+    the old rates.
+  - Sol's **$4/$20 promo** (read $0.40, write $5) applies from **2026-08-21**
+    through **2026-11-21**. OpenAI says "at least through November 21"; turns
+    after that return to the $5/$30 standard until the window is extended.
+- **Schedules now reach regex-resolved IDs.** `_pricing_for_at` also applies a
+  window to any model ID that resolves to the scheduled key's flat entry.
+  Transcripts carry bare Codex slugs (`gpt-5.6-terra`) and `-pro` siblings,
+  which never string-prefix-match the `openai/gpt-5.6-*` keys, so without this
+  the GPT-5.6 windows would never have fired.
+- **Opus 5 fast mode**: `_FAST_MODE_MULTIPLIERS` gains `claude-opus-5: 2.0`
+  (fast $10/$50). Opus 5 fast turns were previously billed with no premium.
+  `--no-fast-premium` help, `pricing.md` and README updated.
+
+Tests: payload suite 1099 passed / 1 skipped. The Sonnet 5 window tests are
+replaced by date-independence tests. New tests cover GPT-5.6 window boundaries
+on both sides of each date, flat fallback for no-date turns, schedule
+inheritance by bare slugs and `-pro` IDs (with GPT-6 Sol unaffected), dated
+`_cost` / `_no_cache_cost`, Opus 5 fast multiplier resolution, and
+audit-extract Sonnet 5 rates. Ruff reports no new findings. No
+`_SCRIPT_VERSION` bump: cached parses re-cost on load, so existing reports
+reprice on their next run.
+
 ## v1.89.0 — 2026-09-23
 
 ### Recognise Claude Opus 5.5 and the OpenAI GPT-6 family (Astra / Sol / Luna) (minor)

@@ -329,7 +329,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-fast-premium", action="store_true",
                    help="Suppress the fast-mode pricing premium. By default, "
                         "turns with usage.speed=='fast' (Opus 4.6/4.7 = 6x, "
-                        "Opus 4.8 / 5.5 = 2x standard rates) are priced at the fast "
+                        "Opus 4.8 / 5 / 5.5 = 2x standard rates) are priced at the fast "
                         "tier. Pass this to reproduce pre-fast-premium numbers "
                         "for before/after comparison with older exports.")
     p.add_argument("--sort-prompts-by", choices=["total", "self"],

@@ -43,19 +43,19 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.89.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.89.1"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
 # whether to supply `--refresh-pricing` for any unresolved models.
-_PRICING_SNAPSHOT_DATE = "2026-09-02"
+_PRICING_SNAPSHOT_DATE = "2026-09-23"
 
 # ---------------------------------------------------------------------------
 # Pricing table  (USD per million tokens)
 # See references/pricing.md for notes and source.
 # ---------------------------------------------------------------------------
 # Per-million-token rates (USD). Source: https://platform.claude.com/docs/en/about-claude/pricing
-# Snapshot: 2026-09-02. Two cache-write tiers: `cache_write` = 5-minute TTL
+# Snapshot: 2026-09-23. Two cache-write tiers: `cache_write` = 5-minute TTL
 # (1.25x base input), `cache_write_1h` = 1-hour TTL (2x base input). The
 # per-entry split is read from `usage.cache_creation.ephemeral_{5m,1h}_input_tokens`
 # when present; legacy transcripts without the nested object fall back to the
@@ -98,7 +98,9 @@ _PRICING: dict[str, dict[str, float]] = {
     # `claude-sonnet-5` bare-major key (pre-provisioned, v1.44.0): Sonnet has
     # held one rate tier across all minors, so a bare major catching every 5.x
     # variant is safe (same reasoning as the bare `claude-sonnet-4` below).
-    "claude-sonnet-5":           {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
+    # Sonnet 5 standard is $2/$10 (v1.89.1): the launch "introductory" price
+    # became permanent and the planned 2026-09-01 rise to $3/$15 was cancelled.
+    "claude-sonnet-5":           {"input":  2.00, "output": 10.00, "cache_read": 0.20,  "cache_write":  2.50, "cache_write_1h":  4.00},
     "claude-sonnet-4-9":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-sonnet-4-8":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-sonnet-4-7":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
@@ -164,9 +166,13 @@ _PRICING: dict[str, dict[str, float]] = {
     # cache_write = 1.25x input per OpenRouter. OpenRouter publishes ONE write
     # rate (no 5m/1h split), so both cache_write columns carry it — whichever
     # bucket a transcript reports is billed at the published rate.
+    # v1.89.1: re-verified against OpenAI's own pricing page. Terra/Luna hold
+    # the post-2026-07-30 cut rates; Sol holds its standard rate. Earlier Terra/
+    # Luna turns and the Sol $4/$20 promo are date-effective — see
+    # _PRICING_SCHEDULES below.
     "openai/gpt-5.6-sol":        {"input":  5.00, "output":  30.00, "cache_read": 0.50, "cache_write": 6.25,  "cache_write_1h": 6.25},
-    "openai/gpt-5.6-terra":      {"input":  2.50, "output":  15.00, "cache_read": 0.25, "cache_write": 3.125, "cache_write_1h": 3.125},
-    "openai/gpt-5.6-luna":       {"input":  1.00, "output":   6.00, "cache_read": 0.10, "cache_write": 1.25,  "cache_write_1h": 1.25},
+    "openai/gpt-5.6-terra":      {"input":  2.00, "output":  12.00, "cache_read": 0.20, "cache_write": 2.50,  "cache_write_1h": 2.50},
+    "openai/gpt-5.6-luna":       {"input":  0.20, "output":   1.20, "cache_read": 0.02, "cache_write": 0.25,  "cache_write_1h": 0.25},
     # OpenAI GPT-6 family (v1.89.0; OpenAI API pricing page, 2026-09-23) —
     # three tiers: Astra (flagship) > Sol > Luna. Cached input 0.1x and cache
     # writes 1.25x input; one published write rate, so both write columns
@@ -227,28 +233,45 @@ _SYNTHETIC_MODEL = "<synthetic>"
 # A turn whose UTC date (see `_effective_date`) falls in a window is priced at
 # that window's `rates`; outside every window — and whenever the turn timestamp
 # is missing / unparseable / timezone-naive — the flat `_PRICING` entry applies
-# (the conservative default: an unknown-date turn is never under-priced against
-# a discount). The key is matched exactly OR as a prefix, mirroring the flat
-# table, so date-suffixed and `[1m]` variants of a scheduled model inherit the
-# same window.
+# (a promo window's flat entry is the standard rate, so an unknown-date turn is
+# never under-priced against a discount; after a permanent price change the
+# flat entry is the CURRENT list price). A schedule applies to the key itself,
+# its prefix variants (date-suffixed / `[1m]`), AND any model id that resolves
+# to that key's flat `_PRICING` entry — so bare Codex slugs (`gpt-5.6-terra`)
+# and `openai/…-pro` siblings reached via `_PRICING_PATTERNS` inherit it too.
 #
-# claude-sonnet-5 INTRODUCTORY pricing: $2/$10 input/output (with cache tiers
-# scaled off the $2 input via the standard 0.1x / 1.25x / 2x ratios) through
-# 2026-08-31, reverting to the standard $3/$15 flat entry above on 2026-09-01.
-# Anthropic announced "introductory pricing … through August 31, 2026" without
-# naming a timezone, so we treat 2026-09-01 (UTC) as the first standard-rate
-# day. The residual boundary imprecision is at most ~1 calendar day around the
-# real cutover — negligible next to the 50% overcount that pricing every
-# intro-window Sonnet 5 turn at the standard rate would introduce.
-# Source: https://www.anthropic.com/news/claude-sonnet-5
+# History: claude-sonnet-5 carried an introductory $2/$10 window here
+# (v1.84.0) ahead of a scheduled 2026-09-01 rise to $3/$15. Anthropic cancelled
+# the rise — $2/$10 is now the standard price — so the flat entry moved to $2
+# and the window was removed (v1.89.1).
+#
+# GPT-5.6 (v1.89.1; OpenAI pricing page + announcements):
+#   * Terra / Luna price cut effective 2026-07-30 (Terra $2.50/$15 → $2/$12,
+#     Luna $1/$6 → $0.20/$1.20). Flat entries hold the new rates; the windows
+#     below reprice earlier turns at the old ones.
+#   * Sol promo $4/$20 (cache read $0.40, write $5) from 2026-08-21, "available
+#     at least through November 21, 2026" → window ends 2026-11-22 (exclusive).
+#     Flat entry stays the standard $5/$30. If OpenAI extends the promo, move
+#     `until` out.
+_GPT56_WINDOW_OLD = {"from": None, "until": _date(2026, 7, 30)}
 _PRICING_SCHEDULES: dict[str, list[dict]] = {
-    "claude-sonnet-5": [
+    "openai/gpt-5.6-sol": [
         {
-            "from":  None,                 # open start (model did not exist earlier)
-            "until": _date(2026, 9, 1),    # first standard-rate day, UTC (exclusive)
-            "rates": {"input":  2.00, "output": 10.00, "cache_read": 0.20,
-                      "cache_write":  2.50, "cache_write_1h":  4.00},
+            "from":  _date(2026, 8, 21),
+            "until": _date(2026, 11, 22),
+            "rates": {"input":  4.00, "output": 20.00, "cache_read": 0.40,
+                      "cache_write":  5.00, "cache_write_1h":  5.00},
         },
+    ],
+    "openai/gpt-5.6-terra": [
+        {**_GPT56_WINDOW_OLD,
+         "rates": {"input":  2.50, "output": 15.00, "cache_read": 0.25,
+                   "cache_write":  3.125, "cache_write_1h":  3.125}},
+    ],
+    "openai/gpt-5.6-luna": [
+        {**_GPT56_WINDOW_OLD,
+         "rates": {"input":  1.00, "output":  6.00, "cache_read": 0.10,
+                   "cache_write":  1.25, "cache_write_1h":  1.25}},
     ],
 }
 
@@ -261,7 +284,8 @@ _PRICING_SCHEDULES: dict[str, list[dict]] = {
 # suffixes resolve via the prefix sweep in `_fast_multiplier_for`. Models absent
 # here → 1.0 (no premium is ever invented for an unmapped model).
 _FAST_MODE_MULTIPLIERS: dict[str, float] = {
-    "claude-opus-5-5": 2.0,   # fast $8/$40   vs standard $4/$20
+    "claude-opus-5-5": 2.0,   # fast $8/$40   vs standard $4/$20 (before opus-5: prefix)
+    "claude-opus-5":   2.0,   # fast $10/$50  vs standard $5/$25
     "claude-opus-4-8": 2.0,   # fast $10/$50  vs standard $5/$25
     "claude-opus-4-7": 6.0,   # fast $30/$150 vs standard $5/$25
     "claude-opus-4-6": 6.0,   # fast $30/$150 vs standard $5/$25

@@ -162,7 +162,9 @@ def _pricing_for_at(model: str, pricing_date=None) -> dict[str, float]:
     if pricing_date is None:
         return base
     for key, windows in _sm()._PRICING_SCHEDULES.items():
-        if model == key or model.startswith(key):
+        # Identity match: ids reaching the key's flat entry through
+        # _PRICING_PATTERNS (bare Codex slugs, `-pro` siblings) own its schedule.
+        if model == key or model.startswith(key) or base is _sm()._PRICING.get(key):
             for w in windows:
                 lo = w.get("from")
                 hi = w.get("until")

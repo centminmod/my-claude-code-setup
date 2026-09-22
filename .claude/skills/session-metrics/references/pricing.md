@@ -1,6 +1,7 @@
 # Claude Model Pricing Reference
 
-Prices in **USD per million tokens**. Snapshot: **2026-04-18**.
+Prices in **USD per million tokens**. Snapshot: **2026-09-23** (every Anthropic
+row re-verified against the rate card).
 Source: https://platform.claude.com/docs/en/about-claude/pricing
 
 Anthropic bills **two cache-write tiers**:
@@ -33,8 +34,7 @@ of TTL.
 | `claude-haiku-4-5`          | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
 | `claude-fable-5-1`          | fable-5-1  | 10.00 |  50.00 |       0.25 |          12.50 |          20.00 |
 | `claude-fable-5`            | fable-5    | 10.00 |  50.00 |       1.00 |          12.50 |          20.00 |
-| `claude-sonnet-5` (intro †) | sonnet-5   |  2.00 |  10.00 |       0.20 |           2.50 |           4.00 |
-| `claude-sonnet-5` (std †)   | sonnet-5   |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
+| `claude-sonnet-5` †         | sonnet-5   |  2.00 |  10.00 |       0.20 |           2.50 |           4.00 |
 
 > **Important — pricing tier change at Opus 4.5**: Opus 4.5 / 4.6 / 4.7 / 4.8
 > moved to a new cheaper tier ($5 input / $25 output). Opus 4 and 4.1 retain the
@@ -74,22 +74,22 @@ of TTL.
 > date-suffixed forms no longer prefix-match the $5/$25 Opus 5 rate. Fast mode
 > is $8 / $40 (2× standard), applied via `_FAST_MODE_MULTIPLIERS`.
 >
-> **† Sonnet 5 introductory pricing (date-effective, v1.84.0)**: `claude-sonnet-5`
-> shipped at an **introductory** $2/$10 (input/output) rate **through 2026-08-31**,
-> reverting to the **standard** $3/$15 on **2026-09-01**. Because the tool reprices
-> historical transcripts, the correct rate depends on **each turn's own UTC date**,
-> not on when the report is run — so this is the first entry priced through the
-> date-effective layer (`_PRICING_SCHEDULES` + `_pricing_for_at` in
-> `session-metrics.py`), not the flat `_PRICING` table alone. A turn whose UTC date
-> is before 2026-09-01 is billed at the intro row above; on/after, the std row. The
-> flat `_PRICING` entry stays at the standard $3/$15, which is also the fallback for
-> any turn with a missing / unparseable / timezone-naive timestamp (conservative —
-> never under-priced against the discount). Anthropic stated "through August 31,
-> 2026" with no timezone; 2026-09-01 UTC is treated as the first standard-rate day
-> (≤ ~1 day boundary imprecision). Cache tiers scale off the intro $2 input via the
-> usual 0.1× / 1.25× / 2× ratios. The sibling `audit-extract.py` estimate table is
-> time-blind and always uses $3 (documented there; audit impact estimates are
-> approximate by design).
+> **† Sonnet 5 standard is $2/$10 (v1.89.1)**: `claude-sonnet-5` launched at an
+> "introductory" $2/$10 announced to run through 2026-08-31, with a scheduled rise
+> to $3/$15 on 2026-09-01. Anthropic cancelled the rise: $2/$10 is now the
+> standard price. v1.84.0–v1.89.0 priced Sonnet 5 turns dated 2026-09-01 or later
+> at $3/$15 (a 50% over-count); v1.89.1 moves the flat entry to $2/$10 and drops
+> the date window, so every Sonnet 5 turn prices at $2/$10 regardless of date.
+> `audit-extract.py` carries a matching `claude-sonnet-5` row ($2), allow-listed
+> in the drift guard's `ALLOWED_MAJOR_ONLY`.
+>
+> **Date-effective pricing** (`_PRICING_SCHEDULES` + `_pricing_for_at`) prices
+> each turn at the rate in effect on its own UTC date, so reprocessing an old
+> transcript stays correct. Current windows cover GPT-5.6 only (see the OpenAI
+> section). A window applies to its key, the key's `[1m]` / date-suffixed forms,
+> and any id that resolves to the key's flat entry (e.g. the bare `gpt-5.6-terra`
+> slug). Turns with a missing / unparseable / timezone-naive timestamp use the
+> flat entry.
 
 ## Effort support by model
 
@@ -229,8 +229,23 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 | `openai/gpt-5.5-pro`         | 30.00  |  180.00 | `gpt-5\.5(?!\d).*pro\b` |
 | `openai/gpt-5.5`             |  5.00  |   30.00 | `gpt-5\.5(?!\d)`     |
 | `openai/gpt-5.6-sol`         |  5.00  |   30.00 | `gpt-5\.6[-_/.]sol\b`   |
-| `openai/gpt-5.6-terra`       |  2.50  |   15.00 | `gpt-5\.6[-_/.]terra\b` |
-| `openai/gpt-5.6-luna`        |  1.00  |    6.00 | `gpt-5\.6[-_/.]luna\b`  |
+| `openai/gpt-5.6-terra`       |  2.00  |   12.00 | `gpt-5\.6[-_/.]terra\b` |
+| `openai/gpt-5.6-luna`        |  0.20  |    1.20 | `gpt-5\.6[-_/.]luna\b`  |
+
+> **GPT-5.6 date-effective rates (v1.89.1, verified against OpenAI's pricing
+> page 2026-09-23)**. Flat rows above are the current standard rates. Windows:
+>
+> | Model | Window (UTC, half-open) | Input | Output | Cache read | Cache write |
+> |---|---|---|---|---|---|
+> | Terra | before 2026-07-30 (pre-cut) | 2.50 | 15.00 | 0.25 | 3.125 |
+> | Luna  | before 2026-07-30 (pre-cut) | 1.00 |  6.00 | 0.10 | 1.25 |
+> | Sol   | 2026-08-21 → 2026-11-22 (promo) | 4.00 | 20.00 | 0.40 | 5.00 |
+>
+> OpenAI cut Terra and Luna on 2026-07-30. The Sol promo started 2026-08-21 and
+> is "available at least through November 21, 2026"; after that Sol turns
+> revert to the $5/$30 standard. If OpenAI extends the promo, extend the
+> window's `until`. Turns with no usable timestamp price at the flat row (Sol
+> standard, never the promo).
 
 > **GPT-5.6 family (snapshot 2026-07-18)**: three capability tiers — Sol,
 > Terra, Luna. The official Codex CLI slugs are the bare tier names
@@ -309,9 +324,10 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
   `message.usage.cache_creation.ephemeral_{5m,1h}_input_tokens` and charges
   each at the correct rate. Turns without the nested object (legacy
   transcripts) fall back to the 5-minute rate, preserving their prior cost.
-- **Fast mode** (research preview, **Opus 4.6 / 4.7 / 4.8 only**): a premium
-  rate tier — Opus 4.6/4.7 bill at **6× standard** ($30 input / $150 output),
-  Opus 4.8 at **2×** ($10 / $50). Prompt-caching multipliers apply *on top of*
+- **Fast mode** (research preview, **Opus 4.6 / 4.7 / 4.8 / 5 / 5.5 only**): a
+  premium rate tier — Opus 4.6/4.7 bill at **6× standard** ($30 input / $150
+  output), Opus 4.8 and Opus 5 at **2×** ($10 / $50), Opus 5.5 at **2×** ($8 /
+  $40). Prompt-caching multipliers apply *on top of*
   the fast base, so every token category scales by the same factor. **Applied
   since v1.64.0**: `_cost` / `_no_cache_cost` multiply the per-turn *primary*
   token cost by the per-model factor (`_FAST_MODE_MULTIPLIERS`) when
