@@ -3,6 +3,43 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.90.1 — 2026-09-23
+
+### Re-snapshot GLM + DeepSeek V4 pricing; recognise GLM-5.3 and GLM-5.3-FlashX (patch)
+
+Every existing GLM and base DeepSeek V4 entry was stale against OpenRouter,
+the non-Anthropic source of truth. The rates had moved, and every one of these
+models now bills cache reads, which the repo recorded as $0. All values are
+from OpenRouter's `/api/v1/models`, read 2026-09-23 (input / output / cache
+read per M, no write premium):
+
+| Model | Before | Now |
+|---|---|---|
+| `glm-4.7`          | 0.38 / 1.74 / 0 | 0.40 / 1.75 / 0.08 |
+| `glm-5`            | 0.60 / 2.08 / 0 | 0.60 / 1.92 / 0.12 |
+| `glm-5.1`          | 1.05 / 3.50 / 0 | 0.966 / 3.036 / 0.1794 |
+| `glm-5.2`          | 1.05 / 3.50 / 0 | 0.6496 / 2.0416 / 0.12064 |
+| `z-ai/glm-5-turbo` | 1.20 / 4.00 / 0 | 1.20 / 4.00 / 0.24 |
+| `deepseek/deepseek-v4-pro`   | 1.74 / 3.48 / 0 | 0.899058 / 1.798116 / 0.074922 |
+| `deepseek/deepseek-v4-flash` | 0.14 / 0.28 / 0 | 0.049 / 0.098 / 0.0098 |
+
+- **New keys**: `z-ai/glm-5.3` (0.6538 / 2.0548 / 0.12142) and
+  `z-ai/glm-5.3-flashx` (0.37 / 1.25 / 0.075). Both were silently priced as
+  the bare `glm-5` prefix. New patterns `glm-5\.3(?!\d).*flashx\b` and
+  `glm-5\.3(?!\d)` (the latter after the Flash tiers) keep every bare
+  `glm-5.3*` form off that prefix.
+- **Caveats**: OpenRouter's non-round figures are provider-weighted and drift;
+  `v4-pro` moved within an hour of the first read. OpenRouter publishes no
+  effective dates, so historical turns reprice at today's rate.
+- `references/pricing.md`: GLM and DeepSeek tables gain a cache-read column
+  with the new values. Also fixed a v1.90.0 formatting slip that had inserted
+  the GLM-5.3-Flash note mid-table, above the `glm-5-turbo` row.
+
+Tests: payload suite 1116 passed / 1 skipped. Regex-boundary rows are updated
+to the new rates, with new rows for `glm-5.3`, `[1m]`, `flashx` vs `flash`,
+and `glm-5.30`. A new guard asserts every GLM / DeepSeek V4 entry bills cache
+reads and no writes. Ruff clean. No `_SCRIPT_VERSION` bump.
+
 ## v1.90.0 — 2026-09-23
 
 ### Recognise DeepSeek V4 Pro 0813 / V4 Flash 0731 / V4.1 Flash and GLM-5.3-Flash (minor)

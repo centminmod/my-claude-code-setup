@@ -171,12 +171,15 @@ charges no write premium). The GPT-5.6 family goes further: OpenRouter bills
 both cache reads (0.1× input) and cache writes (1.25× input) for all six
 GPT-5.6 IDs, so those entries carry non-zero `cache_read` AND `cache_write`
 columns (one published write rate — no 5m/1h split — so both write columns
-hold the same value).
+hold the same value). Since v1.90.0/v1.90.1 every GLM and DeepSeek V4 entry
+also bills cache reads (no write premium).
 The `gemma4` entry is a prefix fallback that covers Ollama local variants
 (`gemma4-26b-32k`, `gemma4-26b-48k`, `gemma4:e4b`, etc.) at the Gemma 4 26B A4B
 OpenRouter rate — a reasonable estimate for mixed-environment JSONL files.
 
-Source: [OpenRouter pricing](https://openrouter.ai/pricing) — snapshot 2026-04-25.
+Source: [OpenRouter pricing](https://openrouter.ai/pricing) — snapshot 2026-04-25;
+GLM + DeepSeek V4 re-snapshotted 2026-09-23 from `https://openrouter.ai/api/v1/models`
+(per-token `pricing.prompt` / `completion` / `input_cache_read`, × 1e6).
 
 `_pricing_for` uses three tiers in order: **exact match → regex patterns
 (`_PRICING_PATTERNS`) → prefix sweep**. Regex patterns sit before the prefix
@@ -199,19 +202,26 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 
 ### GLM (Z.ai)
 
-| Model ID                     | Input | Output | Regex pattern |
-|------------------------------|-------|--------|---------------|
-| `glm-4.7`                    |  0.38 |   1.74 | `glm-4\.7`    |
-| `glm-5`                      |  0.60 |   2.08 | `glm-5`       |
-| `glm-5.1`                    |  1.05 |   3.50 | `glm-5\.1`    |
-| `glm-5.2`                    |  1.05 |   3.50 | `glm-5\.2`    |
-| `z-ai/glm-5.3-flash`         |  0.15 |   0.50 | `glm-5\.3(?!\d).*flash\b` |
+| Model ID                     | Input  | Output | Cache read | Regex pattern |
+|------------------------------|--------|--------|------------|---------------|
+| `glm-4.7`                    | 0.40   | 1.75   | 0.08       | `glm-4\.7`    |
+| `glm-5`                      | 0.60   | 1.92   | 0.12       | `glm-5`       |
+| `glm-5.1`                    | 0.966  | 3.036  | 0.1794     | `glm-5\.1`    |
+| `glm-5.2`                    | 0.6496 | 2.0416 | 0.12064    | `glm-5\.2`    |
+| `z-ai/glm-5.3-flash`         | 0.15   | 0.50   | 0.05       | `glm-5\.3(?!\d).*flash\b`  |
+| `z-ai/glm-5.3-flashx`        | 0.37   | 1.25   | 0.075      | `glm-5\.3(?!\d).*flashx\b` |
+| `z-ai/glm-5.3`               | 0.6538 | 2.0548 | 0.12142    | `glm-5\.3(?!\d)` (after the flash tiers) |
+| `z-ai/glm-5-turbo`           | 1.20   | 4.00   | 0.24       | `glm-5-turbo` |
 
-> **GLM-5.3-Flash (v1.90.0, OpenRouter 2026-09-23)**: also bills cache reads at
-> $0.05/M (no write premium). Its regex keeps bare `glm-5.3-flash` off the bare
-> `glm-5` prefix ($0.60 input). `flash\b` deliberately excludes the separate
-> `glm-5.3-flashx` SKU.
-| `z-ai/glm-5-turbo`           |  1.20 |   4.00 | `glm-5-turbo` |
+> **GLM re-snapshot (v1.90.1, OpenRouter `/api/v1/models`, 2026-09-23)**: every
+> GLM entry now carries OpenRouter's current rate, including billed cache reads
+> (no write premium). Previous values were the 2026-04-25 snapshot with cache
+> reads recorded as $0. Every bare `glm-5.x` form has a guard that keeps it off
+> the bare `glm-5` prefix. `flash\b` and `flashx\b` separate the two Flash
+> SKUs, and the base `glm-5.3` pattern runs after both. Non-round figures
+> (0.6496, 0.6538 …) are OpenRouter's provider-weighted prices, which drift.
+> Re-snapshot rather than trust them long-term. Historical turns reprice at
+> the current rate, because OpenRouter publishes no effective dates.
 
 ### Google Gemma 4
 
@@ -285,13 +295,19 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 
 ### DeepSeek V4
 
-| Model ID                        | Input | Output | Regex pattern              |
-|---------------------------------|-------|--------|----------------------------|
-| `deepseek/deepseek-v4-pro-0813`   |  0.66 |   1.98 | `deepseek[-_/.]v4[-_/.]pro[-_/.]0813\b`   |
-| `deepseek/deepseek-v4-flash-0731` |  0.04 |   0.64 | `deepseek[-_/.]v4[-_/.]flash[-_/.]0731\b` |
-| `deepseek/deepseek-v4.1-flash`    |  0.15 |   0.60 | `deepseek[-_/.]v4\.1(?!\d).*flash\b`      |
-| `deepseek/deepseek-v4-pro`      |  1.74 |   3.48 | `deepseek[-_/.]v4(?!\.\d)[-_/.].*pro\b`   |
-| `deepseek/deepseek-v4-flash`    |  0.14 |   0.28 | `deepseek[-_/.]v4(?!\.\d)[-_/.].*flash\b` |
+| Model ID                          | Input    | Output   | Cache read | Regex pattern |
+|-----------------------------------|----------|----------|------------|---------------|
+| `deepseek/deepseek-v4-pro-0813`   | 0.66     | 1.98     | 0.022      | `deepseek[-_/.]v4[-_/.]pro[-_/.]0813\b`   |
+| `deepseek/deepseek-v4-flash-0731` | 0.04     | 0.64     | 0.016      | `deepseek[-_/.]v4[-_/.]flash[-_/.]0731\b` |
+| `deepseek/deepseek-v4.1-flash`    | 0.15     | 0.60     | 0.003      | `deepseek[-_/.]v4\.1(?!\d).*flash\b`      |
+| `deepseek/deepseek-v4-pro`        | 0.899058 | 1.798116 | 0.074922   | `deepseek[-_/.]v4(?!\.\d)[-_/.].*pro\b`   |
+| `deepseek/deepseek-v4-flash`      | 0.049    | 0.098    | 0.0098     | `deepseek[-_/.]v4(?!\.\d)[-_/.].*flash\b` |
+
+> **Base V4 re-snapshot (v1.90.1, OpenRouter 2026-09-23)**: `v4-pro` and
+> `v4-flash` were $1.74/$3.48 and $0.14/$0.28 with cache reads at $0
+> (2026-04-25 snapshot). Both now carry OpenRouter's current rates, including
+> billed cache reads. The `v4-pro` figure is provider-weighted and moved within
+> an hour of the first read ($0.9008 → $0.899058), so expect drift.
 
 > **DeepSeek snapshots + V4.1 (v1.90.0, OpenRouter 2026-09-23)**: the dated
 > V4 snapshots and V4.1 Flash have their own rates. All three bill cache reads

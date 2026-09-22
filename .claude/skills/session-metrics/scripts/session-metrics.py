@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.90.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.90.1"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -138,21 +138,25 @@ _PRICING: dict[str, dict[str, float]] = {
     # Claude Code stamps `message.model` as `claude-fable-5-1` (no `[1m]`).
     "claude-fable-5-1":          {"input": 10.00, "output": 50.00, "cache_read": 0.25,  "cache_write": 12.50, "cache_write_1h": 20.00},
     "claude-fable-5":            {"input": 10.00, "output": 50.00, "cache_read": 1.00,  "cache_write": 12.50, "cache_write_1h": 20.00},
-    # --- Non-Anthropic models (OpenRouter rates, 2026-04-25; no prompt caching
-    #     except kimi-k3 (billed cache reads) and the gpt-5.6 family (billed
-    #     cache reads AND writes) — see their entries below) ---
-    # GLM models — Z.ai / Zhipu AI
-    "glm-4.7":                   {"input":  0.38, "output":  1.74, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
-    "glm-5":                     {"input":  0.60, "output":  2.08, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
-    "glm-5.1":                   {"input":  1.05, "output":  3.50, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
-    # GLM-5.2 shares GLM-5.1's rate tier (Z.ai, 2026-06). Own key for export
-    # traceability; a dedicated regex guard below keeps it off the cheaper bare
-    # `glm-5` prefix (same trap documented for glm-5.1).
-    "glm-5.2":                   {"input":  1.05, "output":  3.50, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
-    # GLM-5.3-Flash (v1.90.0; OpenRouter z-ai/glm-5.3-flash, 2026-09-23): billed
-    # cache reads, no write premium. A regex guard keeps bare `glm-5.3-flash`
-    # off the bare `glm-5` prefix, which would bill it 4x on input.
-    "z-ai/glm-5.3-flash":        {"input":  0.15, "output":  0.50, "cache_read": 0.05, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # --- Non-Anthropic models (OpenRouter rates, 2026-04-25 unless noted; cache
+    #     columns 0 unless the entry bills caching: GLM + DeepSeek V4 families
+    #     and kimi-k3 bill cache reads, the GPT-5.6 / GPT-6 families bill reads
+    #     AND writes — see their entries below) ---
+    # GLM models — Z.ai / Zhipu AI. v1.90.1: every GLM entry re-snapshotted from
+    # OpenRouter /api/v1/models (2026-09-23), incl. billed cache reads (no write
+    # premium). OpenRouter's non-round figures are provider-weighted and drift;
+    # re-snapshot rather than trust them long-term.
+    "glm-4.7":                   {"input":  0.40,   "output":  1.75,   "cache_read": 0.08,    "cache_write": 0.00, "cache_write_1h": 0.00},
+    "glm-5":                     {"input":  0.60,   "output":  1.92,   "cache_read": 0.12,    "cache_write": 0.00, "cache_write_1h": 0.00},
+    "glm-5.1":                   {"input":  0.966,  "output":  3.036,  "cache_read": 0.1794,  "cache_write": 0.00, "cache_write_1h": 0.00},
+    # GLM-5.2: own key; a dedicated regex guard below keeps suffixed forms off
+    # the bare `glm-5` prefix (same trap documented for glm-5.1).
+    "glm-5.2":                   {"input":  0.6496, "output":  2.0416, "cache_read": 0.12064, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # GLM-5.3 family (v1.90.0 flash / v1.90.1 base + flashx). Regex guards keep
+    # every bare `glm-5.3*` form off the bare `glm-5` prefix.
+    "z-ai/glm-5.3-flash":        {"input":  0.15,   "output":  0.50,   "cache_read": 0.05,    "cache_write": 0.00, "cache_write_1h": 0.00},
+    "z-ai/glm-5.3-flashx":       {"input":  0.37,   "output":  1.25,   "cache_read": 0.075,   "cache_write": 0.00, "cache_write_1h": 0.00},
+    "z-ai/glm-5.3":              {"input":  0.6538, "output":  2.0548, "cache_read": 0.12142, "cache_write": 0.00, "cache_write_1h": 0.00},
     # Google Gemma 4 — OpenRouter: google/gemma-4-26b-a4b-it @ $0.06/$0.33; prefix covers Ollama variants
     "google/gemma-4-26b-a4b":    {"input":  0.06, "output":  0.33, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "gemma4":                    {"input":  0.06, "output":  0.33, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -194,8 +198,10 @@ _PRICING: dict[str, dict[str, float]] = {
     "deepseek/deepseek-v4-flash-0731": {"input": 0.04, "output": 0.64, "cache_read": 0.016, "cache_write": 0.00, "cache_write_1h": 0.00},
     "deepseek/deepseek-v4.1-flash":    {"input": 0.15, "output": 0.60, "cache_read": 0.003, "cache_write": 0.00, "cache_write_1h": 0.00},
     # DeepSeek V4
-    "deepseek/deepseek-v4-pro":  {"input":  1.74, "output":   3.48, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
-    "deepseek/deepseek-v4-flash":{"input":  0.14, "output":   0.28, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # v1.90.1: re-snapshotted from OpenRouter (2026-09-23), incl. billed cache
+    # reads. The v4-pro figure is provider-weighted and drifted within the hour.
+    "deepseek/deepseek-v4-pro":  {"input": 0.899058, "output": 1.798116, "cache_read": 0.074922, "cache_write": 0.00, "cache_write_1h": 0.00},
+    "deepseek/deepseek-v4-flash":{"input": 0.049,    "output": 0.098,    "cache_read": 0.0098,   "cache_write": 0.00, "cache_write_1h": 0.00},
     # Xiaomi MiMo V2.5 — Pro before base
     "xiaomi/mimo-v2.5-pro":      {"input":  1.00, "output":   3.00, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "xiaomi/mimo-v2.5":          {"input":  0.40, "output":   2.00, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -218,7 +224,7 @@ _PRICING: dict[str, dict[str, float]] = {
     # MiniMax M3 (OpenRouter, 2026-06)
     "minimax/minimax-m3":        {"input":  0.30, "output":   1.20, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     # GLM-5-Turbo (Z.ai) — must precede glm-5 in prefix scan; regex guard also added below
-    "z-ai/glm-5-turbo":          {"input":  1.20, "output":   4.00, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
+    "z-ai/glm-5-turbo":          {"input":  1.20, "output":   4.00, "cache_read": 0.24, "cache_write": 0.00, "cache_write_1h": 0.00},
 }
 _DEFAULT_PRICING = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75, "cache_write_1h": 6.00}
 # Zero-rate tier for non-billable placeholder turns. Dynamic-workflow
@@ -399,6 +405,9 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # GLM-5.3-Flash before the bare glm-5 prefix entry (same trap). `flash\b`
     # deliberately does NOT match `flashx` (a separate, pricier SKU).
     (re.compile(r"glm-5\.3(?!\d).*flash\b",          re.I), _PRICING["z-ai/glm-5.3-flash"]),
+    (re.compile(r"glm-5\.3(?!\d).*flashx\b",         re.I), _PRICING["z-ai/glm-5.3-flashx"]),
+    # Bare GLM-5.3 (and any other suffixed 5.3 form) — after the flash tiers.
+    (re.compile(r"glm-5\.3(?!\d)",                   re.I), _PRICING["z-ai/glm-5.3"]),
     # ----- Opus 4.0 (anchored regex; replaces the prefix-fallback `claude-opus-4`
     # entry that was removed in v1.41.2). Without this anchored form, the bare
     # `claude-opus-4` prefix in `_PRICING` would silently catch any future
