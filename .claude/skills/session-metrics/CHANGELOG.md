@@ -3,6 +3,38 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.90.0 — 2026-09-23
+
+### Recognise DeepSeek V4 Pro 0813 / V4 Flash 0731 / V4.1 Flash and GLM-5.3-Flash (minor)
+
+All four were mispriced silently, with no unknown-model warning. Rates are
+from OpenRouter (the non-Anthropic source of truth), 2026-09-23. Each bills
+cache reads with no write premium:
+
+| Model | Input | Output | Cache read | Previously billed as |
+|---|---|---|---|---|
+| `deepseek/deepseek-v4-pro-0813`   | 0.66 | 1.98 | 0.022 | V4 Pro $1.74/$3.48 |
+| `deepseek/deepseek-v4-flash-0731` | 0.04 | 0.64 | 0.016 | V4 Flash $0.14/$0.28 |
+| `deepseek/deepseek-v4.1-flash`    | 0.15 | 0.60 | 0.003 | V4 Flash $0.14/$0.28 |
+| `z-ai/glm-5.3-flash`              | 0.15 | 0.50 | 0.05  | bare `glm-5` $0.60/$2.08 |
+
+- **`_PRICING` + `_PRICING_PATTERNS`**: explicit keys plus patterns that run
+  before the generic DeepSeek V4 patterns and the bare `glm-5` prefix. Before
+  this, `deepseek-v4.1-flash` matched the V4 flash pattern (`.` is in the
+  separator class). `glm-5.3-flash` prefix-matched `glm-5`, the same trap
+  already guarded for glm-5.1 / 5.2. `flash\b` deliberately excludes the
+  separate `glm-5.3-flashx` SKU.
+- **Boundary tightening**: the generic V4 patterns now carry `(?!\.\d)`, so an
+  un-keyed dotted minor (e.g. `deepseek-v4.1-pro`) is flagged unknown instead
+  of being priced silently as base V4.
+- `references/pricing.md`: new rows and notes. DeepSeek's direct-API
+  peak/off-peak billing and floating aliases are documented as not modelled.
+
+Tests: payload suite 1109 passed / 1 skipped. New tests cover silent
+resolution of all four models across provider-prefixed and bare IDs, dotted
+separator forms, unknown-minor flagging, and negative checks that the new
+patterns don't swallow neighbouring IDs. Ruff clean. No `_SCRIPT_VERSION` bump.
+
 ## v1.89.1 — 2026-09-23
 
 ### Pricing corrections: Sonnet 5 $2/$10 is standard, GPT-5.6 repricing, Opus 5 fast mode (patch)

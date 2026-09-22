@@ -205,6 +205,12 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 | `glm-5`                      |  0.60 |   2.08 | `glm-5`       |
 | `glm-5.1`                    |  1.05 |   3.50 | `glm-5\.1`    |
 | `glm-5.2`                    |  1.05 |   3.50 | `glm-5\.2`    |
+| `z-ai/glm-5.3-flash`         |  0.15 |   0.50 | `glm-5\.3(?!\d).*flash\b` |
+
+> **GLM-5.3-Flash (v1.90.0, OpenRouter 2026-09-23)**: also bills cache reads at
+> $0.05/M (no write premium). Its regex keeps bare `glm-5.3-flash` off the bare
+> `glm-5` prefix ($0.60 input). `flash\b` deliberately excludes the separate
+> `glm-5.3-flashx` SKU.
 | `z-ai/glm-5-turbo`           |  1.20 |   4.00 | `glm-5-turbo` |
 
 ### Google Gemma 4
@@ -281,8 +287,22 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 
 | Model ID                        | Input | Output | Regex pattern              |
 |---------------------------------|-------|--------|----------------------------|
-| `deepseek/deepseek-v4-pro`      |  1.74 |   3.48 | `deepseek[-_/.]v4[-_/.].*pro\b`   |
-| `deepseek/deepseek-v4-flash`    |  0.14 |   0.28 | `deepseek[-_/.]v4[-_/.].*flash\b` |
+| `deepseek/deepseek-v4-pro-0813`   |  0.66 |   1.98 | `deepseek[-_/.]v4[-_/.]pro[-_/.]0813\b`   |
+| `deepseek/deepseek-v4-flash-0731` |  0.04 |   0.64 | `deepseek[-_/.]v4[-_/.]flash[-_/.]0731\b` |
+| `deepseek/deepseek-v4.1-flash`    |  0.15 |   0.60 | `deepseek[-_/.]v4\.1(?!\d).*flash\b`      |
+| `deepseek/deepseek-v4-pro`      |  1.74 |   3.48 | `deepseek[-_/.]v4(?!\.\d)[-_/.].*pro\b`   |
+| `deepseek/deepseek-v4-flash`    |  0.14 |   0.28 | `deepseek[-_/.]v4(?!\.\d)[-_/.].*flash\b` |
+
+> **DeepSeek snapshots + V4.1 (v1.90.0, OpenRouter 2026-09-23)**: the dated
+> V4 snapshots and V4.1 Flash have their own rates. All three bill cache reads
+> (0.022 / 0.016 / 0.003 per M, no write premium). Their patterns run before
+> the generic V4 patterns, which used to swallow them at base-V4 rates. Because
+> `.` is a separator, `deepseek-v4.1-flash` matched the V4 flash pattern. The
+> generic V4 patterns now carry `(?!\.\d)`, so an un-keyed dotted minor (e.g. a
+> future `v4.1-pro`) is flagged unknown instead of silently priced as V4.
+> DeepSeek's own API bills peak / off-peak rates (off-peak = half of peak, by
+> UTC hour) and serves floating aliases (`deepseek-flash`, `deepseek-v4-pro`).
+> Neither is modelled; OpenRouter's flat per-model rate is the source of truth.
 
 ### Xiaomi MiMo V2.5
 

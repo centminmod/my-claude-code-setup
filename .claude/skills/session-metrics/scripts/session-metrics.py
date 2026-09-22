@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.89.1"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.90.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -149,6 +149,10 @@ _PRICING: dict[str, dict[str, float]] = {
     # traceability; a dedicated regex guard below keeps it off the cheaper bare
     # `glm-5` prefix (same trap documented for glm-5.1).
     "glm-5.2":                   {"input":  1.05, "output":  3.50, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # GLM-5.3-Flash (v1.90.0; OpenRouter z-ai/glm-5.3-flash, 2026-09-23): billed
+    # cache reads, no write premium. A regex guard keeps bare `glm-5.3-flash`
+    # off the bare `glm-5` prefix, which would bill it 4x on input.
+    "z-ai/glm-5.3-flash":        {"input":  0.15, "output":  0.50, "cache_read": 0.05, "cache_write": 0.00, "cache_write_1h": 0.00},
     # Google Gemma 4 — OpenRouter: google/gemma-4-26b-a4b-it @ $0.06/$0.33; prefix covers Ollama variants
     "google/gemma-4-26b-a4b":    {"input":  0.06, "output":  0.33, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "gemma4":                    {"input":  0.06, "output":  0.33, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -182,6 +186,13 @@ _PRICING: dict[str, dict[str, float]] = {
     "openai/gpt-6-astra":        {"input": 10.00, "output":  50.00, "cache_read": 1.00, "cache_write": 12.50, "cache_write_1h": 12.50},
     "openai/gpt-6-sol":          {"input":  2.00, "output":  10.00, "cache_read": 0.20, "cache_write": 2.50,  "cache_write_1h": 2.50},
     "openai/gpt-6-luna":         {"input":  0.10, "output":   0.50, "cache_read": 0.01, "cache_write": 0.125, "cache_write_1h": 0.125},
+    # DeepSeek V4 dated snapshots + V4.1 Flash (v1.90.0; OpenRouter, 2026-09-23).
+    # Distinct rates from the base V4 entries below, with billed cache reads
+    # (no write premium, as kimi-k3). Dated keys precede their base key so the
+    # prefix sweep can't land a suffixed form on the base rate.
+    "deepseek/deepseek-v4-pro-0813":   {"input": 0.66, "output": 1.98, "cache_read": 0.022, "cache_write": 0.00, "cache_write_1h": 0.00},
+    "deepseek/deepseek-v4-flash-0731": {"input": 0.04, "output": 0.64, "cache_read": 0.016, "cache_write": 0.00, "cache_write_1h": 0.00},
+    "deepseek/deepseek-v4.1-flash":    {"input": 0.15, "output": 0.60, "cache_read": 0.003, "cache_write": 0.00, "cache_write_1h": 0.00},
     # DeepSeek V4
     "deepseek/deepseek-v4-pro":  {"input":  1.74, "output":   3.48, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "deepseek/deepseek-v4-flash":{"input":  0.14, "output":   0.28, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -337,9 +348,19 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     (re.compile(r"gpt-6[-_/.]astra\b",               re.I), _PRICING["openai/gpt-6-astra"]),
     (re.compile(r"gpt-6[-_/.]sol\b",                 re.I), _PRICING["openai/gpt-6-sol"]),
     (re.compile(r"gpt-6[-_/.]luna\b",                re.I), _PRICING["openai/gpt-6-luna"]),
-    # DeepSeek V4 (separator between provider prefix and v4 may vary)
-    (re.compile(r"deepseek[-_/.]v4[-_/.].*pro\b",    re.I), _PRICING["deepseek/deepseek-v4-pro"]),
-    (re.compile(r"deepseek[-_/.]v4[-_/.].*flash\b",  re.I), _PRICING["deepseek/deepseek-v4-flash"]),
+    # DeepSeek V4 dated snapshots + V4.1 Flash — before the generic V4 patterns,
+    # which would otherwise swallow them at base-V4 rates (`.` is in the
+    # separator class, so `deepseek-v4.1-flash` used to match the V4 flash
+    # pattern). `\b` after the date stops a longer date/digit glue-on.
+    (re.compile(r"deepseek[-_/.]v4[-_/.]pro[-_/.]0813\b",    re.I), _PRICING["deepseek/deepseek-v4-pro-0813"]),
+    (re.compile(r"deepseek[-_/.]v4[-_/.]flash[-_/.]0731\b",  re.I), _PRICING["deepseek/deepseek-v4-flash-0731"]),
+    (re.compile(r"deepseek[-_/.]v4\.1(?!\d).*flash\b",       re.I), _PRICING["deepseek/deepseek-v4.1-flash"]),
+    # DeepSeek V4 (separator between provider prefix and v4 may vary).
+    # `(?!\.\d)` keeps un-keyed dotted minors (e.g. a future `v4.1-pro`, `v4.2`)
+    # out: they fall to default + unknown-model warning instead of being
+    # silently priced as base V4.
+    (re.compile(r"deepseek[-_/.]v4(?!\.\d)[-_/.].*pro\b",    re.I), _PRICING["deepseek/deepseek-v4-pro"]),
+    (re.compile(r"deepseek[-_/.]v4(?!\.\d)[-_/.].*flash\b",  re.I), _PRICING["deepseek/deepseek-v4-flash"]),
     # Xiaomi MiMo V2.5 — Pro before base
     (re.compile(r"mimo[-_/.]v2\.5(?!\d).*pro\b",     re.I), _PRICING["xiaomi/mimo-v2.5-pro"]),
     (re.compile(r"mimo[-_/.]v2\.5(?!\d)",            re.I), _PRICING["xiaomi/mimo-v2.5"]),
@@ -375,6 +396,9 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # prefix-matches the cheaper `glm-5` entry and undercharges. `(?!\d)` keeps
     # a hypothetical `glm-5.20`+ from gluing on.
     (re.compile(r"glm-5\.2(?!\d)",                   re.I), _PRICING["glm-5.2"]),
+    # GLM-5.3-Flash before the bare glm-5 prefix entry (same trap). `flash\b`
+    # deliberately does NOT match `flashx` (a separate, pricier SKU).
+    (re.compile(r"glm-5\.3(?!\d).*flash\b",          re.I), _PRICING["z-ai/glm-5.3-flash"]),
     # ----- Opus 4.0 (anchored regex; replaces the prefix-fallback `claude-opus-4`
     # entry that was removed in v1.41.2). Without this anchored form, the bare
     # `claude-opus-4` prefix in `_PRICING` would silently catch any future
