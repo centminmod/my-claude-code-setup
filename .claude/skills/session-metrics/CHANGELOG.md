@@ -3,6 +3,50 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.89.0 — 2026-09-23
+
+### Recognise Claude Opus 5.5 and the OpenAI GPT-6 family (Astra / Sol / Luna) (minor)
+
+**Claude Opus 5.5** (`claude-opus-5-5`) is cheaper than Opus 5: $4 / $20 per
+MTok, cache writes $5 (5m) / $8 (1h), and cache reads $0.20 (0.05× base
+input, not the usual 0.1×). Before this release it resolved through the
+bare-major `claude-opus-5` prefix and was billed at $5 / $25 (a 25% over-count
+on input, output and cache writes, and 2.5× on cache reads).
+
+- **`_PRICING`**: new explicit `claude-opus-5-5` key inserted *before* the
+  bare-major `claude-opus-5`, so `[1m]` and date-suffixed 5.5 forms also land
+  on the 5.5 rates. Opus 5.0 forms keep $5 / $25.
+- **Fast mode**: `_FAST_MODE_MULTIPLIERS` gains `claude-opus-5-5: 2.0`
+  (fast $8 / $40 vs standard $4 / $20). Without it, fast 5.5 turns were
+  billed with no premium. `--no-fast-premium` help text updated.
+- **audit-session-metrics**: `claude-opus-5-5` input-rate row ($4.00). This is
+  required, not just for traceability: the bare `claude-opus` needle would
+  otherwise return $5.
+
+**OpenAI GPT-6** (source: OpenAI API pricing page, 2026-09-23). Three tiers,
+with cached input at 0.1× and cache writes at 1.25× input:
+
+| Model | Input | Output | Cache read | Cache write |
+|---|---|---|---|---|
+| `openai/gpt-6-astra` | 10.00 | 50.00 | 1.00 | 12.50 |
+| `openai/gpt-6-sol`   |  2.00 | 10.00 | 0.20 |  2.50 |
+| `openai/gpt-6-luna`  |  0.10 |  0.50 | 0.01 | 0.125 |
+
+- **`_PRICING_PATTERNS`**: `gpt-6[-_/.](astra|sol|luna)\b` resolves both the
+  bare slugs and the `openai/` IDs. The mandatory separator keeps `gpt-6.1-*`
+  and `gpt-66-*` out. GPT-6 Sol and GPT-5.6 Sol never collide. A bare `gpt-6`
+  has no family fallback and prices at the default with an unknown-model warning.
+- OpenAI's long-context surcharge is not modelled (standard-context rates only).
+- **`references/pricing.md`**: Opus 5.5 row, note and effort-ladder row (API
+  default effort is `medium`), plus a GPT-6 table and note.
+
+Tests: payload suite 1085 passed / 1 skipped. New tests cover Opus 5.5 at all
+five rate columns across bare, `[1m]` and date forms, a guard that Opus 5.0
+keeps $5, the fast multiplier, audit-extract rates, the GPT-6 tier matrix with
+unknown/boundary forms, and 4 regex-boundary rows. Ruff reports no new
+findings. No `_SCRIPT_VERSION` bump: the parse cache stores raw tokens and
+re-costs on load.
+
 ## v1.88.2 — 2026-09-02
 
 ### Complete the null-usage sweep — harden `_advisor_info` (patch)

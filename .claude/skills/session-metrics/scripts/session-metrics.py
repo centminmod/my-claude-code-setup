@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.88.2"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.89.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -70,7 +70,13 @@ _PRICING: dict[str, dict[str, float]] = {
     # `claude-opus-5` is a bare-major key (pre-provisioned, v1.44.0): assumed
     # same new tier, and as a prefix it catches every 5.x minor + `[1m]` + date
     # suffix in one entry. Review the rate if Anthropic re-tiers at Opus 5.0.
-    "claude-opus-5":             {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
+    # Opus 5.5 (v1.89.0) is CHEAPER than Opus 5: $4/$20, 5m-write 1.25x = $5,
+    # 1h-write 2x = $8, cache reads $0.20 (0.05x base input, not the usual
+    # 0.1x). Needs its own key listed BEFORE the bare-major `claude-opus-5`,
+    # otherwise the prefix sweep bills `claude-opus-5-5` (and its `[1m]` /
+    # date forms) at the $5/$25 Opus 5 rate — a 25% over-count.
+    "claude-opus-5-5":           {"input":  4.00, "output": 20.00, "cache_read": 0.20,  "cache_write":  5.00, "cache_write_1h":  8.00},
+    "claude-opus-5":            {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-9":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-8":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
     "claude-opus-4-7":           {"input":  5.00, "output": 25.00, "cache_read": 0.50,  "cache_write":  6.25, "cache_write_1h": 10.00},
@@ -161,6 +167,15 @@ _PRICING: dict[str, dict[str, float]] = {
     "openai/gpt-5.6-sol":        {"input":  5.00, "output":  30.00, "cache_read": 0.50, "cache_write": 6.25,  "cache_write_1h": 6.25},
     "openai/gpt-5.6-terra":      {"input":  2.50, "output":  15.00, "cache_read": 0.25, "cache_write": 3.125, "cache_write_1h": 3.125},
     "openai/gpt-5.6-luna":       {"input":  1.00, "output":   6.00, "cache_read": 0.10, "cache_write": 1.25,  "cache_write_1h": 1.25},
+    # OpenAI GPT-6 family (v1.89.0; OpenAI API pricing page, 2026-09-23) —
+    # three tiers: Astra (flagship) > Sol > Luna. Cached input 0.1x and cache
+    # writes 1.25x input; one published write rate, so both write columns
+    # carry it (same convention as GPT-5.6). OpenAI's long-context surcharge
+    # (2x input/cache, 1.5x output) is NOT modelled — same as the Anthropic
+    # >200K premium; these are the standard-context rates.
+    "openai/gpt-6-astra":        {"input": 10.00, "output":  50.00, "cache_read": 1.00, "cache_write": 12.50, "cache_write_1h": 12.50},
+    "openai/gpt-6-sol":          {"input":  2.00, "output":  10.00, "cache_read": 0.20, "cache_write": 2.50,  "cache_write_1h": 2.50},
+    "openai/gpt-6-luna":         {"input":  0.10, "output":   0.50, "cache_read": 0.01, "cache_write": 0.125, "cache_write_1h": 0.125},
     # DeepSeek V4
     "deepseek/deepseek-v4-pro":  {"input":  1.74, "output":   3.48, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "deepseek/deepseek-v4-flash":{"input":  0.14, "output":   0.28, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -246,6 +261,7 @@ _PRICING_SCHEDULES: dict[str, list[dict]] = {
 # suffixes resolve via the prefix sweep in `_fast_multiplier_for`. Models absent
 # here → 1.0 (no premium is ever invented for an unmapped model).
 _FAST_MODE_MULTIPLIERS: dict[str, float] = {
+    "claude-opus-5-5": 2.0,   # fast $8/$40   vs standard $4/$20
     "claude-opus-4-8": 2.0,   # fast $10/$50  vs standard $5/$25
     "claude-opus-4-7": 6.0,   # fast $30/$150 vs standard $5/$25
     "claude-opus-4-6": 6.0,   # fast $30/$150 vs standard $5/$25
@@ -290,6 +306,13 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     (re.compile(r"gpt-5\.6[-_/.]sol\b",              re.I), _PRICING["openai/gpt-5.6-sol"]),
     (re.compile(r"gpt-5\.6[-_/.]terra\b",            re.I), _PRICING["openai/gpt-5.6-terra"]),
     (re.compile(r"gpt-5\.6[-_/.]luna\b",             re.I), _PRICING["openai/gpt-5.6-luna"]),
+    # OpenAI GPT-6 — same shape as GPT-5.6: bare slugs (gpt-6-astra) and
+    # `openai/` forms; the mandatory separator after `6` is the digit guard
+    # (`gpt-6.1-sol` / `gpt-66-sol` cannot match). No un-tiered fallback: a
+    # bare `gpt-6` falls to _DEFAULT_PRICING + unknown-model warning.
+    (re.compile(r"gpt-6[-_/.]astra\b",               re.I), _PRICING["openai/gpt-6-astra"]),
+    (re.compile(r"gpt-6[-_/.]sol\b",                 re.I), _PRICING["openai/gpt-6-sol"]),
+    (re.compile(r"gpt-6[-_/.]luna\b",                re.I), _PRICING["openai/gpt-6-luna"]),
     # DeepSeek V4 (separator between provider prefix and v4 may vary)
     (re.compile(r"deepseek[-_/.]v4[-_/.].*pro\b",    re.I), _PRICING["deepseek/deepseek-v4-pro"]),
     (re.compile(r"deepseek[-_/.]v4[-_/.].*flash\b",  re.I), _PRICING["deepseek/deepseek-v4-flash"]),

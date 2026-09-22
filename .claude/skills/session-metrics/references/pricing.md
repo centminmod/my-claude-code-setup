@@ -21,6 +21,7 @@ of TTL.
 
 | Model ID                    | Alias      | Input | Output | Cache read | 5m Cache write | 1h Cache write |
 |-----------------------------|------------|-------|--------|------------|----------------|----------------|
+| `claude-opus-5-5`           | opus-5-5   |  4.00 |  20.00 |       0.20 |           5.00 |           8.00 |
 | `claude-opus-4-8`           | opus-4-8   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
 | `claude-opus-4-7`           | opus-4-7   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
 | `claude-opus-4-6`           | opus-4-6   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
@@ -66,6 +67,13 @@ of TTL.
 > family's **default** context window is 1M (no `[1m]` tag), which the
 > session-health context-pressure signal now honours.
 >
+> **Opus 5.5** (`claude-opus-5-5`, v1.89.0) is **cheaper** than Opus 5:
+> $4 / $20, cache writes $5 (5m) / $8 (1h), and **cache reads $0.20** (0.05×
+> base input, not the usual 0.1×). It has its own key listed before the
+> bare-major `claude-opus-5`, so `claude-opus-5-5` and its `[1m]` /
+> date-suffixed forms no longer prefix-match the $5/$25 Opus 5 rate. Fast mode
+> is $8 / $40 (2× standard), applied via `_FAST_MODE_MULTIPLIERS`.
+>
 > **† Sonnet 5 introductory pricing (date-effective, v1.84.0)**: `claude-sonnet-5`
 > shipped at an **introductory** $2/$10 (input/output) rate **through 2026-08-31**,
 > reverting to the **standard** $3/$15 on **2026-09-01**. Because the tool reprices
@@ -97,6 +105,7 @@ there. Verified against the Anthropic effort docs, 2026-06-11
 | `claude-opus-4-7` / `-4-8` | low / medium / high / xhigh / max | high      | xhigh                                     |
 | `claude-fable-5`        | low / medium / high / xhigh / max  | high        | high (xhigh only for the most capability-sensitive work) |
 | `claude-fable-5-1`      | low / medium / high / xhigh / max  | high        | high (thinking always on; `disabled` is rejected)         |
+| `claude-opus-5-5`       | low / medium / high / xhigh / max  | **medium**  | set explicitly (thinking always on; `disabled` is rejected) |
 | `claude-sonnet-4-6`+    | low / medium / high / max          | high        | medium                                    |
 
 Note: Opus 4.8's default is `high` on all surfaces including Claude
@@ -235,6 +244,23 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 > variant like `gpt-5.6-codex`) prices at the Terra tier via the family
 > fallback **with** an unknown-model warning; `gpt-5.66`+ stays on default
 > Sonnet rates per the standard digit-boundary policy.
+
+### OpenAI GPT-6 (OpenAI API pricing, snapshot 2026-09-23)
+
+| Model ID                     | Input  | Output  | Cache read | Cache write | Regex pattern          |
+|------------------------------|--------|---------|------------|-------------|------------------------|
+| `openai/gpt-6-astra`         | 10.00  |   50.00 |       1.00 |       12.50 | `gpt-6[-_/.]astra\b`   |
+| `openai/gpt-6-sol`           |  2.00  |   10.00 |       0.20 |        2.50 | `gpt-6[-_/.]sol\b`     |
+| `openai/gpt-6-luna`          |  0.10  |    0.50 |       0.01 |       0.125 | `gpt-6[-_/.]luna\b`    |
+
+> **GPT-6 family (v1.89.0)**: three tiers — Astra (flagship), Sol, Luna.
+> Source: https://developers.openai.com/api/docs/pricing. The regexes match
+> both the bare slugs (`gpt-6-sol`) and `openai/`-prefixed IDs; GPT-6 Sol and
+> GPT-5.6 Sol are distinct rates and never collide. One published cache-write
+> rate, so both write columns carry it. OpenAI's long-context surcharge (2×
+> input/cache, 1.5× output) is not modelled. There is no un-tiered fallback:
+> a bare `gpt-6` prices at default Sonnet rates **with** an unknown-model
+> warning.
 
 ### DeepSeek V4
 

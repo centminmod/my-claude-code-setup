@@ -245,7 +245,7 @@ def _fast_multiplier_for(model: str) -> float:
     per-model factor is exact. Resolution mirrors ``_pricing_for``'s silent
     chain: exact key → prefix sweep (catches ``[1m]`` and date suffixes) →
     default ``1.0`` (never invent a premium for an unmapped model). No regex /
-    family-fallback tier is needed — fast mode is bounded to the three Opus
+    family-fallback tier is needed — fast mode is bounded to the Opus
     minors in ``_FAST_MODE_MULTIPLIERS``, whose ids are non-colliding prefixes.
     """
     table = _sm()._FAST_MODE_MULTIPLIERS
