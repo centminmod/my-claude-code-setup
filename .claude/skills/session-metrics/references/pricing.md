@@ -23,6 +23,7 @@ of TTL.
 | Model ID                    | Alias      | Input | Output | Cache read | 5m Cache write | 1h Cache write |
 |-----------------------------|------------|-------|--------|------------|----------------|----------------|
 | `claude-opus-5-5`           | opus-5-5   |  4.00 |  20.00 |       0.20 |           5.00 |           8.00 |
+| `claude-opus-5`             | opus-5     |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
 | `claude-opus-4-8`           | opus-4-8   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
 | `claude-opus-4-7`           | opus-4-7   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
 | `claude-opus-4-6`           | opus-4-6   |  5.00 |  25.00 |       0.50 |           6.25 |          10.00 |
@@ -74,6 +75,13 @@ of TTL.
 > date-suffixed forms no longer prefix-match the $5/$25 Opus 5 rate. Fast mode
 > is $8 / $40 (2× standard), applied via `_FAST_MODE_MULTIPLIERS`.
 >
+> **Opus 5** (`claude-opus-5`, released 2026-07-24) shipped at the $5 / $25 tier
+> the pre-provisioned bare-major key already assumed — verified against the
+> Anthropic pricing page 2026-09-25 (v1.90.2), no rate change. Opus 5 and
+> Opus 5.5 are **1M-context only**, and Claude Code stamps them bare (no
+> `[1m]`), so `_MODEL_CONTEXT_WINDOWS` carries `claude-opus-5` at 1M for the
+> session-health context-pressure signal (prefix covers `claude-opus-5-5`).
+>
 > **† Sonnet 5 standard is $2/$10 (v1.89.1)**: `claude-sonnet-5` launched at an
 > "introductory" $2/$10 announced to run through 2026-08-31, with a scheduled rise
 > to $3/$15 on 2026-09-01. Anthropic cancelled the rise: $2/$10 is now the
@@ -96,7 +104,8 @@ of TTL.
 Pricing is effort-independent (effort changes token *counts*, not rates),
 but the compare/benchmark harnesses pass `--effort` rungs through to
 headless `claude -p` runs, so the supported ladder per model matters
-there. Verified against the Anthropic effort docs, 2026-06-11
+there. Verified against the Anthropic effort docs, 2026-06-11; Opus 5 row
+added 2026-09-25
 (https://platform.claude.com/docs/en/build-with-claude/effort):
 
 | Model family            | Supported efforts                  | API default | Anthropic-recommended for coding/agentic |
@@ -105,6 +114,7 @@ there. Verified against the Anthropic effort docs, 2026-06-11
 | `claude-opus-4-7` / `-4-8` | low / medium / high / xhigh / max | high      | xhigh                                     |
 | `claude-fable-5`        | low / medium / high / xhigh / max  | high        | high (xhigh only for the most capability-sensitive work) |
 | `claude-fable-5-1`      | low / medium / high / xhigh / max  | high        | high (thinking always on; `disabled` is rejected)         |
+| `claude-opus-5`         | low / medium / high / xhigh / max  | high        | high (xhigh for demanding coding/agentic; thinking can't be disabled at xhigh/max) |
 | `claude-opus-5-5`       | low / medium / high / xhigh / max  | **medium**  | set explicitly (thinking always on; `disabled` is rejected) |
 | `claude-sonnet-4-6`+    | low / medium / high / max          | high        | medium                                    |
 
@@ -122,7 +132,7 @@ case Anthropic re-tiers a generation.
 | Model ID         | Family rate | Notes |
 |------------------|-------------|-------|
 | `claude-opus-4-9`  | Opus new $5/$25   | exact + `[1m]`/date via prefix sweep |
-| `claude-opus-5`    | Opus new $5/$25   | **bare-major** — catches all `5.x` minors + `[1m]` |
+| `claude-opus-5`    | Opus new $5/$25   | **bare-major** — catches all `5.x` minors + `[1m]`. Shipped 2026-07-24; rate verified 2026-09-25 (see Current models) |
 | `claude-sonnet-4-8`| Sonnet $3/$15     | (`claude-sonnet-4-7` already shipped) |
 | `claude-sonnet-4-9`| Sonnet $3/$15     | |
 | `claude-haiku-4-6` | Haiku $1/$5       | |

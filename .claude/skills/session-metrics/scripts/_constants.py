@@ -24,8 +24,12 @@ _CACHE_BREAK_DEFAULT_THRESHOLD = 100_000
 # stamps it WITHOUT a ``[1m]`` tag (live transcripts peak at 480K–640K context
 # on bare ``claude-fable-5`` / ``claude-fable-5-1``), so the family key itself
 # carries 1M (v1.88.0) — at 200K the context-pressure signal exceeded 100%.
+# Opus 5 / 5.5 are the same: 1M is their only window and Claude Code stamps
+# bare ``claude-opus-5`` / ``claude-opus-5-5`` (v1.90.2); the longer prefix
+# wins over ``claude-opus``.
 _MODEL_CONTEXT_WINDOWS = {
     "claude-opus":   200_000,
+    "claude-opus-5": 1_000_000,
     "claude-sonnet": 200_000,
     "claude-haiku":  200_000,
     "claude-fable":  1_000_000,

@@ -3,6 +3,25 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.90.2 — 2026-09-25
+
+### Opus 5 / Opus 5.5 context window is 1M; Opus 5 rate verified (patch)
+
+- **Context pressure fix.** Opus 5 and Opus 5.5 have a 1M context window
+  (their only window), and Claude Code records them as bare
+  `claude-opus-5` / `claude-opus-5-5` with no `[1m]` tag. The session-health
+  lookup gave every bare `claude-opus-*` id 200K, so sessions on these
+  models under 200K reported context pressure against the wrong window.
+  `_MODEL_CONTEXT_WINDOWS` now has `claude-opus-5` at 1M; the prefix
+  covers `claude-opus-5-5`, and Opus 4.x stays at 200K.
+- **Opus 5 pricing unchanged, now verified.** Opus 5 shipped at the $5 / $25
+  tier (cache read $0.50, writes $6.25 / $10) that the pre-provisioned
+  `claude-opus-5` key already used. `references/pricing.md` lists it under
+  *Current models* and adds an Opus 5 row to *Effort support by model*
+  (all five levels, default `high`).
+
+No cost numbers change.
+
 ## v1.90.1 — 2026-09-23
 
 ### Re-snapshot GLM + DeepSeek V4 pricing; recognise GLM-5.3 and GLM-5.3-FlashX (patch)

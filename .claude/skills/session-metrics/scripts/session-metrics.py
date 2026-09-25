@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.90.1"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.90.2"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -67,9 +67,9 @@ _PRICING_SNAPSHOT_DATE = "2026-09-23"
 # entries must appear first.
 _PRICING: dict[str, dict[str, float]] = {
     # --- Opus 4.5-generation (new tier: $5 input / $25 output) ---
-    # `claude-opus-5` is a bare-major key (pre-provisioned, v1.44.0): assumed
-    # same new tier, and as a prefix it catches every 5.x minor + `[1m]` + date
-    # suffix in one entry. Review the rate if Anthropic re-tiers at Opus 5.0.
+    # `claude-opus-5` is a bare-major key (pre-provisioned, v1.44.0): as a
+    # prefix it catches every 5.x minor + `[1m]` + date suffix in one entry.
+    # Opus 5 shipped at this $5/$25 tier (verified 2026-09-25, v1.90.2).
     # Opus 5.5 (v1.89.0) is CHEAPER than Opus 5: $4/$20, 5m-write 1.25x = $5,
     # 1h-write 2x = $8, cache reads $0.20 (0.05x base input, not the usual
     # 0.1x). Needs its own key listed BEFORE the bare-major `claude-opus-5`,
