@@ -3,6 +3,29 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.90.3 — 2026-09-25
+
+### IFEval scores each prompt's final answer, not its first turn (patch)
+
+- **Bug fix.** compare-run's IFEval check ran the suite predicate against
+  the first assistant turn after each prompt. When a model checked its work
+  with a tool before answering (Opus 5.5 at `high` ran `wc -w` on its
+  120-word and 50-word drafts), that first turn held only thinking and a
+  tool call, so the predicate got an empty string and recorded a fail. The
+  real answer, a later turn in the same prompt, was never scored. IFEval now
+  scores the last non-empty assistant text before the next prompt
+  (`_final_text_by_prompt_turn` in `session_metrics_compare.py`).
+  Single-turn answers score exactly as before, and refused runs are still
+  excluded.
+- **Effect.** In the Opus 5 vs Opus 5.5 effort benchmark, Opus 5.5 at
+  `high` goes from 7/9 to 9/9 in both runs. No other result changes.
+  Compare reports built before this release can under-count IFEval for
+  models that use tools before answering; re-render them from the JSONLs to
+  correct them.
+- `references/model-compare.md` now says which text is scored.
+
+Cost and token numbers are unchanged.
+
 ## v1.90.2 — 2026-09-25
 
 ### Opus 5 / Opus 5.5 context window is 1M; Opus 5 rate verified (patch)

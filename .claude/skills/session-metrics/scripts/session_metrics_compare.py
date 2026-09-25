@@ -1045,6 +1045,12 @@ def _build_compare_report(
     a_rec_by_raw = {id(t): r for t, r in zip(side_a_turns, a_turn_records)}
     b_rec_by_raw = {id(t): r for t, r in zip(side_b_turns, b_turn_records)}
 
+    # IFEval scores each prompt's FINAL answer, not the paired (first) turn:
+    # a model that verifies with a tool before answering (e.g. `wc -w`)
+    # has a first turn of thinking + tool_use with no text.
+    a_final_text = _final_text_by_prompt_turn(side_a_turns)
+    b_final_text = _final_text_by_prompt_turn(side_b_turns)
+
     paired: list[dict] = []
     # P2.5: accumulate (prompt_name, "ExcType: msg") for predicates that RAISE
     # during evaluation (vs genuinely returning False). _run_predicate swallows
@@ -1087,13 +1093,13 @@ def _build_compare_report(
                     refused_runs.append((suite_prompt_name, "A"))
                 else:
                     instruction_pass_a = _run_predicate(
-                        check_fn, _assistant_text(a_raw),
+                        check_fn, a_final_text.get(id(a_raw), ""),
                         prompt_name=suite_prompt_name, errors=predicate_errors)
                 if b_rec.get("stop_reason") == "refusal":
                     refused_runs.append((suite_prompt_name, "B"))
                 else:
                     instruction_pass_b = _run_predicate(
-                        check_fn, _assistant_text(b_raw),
+                        check_fn, b_final_text.get(id(b_raw), ""),
                         prompt_name=suite_prompt_name, errors=predicate_errors)
 
         paired.append({
@@ -1654,6 +1660,27 @@ def _assistant_text(raw_turn: dict) -> str:
             if t:
                 parts.append(t)
     return "".join(parts).strip()
+
+
+def _final_text_by_prompt_turn(turns: list[dict]) -> dict[int, str]:
+    """Map ``id(prompt turn)`` → the last non-empty assistant text in its span.
+
+    A span starts at a turn whose preceding user content carries prompt
+    text and runs until the next such turn; follow-up turns (preceded only
+    by ``tool_result`` blocks) belong to the open span. Turns must be in
+    transcript order, as ``_extract_turns`` returns them.
+    """
+    final: dict[int, str] = {}
+    head: dict | None = None
+    for t in turns:
+        if _user_prompt_fingerprint_text(t.get("_preceding_user_content")):
+            head = t
+        if head is None:
+            continue
+        text = _assistant_text(t)
+        if text:
+            final[id(head)] = text
+    return final
 
 
 def _detect_suite_versions(raw_turns: list[dict]) -> set[int]:

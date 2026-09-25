@@ -518,7 +518,7 @@ Every prompt body starts with a sentinel:
 [session-metrics:compare-suite:v2:prompt=<name>]
 ```
 
-The skill detects this sentinel in user prompts to (a) identify which suite prompt a turn corresponds to, (b) run the IFEval predicate against the assistant's text output, and (c) refuse when the two compared sessions carry different suite versions.
+The skill detects this sentinel in user prompts to (a) identify which suite prompt a turn corresponds to, (b) run the IFEval predicate against the assistant's final text answer for that prompt (the last non-empty text before the next prompt, so a model that checks its work with a tool before answering is scored on the answer, not on its tool-call turn), and (c) refuse when the two compared sessions carry different suite versions.
 
 Suite **v2** (2026-06) rewrote `tool_heavy_task` to read three frozen
 fixture files that `--compare-run` stages into the scratch directory
