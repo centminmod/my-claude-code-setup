@@ -7,7 +7,7 @@ Step-by-step instructions to configure all required services for the ai-image-cr
 - **uv** (Python runner): Install via `curl -LsSf https://astral.sh/uv/install.sh | sh` or `brew install uv`
 - **Python 3.10+**: Bundled with uv or install separately
 - A Cloudflare account (free tier works)
-- An OpenRouter account and/or Google AI Studio account
+- An account for at least one supported API provider
 
 ### Optional (for transparent mode `-t`)
 
@@ -89,6 +89,10 @@ Store your API keys securely in Cloudflare so they're never sent in request head
 
 Add these to your shell profile or system environment variables.
 
+For direct MiniMax generation, create an API key in the global or China
+MiniMax platform console and set `AI_IMG_CREATOR_MINIMAX_KEY`. MiniMax requests
+are sent directly; they do not use the gateway settings below.
+
 ### macOS / Linux
 
 Edit `~/.zshrc` (macOS) or `~/.bashrc` (Linux):
@@ -102,6 +106,7 @@ export AI_IMG_CREATOR_CF_TOKEN="your-gateway-auth-token"
 # AI Image Creator — Direct API keys (fallback, optional if BYOK configured)
 export AI_IMG_CREATOR_OPENROUTER_KEY="sk-or-your-key-here"
 export AI_IMG_CREATOR_GEMINI_KEY="AIyour-key-here"
+export AI_IMG_CREATOR_MINIMAX_KEY="your-minimax-key-here"
 ```
 
 Apply changes:
@@ -124,6 +129,7 @@ Set environment variables via PowerShell (user-level, persists across sessions):
 # AI Image Creator — Direct API keys (fallback, optional if BYOK configured)
 [Environment]::SetEnvironmentVariable("AI_IMG_CREATOR_OPENROUTER_KEY", "sk-or-your-key-here", "User")
 [Environment]::SetEnvironmentVariable("AI_IMG_CREATOR_GEMINI_KEY", "AIyour-key-here", "User")
+[Environment]::SetEnvironmentVariable("AI_IMG_CREATOR_MINIMAX_KEY", "your-minimax-key-here", "User")
 ```
 
 Or use **Settings > System > About > Advanced system settings > Environment Variables** to add them via the GUI.
@@ -194,6 +200,14 @@ Then ask: "Generate a simple blue circle on white background" with output to `te
 
 **Expected result:** A PNG file is created. The script outputs the file path and size.
 
+To verify MiniMax directly:
+
+```bash
+uv run python .claude/skills/ai-image-creator/scripts/generate-image.py \
+  --provider minimax --minimax-region global -m image-01 \
+  -p "A simple blue circle on white background" -o test-image.png
+```
+
 **Clean up test file:**
 ```bash
 rm test-image.png
@@ -208,7 +222,7 @@ Environment variables are not set or not exported. Run `echo $AI_IMG_CREATOR_CF_
 
 ### "HTTP 401: Unauthorized"
 - **Gateway mode:** Check `AI_IMG_CREATOR_CF_TOKEN` is correct. Regenerate in CF dashboard if needed.
-- **Direct mode:** Check `AI_IMG_CREATOR_OPENROUTER_KEY` or `AI_IMG_CREATOR_GEMINI_KEY`.
+- **Direct mode:** Check the API key environment variable for the selected provider.
 
 ### "uv: command not found"
 Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh` or `brew install uv`

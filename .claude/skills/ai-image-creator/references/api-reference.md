@@ -79,6 +79,38 @@ PNG, JPEG, WebP, GIF. Images are base64-encoded inline (data URLs for OpenRouter
 
 ## Providers & Endpoints
 
+### MiniMax
+
+MiniMax text-to-image generation uses `POST /v1/image_generation` with Bearer
+authentication. Select the endpoint with `--minimax-region`:
+
+| Region | Endpoint |
+|---|---|
+| `global` | `https://api.minimax.io/v1/image_generation` |
+| `cn` | `https://api.minimaxi.com/v1/image_generation` |
+
+Supported models are `image-01` (default) and `image-01-live`. The request
+requires `model` and `prompt`; optional controls include `subject_reference`,
+`aspect_ratio`, `width`, `height`, `response_format`, `seed`, `n`, and
+`prompt_optimizer`. Add one or more HTTPS subject images with repeatable
+`--subject-reference` arguments.
+Choose `url` or `base64` with `--response-format`. URL results expire after
+24 hours, so the script downloads the first result before returning.
+
+```json
+{
+  "model": "image-01",
+  "prompt": "A lighthouse at dawn",
+  "aspect_ratio": "16:9",
+  "response_format": "url",
+  "n": 1,
+  "prompt_optimizer": true
+}
+```
+
+The response decoder reads `data.image_urls`, verifies
+`base_resp.status_code`, and accepts either a remote URL or base64 image data.
+
 ### OpenRouter (via CF AI Gateway)
 
 **Gateway URL:**

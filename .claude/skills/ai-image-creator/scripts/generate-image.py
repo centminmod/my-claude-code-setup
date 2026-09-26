@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AI Image Generator — Generate PNG images via multiple OpenRouter models or Google AI Studio.
+"""AI Image Generator — Generate PNG images through supported API providers.
 
 Supports multiple image generation models via keyword shortcuts:
     gemini     — Google Gemini 3.1 Flash (default, multimodal)
@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import json
 import logging
 import os
@@ -48,6 +49,13 @@ from typing import Any  # noqa: F401 — used in type hints below
 DEFAULT_MODELS = {
     "openrouter": "google/gemini-3.1-flash-image",
     "google": "gemini-3.1-flash-image",
+    "minimax": "image-01",
+}
+
+MINIMAX_MODELS = {"image-01", "image-01-live"}
+MINIMAX_ENDPOINTS = {
+    "global": "https://api.minimax.io/v1/image_generation",
+    "cn": "https://api.minimaxi.com/v1/image_generation",
 }
 
 # Model registry — maps keyword shortcuts to model metadata.
@@ -291,6 +299,7 @@ ENV_CF_GATEWAY_ID = "AI_IMG_CREATOR_CF_GATEWAY_ID"
 ENV_CF_TOKEN = "AI_IMG_CREATOR_CF_TOKEN"
 ENV_OPENROUTER_KEY = "AI_IMG_CREATOR_OPENROUTER_KEY"
 ENV_GEMINI_KEY = "AI_IMG_CREATOR_GEMINI_KEY"
+ENV_MINIMAX_KEY = "AI_IMG_CREATOR_MINIMAX_KEY"
 # Cloudflare AI Gateway BYOK aliases — the names the stored provider keys live
 # under in CF. setup-guide.md instructs "aistudio" for Google AI Studio and
 # "default" for OpenRouter; override here if different aliases were used.
@@ -302,7 +311,7 @@ ENV_CF_BYOK_ALIAS_OPENROUTER = "AI_IMG_CREATOR_CF_BYOK_ALIAS_OPENROUTER"  # Open
 # working directory could otherwise inject arbitrary env vars.
 _CWD_DOTENV_ALLOWED_KEYS = {
     ENV_CF_ACCOUNT_ID, ENV_CF_GATEWAY_ID, ENV_CF_TOKEN,
-    ENV_OPENROUTER_KEY, ENV_GEMINI_KEY,
+    ENV_OPENROUTER_KEY, ENV_GEMINI_KEY, ENV_MINIMAX_KEY,
     ENV_CF_BYOK_ALIAS, ENV_CF_BYOK_ALIAS_OPENROUTER,
 }
 
@@ -403,13 +412,24 @@ def resolve_model(model_arg: str | None, provider: str) -> tuple[str, list[str]]
 
     Args:
         model_arg: The --model CLI value (keyword, full model ID, or None).
-        provider: Either 'openrouter' or 'google'.
+        provider: Selected API provider.
 
     Returns:
         Tuple of (model_id, modalities_list) where model_id is the full
         OpenRouter model identifier and modalities_list is the correct
         modalities array for the API request.
     """
+    if provider == "minimax":
+        model_id = model_arg or DEFAULT_MODELS[provider]
+        if model_id not in MINIMAX_MODELS:
+            valid = ", ".join(sorted(MINIMAX_MODELS))
+            print(
+                f"ERROR: unknown MiniMax image model '{model_id}'. Valid models: {valid}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return model_id, ["image"]
+
     if model_arg is None:
         model_id = DEFAULT_MODELS[provider]
         if provider == "openrouter":
@@ -559,9 +579,38 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=["openrouter", "google"],
+        choices=["openrouter", "google", "minimax"],
         default="openrouter",
         help="API provider (default: openrouter)",
+    )
+    parser.add_argument(
+        "--minimax-region",
+        choices=["global", "cn"],
+        default="global",
+        help="MiniMax API region (default: global)",
+    )
+    parser.add_argument(
+        "--response-format",
+        choices=["url", "base64"],
+        default="url",
+        help="MiniMax response format (default: url)",
+    )
+    parser.add_argument(
+        "--subject-reference",
+        action="append",
+        default=None,
+        metavar="URL",
+        help="MiniMax subject reference image URL (repeatable)",
+    )
+    parser.add_argument("--width", type=int, default=None, help="MiniMax image width")
+    parser.add_argument("--height", type=int, default=None, help="MiniMax image height")
+    parser.add_argument("--seed", type=int, default=None, help="MiniMax generation seed")
+    parser.add_argument("--num-images", type=int, default=None, help="MiniMax image count")
+    parser.add_argument(
+        "--prompt-optimizer",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable MiniMax prompt optimization",
     )
     parser.add_argument(
         "-a", "--aspect-ratio",
@@ -715,7 +764,7 @@ def detect_mode(provider: str) -> tuple[str, dict[str, str]]:
     """Detect gateway vs direct mode based on available env vars.
 
     Args:
-        provider: Either 'openrouter' or 'google'.
+        provider: Selected API provider.
 
     Returns:
         Tuple of (mode, config) where mode is 'gateway' or 'direct' and
@@ -724,6 +773,17 @@ def detect_mode(provider: str) -> tuple[str, dict[str, str]]:
     Raises:
         SystemExit: If no credentials are configured for the provider.
     """
+    if provider == "minimax":
+        direct_key = os.environ.get(ENV_MINIMAX_KEY, "").strip()
+        log.debug(
+            f"Env check: {ENV_MINIMAX_KEY}="
+            f"{'set (' + mask_key(direct_key) + ')' if direct_key else 'MISSING'}"
+        )
+        if direct_key:
+            return "direct", {"direct_key": direct_key}
+        print(f"ERROR: Set {ENV_MINIMAX_KEY} for MiniMax image generation.", file=sys.stderr)
+        sys.exit(1)
+
     cf_account = os.environ.get(ENV_CF_ACCOUNT_ID, "").strip()
     cf_gateway = os.environ.get(ENV_CF_GATEWAY_ID, "").strip()
     cf_token = os.environ.get(ENV_CF_TOKEN, "").strip()
@@ -797,17 +857,20 @@ def build_gateway_url(provider: str, model: str, config: dict[str, str]) -> str:
     return url
 
 
-def build_direct_url(provider: str, model: str) -> str:
+def build_direct_url(provider: str, model: str, region: str = "global") -> str:
     """Build direct API URL for the given provider.
 
     Args:
-        provider: 'openrouter' or 'google'.
+        provider: Selected API provider.
         model: Model ID (used in Google URL path).
+        region: MiniMax API region.
 
     Returns:
         Full direct API URL string.
     """
-    if provider == "openrouter":
+    if provider == "minimax":
+        url = MINIMAX_ENDPOINTS[region]
+    elif provider == "openrouter":
         url = "https://openrouter.ai/api/v1/chat/completions"
     else:
         # Google's native API also wants the bare model id (no "google/" prefix).
@@ -846,7 +909,7 @@ def build_headers(provider: str, mode: str, config: dict[str, str]) -> dict[str,
             # direct_key, if present, is still used by the direct-mode fallback.
             headers["cf-aig-byok-alias"] = os.environ.get(ENV_CF_BYOK_ALIAS_OPENROUTER, "default").strip() or "default"
     else:
-        if provider == "openrouter":
+        if provider in ("openrouter", "minimax"):
             headers["Authorization"] = f"Bearer {config['direct_key']}"
         else:
             headers["x-goog-api-key"] = config["direct_key"]
@@ -874,11 +937,18 @@ def build_request_body(
     video_source: str | None = None,
     analysis_images: list[str] | None = None,
     json_schema: dict[str, Any] | None = None,
+    response_format: str = "url",
+    width: int | None = None,
+    height: int | None = None,
+    seed: int | None = None,
+    num_images: int | None = None,
+    prompt_optimizer: bool | None = None,
+    subject_references: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build JSON request body for the given provider.
 
     Args:
-        provider: 'openrouter' or 'google'.
+        provider: Selected API provider.
         model: Model ID string.
         prompt: The image generation prompt text.
         aspect_ratio: Optional aspect ratio (OpenRouter only), e.g. '16:9'.
@@ -898,11 +968,42 @@ def build_request_body(
         json_schema: Optional OpenRouter json_schema object (name/strict/schema).
             When set on a video request, adds response_format=json_schema and
             provider.require_parameters=true for strict structured output.
+        response_format: MiniMax output format, either URL or base64.
+        width: Optional MiniMax image width.
+        height: Optional MiniMax image height.
+        seed: Optional MiniMax generation seed.
+        num_images: Optional MiniMax image count.
+        prompt_optimizer: Optional MiniMax prompt optimizer toggle.
+        subject_references: Optional MiniMax subject reference image URLs.
 
     Returns:
         Dict suitable for JSON serialization as request body.
     """
     refs = ref_images or []
+
+    if provider == "minimax":
+        if refs:
+            raise ValueError("MiniMax text-to-image requests do not accept reference images")
+        body: dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "response_format": response_format,
+        }
+        optional_fields = {
+            "aspect_ratio": aspect_ratio,
+            "width": width,
+            "height": height,
+            "seed": seed,
+            "n": num_images,
+            "prompt_optimizer": prompt_optimizer,
+        }
+        body.update({key: value for key, value in optional_fields.items() if value is not None})
+        if subject_references:
+            body["subject_reference"] = [
+                {"type": "character", "image_file": image_url}
+                for image_url in subject_references
+            ]
+        return body
 
     if provider == "openrouter" and video_source:
         # Video-analysis request: text prompt + a single video_url content part.
@@ -1200,6 +1301,46 @@ def extract_image_google(response: dict) -> tuple[bytes, str]:
         )
 
     return image_bytes, text_content
+
+
+def extract_image_minimax(response: dict) -> tuple[bytes, str]:
+    """Extract the first image from a MiniMax URL or base64 response."""
+    base_resp = response.get("base_resp", {})
+    status_code = base_resp.get("status_code", 0)
+    if status_code not in (0, "0"):
+        status_msg = base_resp.get("status_msg", "unknown error")
+        raise RuntimeError(f"MiniMax API error {status_code}: {status_msg}")
+
+    image_values = response.get("data", {}).get("image_urls", [])
+    if not image_values:
+        metadata = response.get("metadata", {})
+        raise RuntimeError(
+            "No images in MiniMax response "
+            f"(success_count={metadata.get('success_count', 0)}, "
+            f"failed_count={metadata.get('failed_count', 0)})"
+        )
+
+    image_value = image_values[0]
+    if not isinstance(image_value, str) or not image_value:
+        raise RuntimeError("Invalid image value in MiniMax response")
+
+    if image_value.startswith("https://"):
+        try:
+            with urllib.request.urlopen(image_value, timeout=60) as remote_image:
+                image_bytes = remote_image.read()
+        except (urllib.error.URLError, TimeoutError) as exc:
+            raise RuntimeError(f"MiniMax image download failed: {exc}") from exc
+    else:
+        encoded = image_value.split(",", 1)[1] if image_value.startswith("data:") else image_value
+        try:
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise RuntimeError("Invalid base64 image in MiniMax response") from exc
+
+    if not image_bytes:
+        raise RuntimeError("MiniMax returned an empty image")
+    log.info(f"Decoded MiniMax image: {len(image_bytes)} bytes")
+    return image_bytes, ""
 
 
 def extract_text_openrouter(response: dict) -> str:
@@ -1735,7 +1876,45 @@ def main() -> None:
         print("\nVideo presets:")
         for alias, kw in VIDEO_MODEL_PRESETS.items():
             print(f"  {alias:18s} -> {kw} ({VIDEO_MODEL_REGISTRY[kw]['id']})")
+        print("\nMiniMax image models:")
+        for model_id in sorted(MINIMAX_MODELS):
+            default = " (default)" if model_id == DEFAULT_MODELS["minimax"] else ""
+            print(f"  {model_id}{default}")
         sys.exit(0)
+
+    minimax_only_args = (
+        args.width,
+        args.height,
+        args.seed,
+        args.num_images,
+        args.prompt_optimizer,
+        args.subject_reference,
+    )
+    if args.provider != "minimax" and any(value is not None for value in minimax_only_args):
+        print(
+            "ERROR: --width, --height, --seed, --num-images, and "
+            "--prompt-optimizer/--subject-reference require --provider minimax",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if args.provider == "minimax":
+        if args.analyze or args.analyze_video:
+            print("ERROR: MiniMax integration supports text-to-image generation only", file=sys.stderr)
+            sys.exit(1)
+        if args.image_size:
+            print("ERROR: --image-size is not supported by the MiniMax API", file=sys.stderr)
+            sys.exit(1)
+        if args.num_images is not None and args.num_images < 1:
+            print("ERROR: --num-images must be at least 1", file=sys.stderr)
+            sys.exit(1)
+        if (args.width is None) != (args.height is None):
+            print("ERROR: --width and --height must be provided together", file=sys.stderr)
+            sys.exit(1)
+        if args.subject_reference and any(
+            not image_url.startswith("https://") for image_url in args.subject_reference
+        ):
+            print("ERROR: --subject-reference must be an HTTPS image URL", file=sys.stderr)
+            sys.exit(1)
 
     # Validate --analyze mode
     if args.analyze:
@@ -1988,7 +2167,7 @@ def main() -> None:
     if mode == "gateway":
         url = build_gateway_url(args.provider, model, config)
     else:
-        url = build_direct_url(args.provider, model)
+        url = build_direct_url(args.provider, model, args.minimax_region)
 
     headers = build_headers(args.provider, mode, config)
     body = build_request_body(
@@ -1997,6 +2176,13 @@ def main() -> None:
         ref_images=ref_images if ref_images else None,
         video_source=video_source,
         json_schema=VIDEO_JSON_SCHEMA if video_json_mode else None,
+        response_format=args.response_format,
+        width=args.width,
+        height=args.height,
+        seed=args.seed,
+        num_images=args.num_images,
+        prompt_optimizer=args.prompt_optimizer,
+        subject_references=args.subject_reference,
     )
 
     print(f"URL: {url}", file=sys.stderr)
@@ -2193,8 +2379,10 @@ def main() -> None:
     try:
         if args.provider == "openrouter":
             image_bytes, text_content = extract_image_openrouter(response)
-        else:
+        elif args.provider == "google":
             image_bytes, text_content = extract_image_google(response)
+        else:
+            image_bytes, text_content = extract_image_minimax(response)
     except RuntimeError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         log.debug(f"Image extraction failed. Raw response keys: {list(response.keys()) if response else 'None'}")

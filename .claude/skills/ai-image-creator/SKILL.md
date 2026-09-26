@@ -25,6 +25,10 @@ When the user mentions a model keyword in their image request, use the correspon
 | `gpt5` | [OpenAI GPT-5 Image](https://openrouter.ai/openai/gpt-5-image) | "gpt5", "gpt5 image", "use gpt5" |
 | `gpt5.4` | [OpenAI GPT-5.4 Image 2](https://openrouter.ai/openai/gpt-5.4-image-2) | "gpt5.4", "gpt-5.4 image", "use gpt5.4" |
 
+MiniMax text-to-image generation is available directly with `--provider minimax`.
+It defaults to the global endpoint and `image-01`; use `--minimax-region cn` for
+the China endpoint or `-m image-01-live` for the live model.
+
 ## Instructions
 
 > **Routing check:** If the user asks to **describe, analyze, or explain an existing image** (not generate a new one), skip directly to the **Image Analysis (`--analyze`)** section below. No prompt enhancement or output path needed.
@@ -101,6 +105,18 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
   [-t]
 ```
 
+With MiniMax:
+
+```bash
+uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
+  --provider minimax \
+  --minimax-region global \
+  --response-format url \
+  -m image-01 \
+  -o "OUTPUT_PATH" \
+  -p "A serene mountain lake at sunset"
+```
+
 With a specific model:
 ```bash
 uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
@@ -157,7 +173,14 @@ If the user needs resizing, format conversion, or other manipulation, first dete
 | `--output` | `-o` | Yes | -- | Output file path (parent dirs auto-created) |
 | `--prompt` | `-p` | No | -- | Inline prompt text |
 | `--prompt-file` | -- | No | `../tmp/prompt.txt` | Path to prompt file |
-| `--provider` | -- | No | `openrouter` | `openrouter` or `google` |
+| `--provider` | -- | No | `openrouter` | `openrouter`, `google`, or `minimax` |
+| `--minimax-region` | -- | No | `global` | MiniMax endpoint region: `global` or `cn` |
+| `--response-format` | -- | No | `url` | MiniMax output format: `url` or `base64` |
+| `--subject-reference` | -- | No | -- | MiniMax subject reference image URL (repeatable) |
+| `--width` / `--height` | -- | No | -- | MiniMax image dimensions; provide both together |
+| `--seed` | -- | No | -- | MiniMax generation seed |
+| `--num-images` | -- | No | -- | MiniMax image count (`n`) |
+| `--prompt-optimizer` | -- | No | -- | Enable MiniMax prompt optimization; use `--no-prompt-optimizer` to disable |
 | `--aspect-ratio` | `-a` | No | model default | OpenRouter only: `1:1`, `16:9`, `9:16`, `3:2`, `2:3`, `4:3`, `3:4`, `4:5`, `5:4`, `21:9` |
 | `--image-size` | `-s` | No | model default | OpenRouter only: `1K`, `2K`, `4K`. `0.5K` is accepted **only** on the Gemini 3.1 Flash preview build (`-m google/gemini-3.1-flash-image-preview-20260226`); every selectable keyword rejects it |
 | `--model` | `-m` | No | `gemini` | Model keyword (`gemini`, `geminipro`, `riverflow`, `flux2`, `seedream`, `gpt5`, `gpt5.4`) or full model ID |
@@ -180,6 +203,7 @@ If the user needs resizing, format conversion, or other manipulation, first dete
 | `AI_IMG_CREATOR_CF_TOKEN` | Gateway mode | Gateway auth token |
 | `AI_IMG_CREATOR_OPENROUTER_KEY` | Direct OpenRouter | OpenRouter API key (`sk-or-...`) |
 | `AI_IMG_CREATOR_GEMINI_KEY` | Direct Google | Google AI Studio API key |
+| `AI_IMG_CREATOR_MINIMAX_KEY` | Direct MiniMax | MiniMax API key |
 
 Gateway mode activates when all 3 `CF_*` vars are set. Falls back to direct mode if gateway fails.
 
