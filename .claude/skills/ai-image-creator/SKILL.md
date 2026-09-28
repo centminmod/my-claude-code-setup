@@ -1,10 +1,10 @@
 ---
 name: ai-image-creator
-description: Generate, edit-from-reference, or analyze images with AI via OpenRouter (gemini, geminipro, riverflow, flux2, seedream, gpt5, gpt5.4; Cloudflare AI Gateway BYOK). Also analyze a video (--analyze-video, read-only — no video generated) into a text description for video prompts. Use when the user asks to generate an image, create a PNG, make an icon, make it transparent, edit with a reference, design a logo/banner, describe/analyze/explain an image ("what's in this image"), or describe/analyze a video ("what happens in this video").
+description: Generate, edit-from-reference, or analyze images with AI via OpenRouter (Gemini, GPT Image, Seedream, Qwen, MAI, Grok, FLUX.2, Recraft, Muse, Riverflow; Cloudflare AI Gateway BYOK). Also analyze a video (--analyze-video, read-only — no video generated) into a text description for video prompts. Use when the user asks to generate an image, create a PNG, make an icon, make it transparent, edit with a reference, design a logo/banner, describe/analyze/explain an image ("what's in this image"), or describe/analyze a video ("what happens in this video").
 allowed-tools: Bash, Read, Write
 compatibility: Requires uv (Python runner) and network access. Environment variables for CF AI Gateway or direct API keys must be configured in shell profile (~/.zshrc on macOS, ~/.bashrc on Linux, or System Environment Variables on Windows).
 metadata:
-  tags: image-generation, ai, openrouter, cloudflare, gemini, flux2, riverflow, seedream, gpt5, gpt54
+  tags: image-generation, ai, openrouter, cloudflare, gemini, flux2, riverflow, seedream, gpt54, gpt-image, qwen, mai, grok, recraft, muse
 ---
 
 # AI Image Creator
@@ -15,15 +15,28 @@ Generate PNG images via multiple AI models, routed through Cloudflare AI Gateway
 
 When the user mentions a model keyword in their image request, use the corresponding `--model` flag:
 
-| Keyword | Model | Use When User Says |
-|---------|-------|--------------------|
-| `gemini` | [Google Gemini 3.1 Flash](https://openrouter.ai/google/gemini-3.1-flash-image) (default) | "gemini", "generate an image" (no model specified) |
-| `geminipro` | [Google Gemini 3 Pro](https://openrouter.ai/google/gemini-3-pro-image) | "geminipro", "gemini pro", "use gemini pro" |
-| `riverflow` | [Sourceful Riverflow v2 Pro](https://openrouter.ai/sourceful/riverflow-v2-pro) | "riverflow", "use riverflow" |
-| `flux2` | [FLUX.2 Max](https://openrouter.ai/black-forest-labs/flux.2-max) | "flux2", "flux", "use flux" |
-| `seedream` | [ByteDance SeedDream 4.5](https://openrouter.ai/bytedance-seed/seedream-4.5) | "seedream", "use seedream" |
-| `gpt5` | [OpenAI GPT-5 Image](https://openrouter.ai/openai/gpt-5-image) | "gpt5", "gpt5 image", "use gpt5" |
-| `gpt5.4` | [OpenAI GPT-5.4 Image 2](https://openrouter.ai/openai/gpt-5.4-image-2) | "gpt5.4", "gpt-5.4 image", "use gpt5.4" |
+| Keyword | Model | Use When User Says | Best For (measured cost · time per image) |
+|---------|-------|--------------------|-------------------------------------------|
+| `gemini` | [Google Gemini 3.1 Flash](https://openrouter.ai/google/gemini-3.1-flash-image) (default) | "gemini", "generate an image" (no model specified) | Versatile default; up to 4K ($0.067 · 12s at 1K) |
+| `gemini-lite` | [Google Gemini 3.1 Flash Lite](https://openrouter.ai/google/gemini-3.1-flash-lite-image) | "gemini lite", "nano banana lite", "fast draft" | Fast cheap iteration; **1K only** ($0.034 · 5s) |
+| `geminipro` | [Google Gemini 3 Pro](https://openrouter.ai/google/gemini-3-pro-image) | "geminipro", "gemini pro", "use gemini pro" | Highest-quality Gemini (~$0.17 at 2K) |
+| `riverflow` | [Sourceful Riverflow v2 Pro](https://openrouter.ai/sourceful/riverflow-v2-pro) | "riverflow", "use riverflow" | Artistic/illustration ($0.15) |
+| `flux2` | [FLUX.2 Max](https://openrouter.ai/black-forest-labs/flux.2-max) | "flux2", "flux", "use flux" | Illustration, clean lines (~$0.07/MP) |
+| `seedream` | [ByteDance Seedream 5.0 Lite](https://openrouter.ai/bytedance-seed/seedream-5-0-lite) | "seedream", "use seedream" | **2K/4K only**, web-connected knowledge, 14 refs ($0.035 · 40s at 2K) |
+| `gpt5.4` | [OpenAI GPT-5.4 Image 2](https://openrouter.ai/openai/gpt-5.4-image-2) | "gpt5.4", "gpt-5.4 image", "use gpt5.4" | Multimodal GPT; also `--analyze` (token-billed) |
+| `gpt-sunburst` | [OpenAI GPT Image 2.5 Sunburst](https://openrouter.ai/openai/gpt-image-2.5-sunburst) | "gpt image", "gpt image 2.5", "sunburst" | Precision editing, 16 refs, `--quality` up to `max`, native `-t` ($0.015 · 26s at default quality; token-billed, rises with `--quality`) |
+| `gpt-flare` | [OpenAI GPT Image 2.5 Flare](https://openrouter.ai/openai/gpt-image-2.5-flare) | "gpt flare", "fast gpt image" | Same features as Sunburst, speed tier ($0.015 · 19s at default quality) |
+| `mai` | [Microsoft MAI-Image-2.6](https://openrouter.ai/microsoft/mai-image-2.6) | "mai", "microsoft image" | Multi-reference compositing of people/products/styles, 5 refs ($0.041 · 25s) |
+| `mai-flash` | [Microsoft MAI-Image-2.6 Flash](https://openrouter.ai/microsoft/mai-image-2.6-flash) | "mai flash" | Faster MAI, same 5-ref editing ($0.020 · 15s) |
+| `grok` | [xAI Grok Imagine Image 2.0](https://openrouter.ai/x-ai/grok-imagine-image-2.0) | "grok", "grok imagine" | 1K/2K, `--quality low\|medium`, 3 refs ($0.060 · 66s — billed above its $0.04 list price; +$0.01/ref) |
+| `qwen` | [Qwen Image 3](https://openrouter.ai/qwen/qwen-image-3) | "qwen", "qwen image" | Small legible text (posters, UI, infographics), 1K/2K, 4 refs ($0.030 · 63s) |
+| `qwen-pro` | [Qwen Image 3 Pro](https://openrouter.ai/qwen/qwen-image-3-pro) | "qwen pro" | Qwen Image 3 with richer world knowledge ($0.040 · 57s) |
+| `muse` | [Meta Muse Image](https://openrouter.ai/meta/muse-image) | "muse", "meta image" | Complex multi-part prompts; reasons first, may search the web; prompt only ($0.010 · 18s, 1600px) |
+| `recraft-flash` | [Recraft V4.1 Flash](https://openrouter.ai/recraft/recraft-v4.1-flash) | "recraft", "cheapest", "quick draft" | Cheapest/fastest ~1K drafts; no `-r` ($0.007 · 5s) |
+
+Models from `seedream` down to `recraft-flash` (except `gpt5.4`) use the OpenRouter **Images API** (`/v1/images`). Each accepts only the `-a`/`-s`/`--quality`/`-r` options it supports, and the script rejects anything else before calling the API. Run `--list-models` to see each model's limits.
+
+**Cost and time** are real OpenRouter charges and end-to-end times (through the Cloudflare gateway) at default settings. They come from the Claude Opus robot benchmark, one sample per model on 2026-09-28. `geminipro`, `riverflow`, `flux2` and `gpt5.4` were not benchmarked; their figures are list prices or earlier cost-log values. For per-model output format, resolution and quality notes, read `references/model-benchmarks.md`. Re-run the benchmark with the `ai-image-test-run` skill.
 
 ## Instructions
 
@@ -98,6 +111,7 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
   [-s "2K"] \
   [-m "model-id"] \
   [-r "ref-image.png"] \
+  [--quality "high"] \
   [-t]
 ```
 
@@ -117,7 +131,7 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
   -p "A friendly robot mascot character"
 ```
 
-With reference image for editing/style transfer (multimodal models only):
+With reference image for editing/style transfer (see **Reference Images** for which models accept `-r`):
 ```bash
 uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
   -o "edited.png" \
@@ -154,20 +168,21 @@ If the user needs resizing, format conversion, or other manipulation, first dete
 
 | Argument | Short | Required | Default | Description |
 |----------|-------|----------|---------|-------------|
-| `--output` | `-o` | Yes | -- | Output file path (parent dirs auto-created) |
+| `--output` | `-o` | Yes | -- | Output file path (parent dirs auto-created). Saved in the format its extension names (`.png`, `.jpg`, `.webp`; anything else means PNG). Models that return another format (Gemini Flash Lite, Grok and Seedream send JPEG; Muse and Recraft send WebP) are converted with ImageMagick, or saved unconverted with a warning if it's missing. The result JSON's `format` field reports what was written |
 | `--prompt` | `-p` | No | -- | Inline prompt text |
 | `--prompt-file` | -- | No | `../tmp/prompt.txt` | Path to prompt file |
 | `--provider` | -- | No | `openrouter` | `openrouter` or `google` |
 | `--aspect-ratio` | `-a` | No | model default | OpenRouter only: `1:1`, `16:9`, `9:16`, `3:2`, `2:3`, `4:3`, `3:4`, `4:5`, `5:4`, `21:9` |
-| `--image-size` | `-s` | No | model default | OpenRouter only: `1K`, `2K`, `4K`. `0.5K` is accepted **only** on the Gemini 3.1 Flash preview build (`-m google/gemini-3.1-flash-image-preview-20260226`); every selectable keyword rejects it |
-| `--model` | `-m` | No | `gemini` | Model keyword (`gemini`, `geminipro`, `riverflow`, `flux2`, `seedream`, `gpt5`, `gpt5.4`) or full model ID |
-| `--ref` | `-r` | No | -- | Reference image file (repeatable). For editing/style transfer. Multimodal models only (gemini, geminipro, gpt5, gpt5.4) |
-| `--analyze` | -- | No | -- | Analyze/describe a reference image (text-only output, no image generated). Requires `-r`. Multimodal models only |
+| `--image-size` | `-s` | No | model default | OpenRouter only: `1K`, `2K`, `4K`. Images-API models accept only their listed sizes (`seedream` 2K/4K; `grok`/`qwen`/`qwen-pro` 1K/2K; the rest none). `gemini-lite` is 1K only. `0.5K` is accepted **only** on the Gemini 3.1 Flash preview build (`-m google/gemini-3.1-flash-image-preview-20260226`); every selectable keyword rejects it |
+| `--model` | `-m` | No | `gemini` | Model keyword (see **Model Selection** or `--list-models`) or full model ID |
+| `--ref` | `-r` | No | -- | Reference image file (repeatable). For editing/style transfer. See **Reference Images** for supported models and per-model limits |
+| `--quality` | -- | No | model default | Images-API models only: `gpt-sunburst`/`gpt-flare` take `auto`, `low`, `medium`, `high`, `xhigh`, `max`; `grok` takes `low`, `medium` |
+| `--analyze` | -- | No | -- | Analyze/describe a reference image (text-only output, no image generated). Requires `-r`. Multimodal chat models only (gemini, gemini-lite, geminipro, gpt5.4) |
 | `--analyze-video` | -- | No | -- | Analyze/describe a video. Pass the video via `-r` (local file or URL). OpenRouter only. Choose a model/preset with `-m` (default `gemini3.5-flash`). Returns **structured JSON** by default |
 | `--prose` | -- | No | -- | (`--analyze-video` only) Return free-text prose instead of the default structured JSON |
 | `--contact-sheet` | -- | No | -- | (`--analyze-video`, local file only) Extract evenly-spaced keyframes with ffmpeg and save a labeled contact-sheet image to `PATH` — a human ground-truth reference. Skipped for URL sources / if ffmpeg is missing |
 | `--verify` | -- | No | -- | (`--analyze-video`, local file only) Second pass that checks the analysis against extracted frames (no video re-sent) and classifies each claim `supported`/`contradicted`/`not_visible`. Adds a `verification` object. Costs one extra model call |
-| `--transparent` | `-t` | No | -- | Generate with transparent background. Requires ffmpeg + imagemagick |
+| `--transparent` | `-t` | No | -- | Generate with transparent background. Native on `gpt-sunburst`/`gpt-flare` (no extra tools); every other model requires ffmpeg + imagemagick |
 | `--costs` | -- | No | -- | Display generation/cost history for this project and exit |
 | `--list-models` | -- | No | -- | List available model keywords and exit |
 
@@ -195,6 +210,8 @@ Generates images with transparent backgrounds using a 3-step pipeline:
 
 **Requirements:** `brew install ffmpeg imagemagick`
 
+**Native transparency:** With `-m gpt-sunburst` or `-m gpt-flare`, `-t` sends `background: transparent` to the Images API instead. The model renders the alpha channel directly: there is no green-screen prompt, no chroma key and no ffmpeg/imagemagick requirement. Output must still be PNG or WebP.
+
 **Use cases:** Game sprites, icons, logos, mascots, marketing assets with transparency.
 
 ```bash
@@ -204,7 +221,17 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
 
 ## Reference Images (`-r`)
 
-Send existing images alongside text prompts for editing, style transfer, or guided generation. Supports multiple references. **Multimodal models only** (gemini, geminipro, gpt5, gpt5.4) — image-only models (riverflow, flux2, seedream) will error.
+Send existing images alongside text prompts for editing, style transfer, or guided generation. Supports multiple references, up to each model's limit:
+
+| Models | Max `-r` |
+|--------|----------|
+| `gemini`, `gemini-lite`, `geminipro`, `gpt5.4` (chat) | no script limit |
+| `gpt-sunburst`, `gpt-flare` | 16 |
+| `seedream` | 14 |
+| `mai`, `mai-flash` | 5 |
+| `qwen`, `qwen-pro` | 4 |
+| `grok` | 3 |
+| `riverflow`, `flux2`, `muse`, `recraft-flash` | not supported (errors) |
 
 ```bash
 # Edit an existing image
@@ -220,7 +247,7 @@ Supported formats: PNG, JPEG, WebP, GIF.
 
 ## Image Analysis (`--analyze`)
 
-Describe, analyze, or explain existing images using multimodal AI vision. Returns text-only output (no image generated). **Multimodal models only** (gemini, geminipro, gpt5, gpt5.4).
+Describe, analyze, or explain existing images using multimodal AI vision. Returns text-only output (no image generated). **Multimodal chat models only** (gemini, gemini-lite, geminipro, gpt5.4). Images-API models output images only and are rejected.
 
 No `-o` output path needed. No prompt enhancement needed. The script outputs JSON to stdout with the model's analysis in the `analysis` field.
 
@@ -235,7 +262,7 @@ uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
 
 # Analyze with a specific model
 uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
-  --analyze -r "photo.png" -m gpt5 -p "What text is visible in this image?"
+  --analyze -r "photo.png" -m gpt5.4 -p "What text is visible in this image?"
 
 # Analyze multiple images together
 uv run python ${CLAUDE_SKILL_DIR}/scripts/generate-image.py \
@@ -465,7 +492,7 @@ CRITICAL: Check tool availability before using. Prefer `magick` (IM7) over `conv
 **Fix:** Make the prompt more specific and descriptive. Avoid prohibited content.
 
 ### "Connection error" / timeout
-**Cause:** Network issue or image generation taking too long (120s timeout).
+**Cause:** Network issue or image generation taking too long (300s timeout).
 **Fix:** Retry. If persistent, try `--provider google` as alternative. Check CF gateway status.
 
 ## Detailed API Reference

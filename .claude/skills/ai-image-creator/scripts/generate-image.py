@@ -2,13 +2,21 @@
 """AI Image Generator — Generate PNG images via multiple OpenRouter models or Google AI Studio.
 
 Supports multiple image generation models via keyword shortcuts:
-    gemini     — Google Gemini 3.1 Flash (default, multimodal)
-    geminipro  — Google Gemini 3 Pro (multimodal, highest quality)
-    riverflow  — Sourceful Riverflow v2 Pro (image-only)
-    flux2      — Black Forest Labs FLUX.2 Max (image-only)
-    seedream   — ByteDance SeedDream 4.5 (image-only)
-    gpt5       — OpenAI GPT-5 Image (multimodal)
-    gpt5.4     — OpenAI GPT-5.4 Image 2 (multimodal, 272K context)
+    gemini        — Google Gemini 3.1 Flash (default, multimodal)
+    gemini-lite   — Google Gemini 3.1 Flash Lite (multimodal, fast, 1K only)
+    geminipro     — Google Gemini 3 Pro (multimodal, highest quality)
+    riverflow     — Sourceful Riverflow v2 Pro (image-only)
+    flux2         — Black Forest Labs FLUX.2 Max (image-only)
+    gpt5.4        — OpenAI GPT-5.4 Image 2 (multimodal, 272K context)
+  Via the OpenRouter Images API (/v1/images):
+    seedream      — ByteDance Seedream 5.0 Lite (2K/4K)
+    gpt-sunburst  — OpenAI GPT Image 2.5 Sunburst (precision, native transparency)
+    gpt-flare     — OpenAI GPT Image 2.5 Flare (speed, native transparency)
+    mai / mai-flash — Microsoft MAI-Image-2.6 / 2.6 Flash (multi-reference editing)
+    grok          — xAI Grok Imagine Image 2.0
+    qwen / qwen-pro — Qwen Image 3 / 3 Pro (small-text rendering)
+    muse          — Meta Muse Image (reasons before rendering)
+    recraft-flash — Recraft V4.1 Flash (cheapest, fastest drafts)
 
 Routes through Cloudflare AI Gateway BYOK when configured, with automatic
 fallback to direct API calls. Uses only Python stdlib (no pip dependencies).
@@ -29,6 +37,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 import json
 import logging
@@ -51,13 +60,24 @@ DEFAULT_MODELS = {
 }
 
 # Model registry — maps keyword shortcuts to model metadata.
-# All models use the OpenRouter /v1/chat/completions endpoint.
-# Image-only models use modalities: ["image"], multimodal use ["image", "text"].
+# Entries without "api" use the OpenRouter /v1/chat/completions endpoint:
+# image-only models use modalities: ["image"], multimodal use ["image", "text"].
+# Entries with "api": "images" use the dedicated OpenRouter /v1/images endpoint;
+# their "caps" mirror that model's supported_parameters from
+# GET /api/v1/images/models (value lists, or the max for input_references) and
+# gate -a/-s/--quality/-t/-r at the CLI boundary. Prices are the real OpenRouter
+# cost at default settings, measured on the Opus robot benchmark (2026-09-28) —
+# see references/model-benchmarks.md for time, output format and notes.
 MODEL_REGISTRY: dict[str, dict[str, Any]] = {
     "gemini": {
         "id": "google/gemini-3.1-flash-image",
         "modalities": ["image", "text"],
-        "description": "Google Gemini 3.1 Flash — multimodal (text+image), default",
+        "description": "Google Gemini 3.1 Flash — multimodal (text+image), default; ~$0.067/image at 1K",
+    },
+    "gemini-lite": {
+        "id": "google/gemini-3.1-flash-lite-image",
+        "modalities": ["image", "text"],
+        "description": "Google Gemini 3.1 Flash Lite — multimodal, ~5s, 1K only; ~$0.034/image (half of Flash)",
     },
     "geminipro": {
         "id": "google/gemini-3-pro-image",
@@ -75,19 +95,94 @@ MODEL_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Black Forest Labs FLUX.2 Max — image-only, high quality",
     },
     "seedream": {
-        "id": "bytedance-seed/seedream-4.5",
+        "id": "bytedance-seed/seedream-5-0-lite",
         "modalities": ["image"],
-        "description": "ByteDance SeedDream 4.5 — image-only, high quality",
-    },
-    "gpt5": {
-        "id": "openai/gpt-5-image",
-        "modalities": ["image", "text"],
-        "description": "OpenAI GPT-5 Image — multimodal (text+image)",
+        "api": "images",
+        "caps": {"aspect_ratio": True, "resolution": ["2K", "4K"], "input_references": 14},
+        "description": "ByteDance Seedream 5.0 Lite — $0.035/image, 2K/4K, web-connected retrieval",
     },
     "gpt5.4": {
         "id": "openai/gpt-5.4-image-2",
         "modalities": ["image", "text"],
         "description": "OpenAI GPT-5.4 Image 2 — multimodal (text+image), 272K context",
+    },
+    "gpt-sunburst": {
+        "id": "openai/gpt-image-2.5-sunburst",
+        "modalities": ["image"],
+        "api": "images",
+        "caps": {
+            "aspect_ratio": True,
+            "quality": ["auto", "low", "medium", "high", "xhigh", "max"],
+            "background": ["auto", "transparent", "opaque"],
+            "input_references": 16,
+        },
+        "description": "OpenAI GPT Image 2.5 Sunburst — precision tier, editing accuracy, native transparency; ~$0.015/image at default quality (token-billed)",
+    },
+    "gpt-flare": {
+        "id": "openai/gpt-image-2.5-flare",
+        "modalities": ["image"],
+        "api": "images",
+        "caps": {
+            "aspect_ratio": True,
+            "quality": ["auto", "low", "medium", "high", "xhigh", "max"],
+            "background": ["auto", "transparent", "opaque"],
+            "input_references": 16,
+        },
+        "description": "OpenAI GPT Image 2.5 Flare — speed tier, high-volume/prototyping, native transparency; ~$0.015/image at default quality (token-billed)",
+    },
+    "mai": {
+        "id": "microsoft/mai-image-2.6",
+        "modalities": ["image"],
+        "api": "images",
+        "caps": {"aspect_ratio": True, "input_references": 5},
+        "description": "Microsoft MAI-Image-2.6 — precision tier, multi-reference editing (people/products/styles); ~$0.041/image",
+    },
+    "mai-flash": {
+        "id": "microsoft/mai-image-2.6-flash",
+        "modalities": ["image"],
+        "api": "images",
+        "caps": {"aspect_ratio": True, "input_references": 5},
+        "description": "Microsoft MAI-Image-2.6 Flash — lower-latency MAI tier, same 5-ref editing; ~$0.020/image",
+    },
+    "grok": {
+        "id": "x-ai/grok-imagine-image-2.0",
+        "modalities": ["image"],
+        "api": "images",
+        "caps": {
+            "aspect_ratio": True,
+            "resolution": ["1K", "2K"],
+            "quality": ["low", "medium"],
+            "input_references": 3,
+        },
+        "description": "xAI Grok Imagine Image 2.0 — ~$0.06/image billed (listed $0.04; +$0.01/ref), 1K/2K, low/medium quality, slow (~66s)",
+    },
+    "qwen": {
+        "id": "qwen/qwen-image-3",
+        "modalities": ["image"],
+        "api": "images",
+        "caps": {"aspect_ratio": True, "resolution": ["1K", "2K"], "input_references": 4},
+        "description": "Qwen Image 3 — $0.03/image, precise text rendering down to 10px (posters, UI, infographics)",
+    },
+    "qwen-pro": {
+        "id": "qwen/qwen-image-3-pro",
+        "modalities": ["image"],
+        "api": "images",
+        "caps": {"aspect_ratio": True, "resolution": ["1K", "2K"], "input_references": 4},
+        "description": "Qwen Image 3 Pro — $0.04/image, Qwen Image 3 with richer world knowledge",
+    },
+    "muse": {
+        "id": "meta/muse-image",
+        "modalities": ["image"],
+        "api": "images",
+        "caps": {},
+        "description": "Meta Muse Image — $0.01/image, reasons before rendering + web search; prompt only (no -a/-s/-r)",
+    },
+    "recraft-flash": {
+        "id": "recraft/recraft-v4.1-flash",
+        "modalities": ["image"],
+        "api": "images",
+        "caps": {"aspect_ratio": True},
+        "description": "Recraft V4.1 Flash — $0.007/image, ~1.5s, ~1K drafts; text-to-image only (no -r)",
     },
 }
 
@@ -435,6 +530,11 @@ def resolve_model(model_arg: str | None, provider: str) -> tuple[str, list[str]]
     return model_arg, ["image", "text"]
 
 
+def registry_entry(model_id: str) -> dict[str, Any] | None:
+    """Return the MODEL_REGISTRY entry for a full model ID, or None if unregistered."""
+    return next((e for e in MODEL_REGISTRY.values() if e["id"] == model_id), None)
+
+
 def resolve_video_model(model_arg: str | None) -> str:
     """Resolve a video-analysis model keyword/preset/full-ID to a model ID.
 
@@ -578,13 +678,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-m", "--model",
         default=None,
-        help="Model keyword (gemini, geminipro, riverflow, flux2, seedream, gpt5, gpt5.4) or full model ID",
+        help=f"Model keyword ({', '.join(MODEL_REGISTRY)}) or full model ID",
     )
     parser.add_argument(
         "-r", "--ref",
         action="append",
         default=None,
-        help="Reference image file(s) for editing/style transfer (repeatable, multimodal models only)",
+        help="Reference image file(s) for editing/style transfer (repeatable; multimodal chat "
+             "models, or Images-API models within their reference limit — see --list-models)",
+    )
+    parser.add_argument(
+        "--quality",
+        default=None,
+        help="Quality tier for Images-API models that support it "
+             "(gpt-sunburst/gpt-flare: auto|low|medium|high|xhigh|max; grok: low|medium)",
     )
     parser.add_argument(
         "--analyze",
@@ -626,7 +733,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-t", "--transparent",
         action="store_true",
-        help="Generate with transparent background (requires ffmpeg + imagemagick)",
+        help="Generate with transparent background (requires ffmpeg + imagemagick, except "
+             "models with native transparency — gpt-sunburst, gpt-flare)",
     )
     parser.add_argument(
         "--costs",
@@ -687,7 +795,9 @@ def resolve_prompt(args: argparse.Namespace) -> str:
         return args.prompt
 
     if args.prompt_file:
-        prompt_path = Path(args.prompt_file)
+        # Same containment as -r / --analyze-video inputs: the file contents go
+        # verbatim into the outbound request body.
+        prompt_path = _contain_input_path(args.prompt_file, _ALLOW_EXTERNAL_INPUT)
         log.debug(f"Using --prompt-file: {prompt_path}")
     else:
         prompt_path = Path(__file__).parent.parent / "tmp" / "prompt.txt"
@@ -774,20 +884,25 @@ def detect_mode(provider: str) -> tuple[str, dict[str, str]]:
         sys.exit(1)
 
 
-def build_gateway_url(provider: str, model: str, config: dict[str, str]) -> str:
+def build_gateway_url(
+    provider: str, model: str, config: dict[str, str], images_api: bool = False,
+) -> str:
     """Build CF AI Gateway URL for the given provider.
 
     Args:
         provider: 'openrouter' or 'google'.
         model: Model ID (used in Google URL path).
         config: Credentials dict with cf_account, cf_gateway keys.
+        images_api: Target OpenRouter's dedicated /v1/images endpoint instead
+            of /v1/chat/completions (OpenRouter only).
 
     Returns:
         Full gateway URL string.
     """
     base = f"https://gateway.ai.cloudflare.com/v1/{config['cf_account']}/{config['cf_gateway']}"
     if provider == "openrouter":
-        url = f"{base}/openrouter/v1/chat/completions"
+        path = "images" if images_api else "chat/completions"
+        url = f"{base}/openrouter/v1/{path}"
     else:
         # Google AI Studio paths use the bare model id; strip an OpenRouter-style
         # "google/" prefix so we don't emit .../models/google/<model>:generateContent.
@@ -797,18 +912,21 @@ def build_gateway_url(provider: str, model: str, config: dict[str, str]) -> str:
     return url
 
 
-def build_direct_url(provider: str, model: str) -> str:
+def build_direct_url(provider: str, model: str, images_api: bool = False) -> str:
     """Build direct API URL for the given provider.
 
     Args:
         provider: 'openrouter' or 'google'.
         model: Model ID (used in Google URL path).
+        images_api: Target OpenRouter's dedicated /v1/images endpoint instead
+            of /v1/chat/completions (OpenRouter only).
 
     Returns:
         Full direct API URL string.
     """
     if provider == "openrouter":
-        url = "https://openrouter.ai/api/v1/chat/completions"
+        path = "images" if images_api else "chat/completions"
+        url = f"https://openrouter.ai/api/v1/{path}"
     else:
         # Google's native API also wants the bare model id (no "google/" prefix).
         model_path = model.removeprefix("google/")
@@ -1018,6 +1136,58 @@ def build_request_body(
     return body
 
 
+def build_images_request_body(
+    model: str,
+    prompt: str,
+    aspect_ratio: str | None = None,
+    image_size: str | None = None,
+    quality: str | None = None,
+    background: str | None = None,
+    ref_images: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a JSON body for OpenRouter's dedicated /v1/images endpoint.
+
+    Only fields the caller passes are sent; main() has already checked each one
+    against the model's registry "caps". References travel as `input_references`
+    (base64 data URLs), not as chat message content.
+
+    Args:
+        model: Model ID string.
+        prompt: The image generation prompt text.
+        aspect_ratio: Optional aspect ratio, e.g. '16:9'.
+        image_size: Optional resolution tier ('1K', '2K', '4K'), sent as `resolution`.
+        quality: Optional quality tier, e.g. 'high'.
+        background: Optional background mode, e.g. 'transparent'.
+        ref_images: Optional list of reference image file paths.
+
+    Returns:
+        Dict suitable for JSON serialization as request body.
+    """
+    body: dict[str, Any] = {"model": model, "prompt": prompt}
+    if aspect_ratio:
+        body["aspect_ratio"] = aspect_ratio
+    if image_size:
+        body["resolution"] = image_size
+    if quality:
+        body["quality"] = quality
+    if background:
+        body["background"] = background
+    if ref_images:
+        refs: list[dict[str, Any]] = []
+        for ref_path in ref_images:
+            b64 = base64.b64encode(Path(ref_path).read_bytes()).decode()
+            mime = guess_mime(ref_path)
+            refs.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+            log.info(f"Reference image: {ref_path} ({mime}, {len(b64)} base64 chars)")
+        body["input_references"] = refs
+
+    if log.isEnabledFor(logging.DEBUG):
+        body_preview = json.dumps(body)
+        log.debug(f"Request body size: {len(body_preview)} bytes")
+        log.debug(f"Request body (truncated): {body_preview[:500]}")
+    return body
+
+
 def make_request(
     url: str,
     headers: dict[str, str],
@@ -1044,71 +1214,118 @@ def make_request(
     log.debug(f"Sending POST to {url} ({len(data)} bytes, timeout={timeout}s)")
     start_time = time.time()
 
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            elapsed = time.time() - start_time
-            response_data = resp.read().decode("utf-8")
-            log.info(f"Response received: HTTP {resp.status} in {elapsed:.1f}s ({len(response_data)} bytes)")
-            log.debug(f"Response headers: {dict(resp.headers)}")
+    # Retry transient failures (HTTP 429/5xx, connection reset, timeout) with
+    # exponential backoff. OpenRouter documents 429/5xx as retryable; the outer
+    # gateway->direct fallback in main() separately covers gateway-specific errors.
+    _RETRIABLE_STATUS = {429, 500, 502, 503, 504}
+    _MAX_RETRIES = 3
+    _BASE_BACKOFF = 2.0
 
-            parsed = json.loads(response_data)
+    def _backoff_delay(attempt: int) -> float:
+        return min(_BASE_BACKOFF * (2 ** (attempt - 1)), 30.0)
 
-            # Log response structure (without huge base64 data)
-            log.debug(f"Response top-level keys: {list(parsed.keys())}")
-            if "choices" in parsed:
-                for i, choice in enumerate(parsed["choices"]):
-                    msg = choice.get("message", {})
-                    log.debug(f"  choices[{i}].message keys: {list(msg.keys())}")
-                    if "images" in msg:
-                        log.debug(f"  choices[{i}].message.images count: {len(msg['images'])}")
-                    if "content" in msg:
-                        log.debug(f"  choices[{i}].message.content: {str(msg['content'])[:200]}")
-            if "candidates" in parsed:
-                for i, cand in enumerate(parsed["candidates"]):
-                    parts = cand.get("content", {}).get("parts", [])
-                    log.debug(f"  candidates[{i}].content.parts count: {len(parts)}")
-                    for j, part in enumerate(parts):
-                        ptype = "inlineData" if "inlineData" in part else "text" if "text" in part else "unknown"
-                        if ptype == "inlineData":
-                            mime = part["inlineData"].get("mimeType", "?")
-                            dlen = len(part["inlineData"].get("data", ""))
-                            log.debug(f"    part[{j}]: inlineData ({mime}, {dlen} base64 chars)")
-                        elif ptype == "text":
-                            log.debug(f"    part[{j}]: text ({len(part['text'])} chars): {part['text'][:100]}")
-
-            return parsed
-    except urllib.error.HTTPError as e:
-        elapsed = time.time() - start_time
-        error_body = ""
+    for attempt in range(1, _MAX_RETRIES + 2):  # 1 initial attempt + up to 3 retries
         try:
-            error_body = e.read().decode("utf-8")
-        except Exception:
-            pass
-        log.debug(f"HTTP error after {elapsed:.1f}s: {e.code} {e.reason}")
-        log.debug(f"Error response headers: {dict(e.headers) if hasattr(e, 'headers') else 'N/A'}")
-        log.debug(f"Error response body: {error_body[:1000]}")
-        # Surface Cloudflare AI Gateway diagnostics (cf-aig-* + CF-RAY) in the error
-        # itself, so an auth/guardrail failure (e.g. 2009 Unauthorized) is debuggable
-        # without re-running under --debug.
-        cf_diag = ""
-        if hasattr(e, "headers") and e.headers:
-            cf_hdrs = {
-                k: v for k, v in e.headers.items()
-                if k.lower().startswith("cf-aig-") or k.lower() == "cf-ray"
-            }
-            if cf_hdrs:
-                cf_diag = f"\nCloudflare: {json.dumps(cf_hdrs)}"
-        raise RuntimeError(
-            f"HTTP {e.code}: {e.reason}\n{error_body}{cf_diag}"
-        ) from e
-    except urllib.error.URLError as e:
-        elapsed = time.time() - start_time
-        log.debug(f"URL error after {elapsed:.1f}s: {e.reason}")
-        raise RuntimeError(f"Connection error: {e.reason}") from e
-    except TimeoutError:
-        elapsed = time.time() - start_time
-        log.debug(f"Request timed out after {elapsed:.1f}s (limit: {timeout}s)")
-        raise RuntimeError(f"Request timed out after {timeout}s")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                elapsed = time.time() - start_time
+                response_data = resp.read().decode("utf-8")
+                log.info(f"Response received: HTTP {resp.status} in {elapsed:.1f}s ({len(response_data)} bytes)")
+                log.debug(f"Response headers: {dict(resp.headers)}")
+
+                parsed = json.loads(response_data)
+
+                # Log response structure (without huge base64 data)
+                log.debug(f"Response top-level keys: {list(parsed.keys())}")
+                if "choices" in parsed:
+                    for i, choice in enumerate(parsed["choices"]):
+                        msg = choice.get("message", {})
+                        log.debug(f"  choices[{i}].message keys: {list(msg.keys())}")
+                        if "images" in msg:
+                            log.debug(f"  choices[{i}].message.images count: {len(msg['images'])}")
+                        if "content" in msg:
+                            log.debug(f"  choices[{i}].message.content: {str(msg['content'])[:200]}")
+                if "candidates" in parsed:
+                    for i, cand in enumerate(parsed["candidates"]):
+                        parts = cand.get("content", {}).get("parts", [])
+                        log.debug(f"  candidates[{i}].content.parts count: {len(parts)}")
+                        for j, part in enumerate(parts):
+                            ptype = "inlineData" if "inlineData" in part else "text" if "text" in part else "unknown"
+                            if ptype == "inlineData":
+                                mime = part["inlineData"].get("mimeType", "?")
+                                dlen = len(part["inlineData"].get("data", ""))
+                                log.debug(f"    part[{j}]: inlineData ({mime}, {dlen} base64 chars)")
+                            elif ptype == "text":
+                                log.debug(f"    part[{j}]: text ({len(part['text'])} chars): {part['text'][:100]}")
+
+                return parsed
+        except urllib.error.HTTPError as e:
+            elapsed = time.time() - start_time
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8")
+            except Exception:
+                pass
+            log.debug(f"HTTP error after {elapsed:.1f}s: {e.code} {e.reason}")
+            log.debug(f"Error response headers: {dict(e.headers) if hasattr(e, 'headers') else 'N/A'}")
+            log.debug(f"Error response body: {error_body[:1000]}")
+            # Surface Cloudflare AI Gateway diagnostics (cf-aig-* + CF-RAY) in the error
+            # itself, so an auth/guardrail failure (e.g. 2009 Unauthorized) is debuggable
+            # without re-running under --debug.
+            cf_diag = ""
+            if hasattr(e, "headers") and e.headers:
+                cf_hdrs = {
+                    k: v for k, v in e.headers.items()
+                    if k.lower().startswith("cf-aig-") or k.lower() == "cf-ray"
+                }
+                if cf_hdrs:
+                    cf_diag = f"\nCloudflare: {json.dumps(cf_hdrs)}"
+            err = RuntimeError(
+                f"HTTP {e.code}: {e.reason}\n{error_body}{cf_diag}"
+            )
+            if e.code in _RETRIABLE_STATUS and attempt <= _MAX_RETRIES:
+                delay = _backoff_delay(attempt)
+                # Honor Retry-After on 429 when the upstream provides it.
+                if e.code == 429 and hasattr(e, "headers") and e.headers:
+                    retry_after = e.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            delay = max(delay, float(retry_after))
+                        except ValueError:
+                            pass
+                log.warning(
+                    f"HTTP {e.code} on attempt {attempt}/{_MAX_RETRIES + 1}; "
+                    f"retrying in {delay:.1f}s"
+                )
+                time.sleep(delay)
+                continue
+            raise err from e
+        except urllib.error.URLError as e:
+            elapsed = time.time() - start_time
+            log.debug(f"URL error after {elapsed:.1f}s: {e.reason}")
+            err = RuntimeError(f"Connection error: {e.reason}")
+            if attempt <= _MAX_RETRIES:
+                delay = _backoff_delay(attempt)
+                log.warning(
+                    f"Connection error on attempt {attempt}/{_MAX_RETRIES + 1}: "
+                    f"{e.reason}; retrying in {delay:.1f}s"
+                )
+                time.sleep(delay)
+                continue
+            raise err from e
+        except TimeoutError:
+            elapsed = time.time() - start_time
+            log.debug(f"Request timed out after {elapsed:.1f}s (limit: {timeout}s)")
+            err = RuntimeError(f"Request timed out after {timeout}s")
+            if attempt <= _MAX_RETRIES:
+                delay = _backoff_delay(attempt)
+                log.warning(
+                    f"Timeout on attempt {attempt}/{_MAX_RETRIES + 1}; retrying in {delay:.1f}s"
+                )
+                time.sleep(delay)
+                continue
+            raise err
+    # Unreachable: every loop iteration either returns or raises.
+    raise RuntimeError("make_request: retries exhausted")
 
 
 def extract_image_openrouter(response: dict) -> tuple[bytes, str]:
@@ -1141,7 +1358,26 @@ def extract_image_openrouter(response: dict) -> tuple[bytes, str]:
             f"No images in response. Model text: {text_content or '(empty)'}"
         )
 
-    data_url = images[0]["image_url"]["url"]
+    # Defensive extraction — response shapes vary across OR models/providers, and
+    # a rigid images[0]["image_url"]["url"] chain KeyErrors/TypeErrors on any
+    # variant, masking the real cause. Accept the standard nested shape, an inline
+    # image_url string, a direct url, or a bare string.
+    first = images[0]
+    data_url = None
+    if isinstance(first, str):
+        data_url = first
+    elif isinstance(first, dict):
+        node = first.get("image_url")
+        if isinstance(node, dict):
+            data_url = node.get("url")
+        elif isinstance(node, str):
+            data_url = node
+        data_url = data_url or first.get("url")
+    if not data_url:
+        raise RuntimeError(
+            "Could not extract image URL from response. "
+            f"images[0] shape: {json.dumps(first)[:200]}"
+        )
     log.debug(f"Image data URL prefix: {data_url[:60]}...")
     log.debug(f"Image data URL total length: {len(data_url)} chars")
 
@@ -1154,6 +1390,44 @@ def extract_image_openrouter(response: dict) -> tuple[bytes, str]:
     image_bytes = base64.b64decode(b64_data)
     log.info(f"Decoded image: {len(image_bytes)} bytes ({len(b64_data)} base64 chars)")
     return image_bytes, text_content
+
+
+def extract_image_openrouter_images(response: dict) -> tuple[bytes, str]:
+    """Extract base64 image data from an OpenRouter /v1/images response.
+
+    The response shape is {"data": [{"b64_json": ..., "media_type": ...}], "usage": {...}}.
+
+    Args:
+        response: Parsed JSON response from the OpenRouter Images API.
+
+    Returns:
+        Tuple of (image_bytes, text_content); text_content is always empty
+        because the Images API returns no model text.
+
+    Raises:
+        RuntimeError: If no image data found in response.
+    """
+    data = response.get("data") or []
+    if not data:
+        error = response.get("error")
+        if error:
+            msg = error.get("message", str(error)) if isinstance(error, dict) else str(error)
+            raise RuntimeError(f"API error: {msg}")
+        raise RuntimeError(f"No image data in response: {json.dumps(response)[:500]}")
+
+    first = data[0]
+    b64_data = first.get("b64_json") if isinstance(first, dict) else None
+    if not b64_data:
+        raise RuntimeError(
+            "Could not extract b64_json from response. "
+            f"data[0] shape: {json.dumps(first)[:200]}"
+        )
+    image_bytes = base64.b64decode(b64_data)
+    log.info(
+        f"Decoded image: {len(image_bytes)} bytes "
+        f"({first.get('media_type', 'unknown media type')})"
+    )
+    return image_bytes, ""
 
 
 def extract_image_google(response: dict) -> tuple[bytes, str]:
@@ -1288,6 +1562,67 @@ def find_imagemagick() -> str | None:
             log.debug(f"Found ImageMagick: {cmd} at {path}")
             return cmd
     return None
+
+
+# Leading-byte signatures, used to match returned image bytes to the -o extension.
+_IMAGE_SIGNATURES = (
+    (b"\x89PNG\r\n\x1a\n", "png"),
+    (b"\xff\xd8\xff", "jpeg"),
+    (b"GIF8", "gif"),
+)
+_EXT_FORMATS = {".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".webp": "webp"}
+
+
+def sniff_image_format(data: bytes) -> str | None:
+    """Identify PNG/JPEG/WebP/GIF bytes by their signature, or None if unknown."""
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return next((fmt for sig, fmt in _IMAGE_SIGNATURES if data.startswith(sig)), None)
+
+
+def write_image(image_bytes: bytes, output_path: Path) -> None:
+    """Write image bytes to output_path in the format its extension names.
+
+    Providers return PNG, JPEG or WebP whatever the -o extension says (e.g.
+    Gemini Flash Lite and Grok send JPEG, Muse and Recraft send WebP), so bytes
+    in another format are converted with ImageMagick. An unrecognized extension
+    means PNG. Without ImageMagick, or if conversion fails, the bytes are written
+    as-is with a warning — a paid-for image is never discarded.
+
+    Args:
+        image_bytes: Raw image data from the API.
+        output_path: Destination; its suffix selects the target format.
+    """
+    actual = sniff_image_format(image_bytes)
+    wanted = _EXT_FORMATS.get(output_path.suffix.lower(), "png")
+    if actual is None or actual == wanted:
+        output_path.write_bytes(image_bytes)
+        return
+    unconverted = (
+        f"model returned {actual.upper()} but {output_path.name} expects {wanted.upper()}; "
+        f"saved unconverted"
+    )
+    magick_cmd = find_imagemagick()
+    if not magick_cmd:
+        print(f"WARNING: {unconverted} (brew install imagemagick to convert).", file=sys.stderr)
+        output_path.write_bytes(image_bytes)
+        return
+    with tempfile.NamedTemporaryFile(suffix=f".{actual}", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        tmp_path.write_bytes(image_bytes)
+        # "<format>:<path>" forces the encoder even for an unrecognized extension
+        result = subprocess.run(
+            [magick_cmd, str(tmp_path), f"{wanted}:{output_path}"],
+            capture_output=True, text=True, timeout=60,
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    if result.returncode != 0:
+        print(f"WARNING: {unconverted} (ImageMagick: {result.stderr.strip()[-300:]}).", file=sys.stderr)
+        output_path.write_bytes(image_bytes)
+        return
+    print(f"Converted {actual.upper()} -> {wanted.upper()}: {output_path}", file=sys.stderr)
 
 
 def check_ffmpeg_despill() -> bool:
@@ -1573,7 +1908,7 @@ def log_cost_entry(
     # responses and Cloudflare-gateway responses frequently omit the `usage`
     # block entirely — so token_usage is best-effort and may legitimately be {}
     # / report 0 tokens. `--costs` totals can therefore under-count.
-    token_usage: dict[str, int] = {}
+    token_usage: dict[str, Any] = {}
     if provider == "openrouter":
         usage = response.get("usage", {})
         if usage:
@@ -1582,6 +1917,9 @@ def log_cost_entry(
                 "completion_tokens": usage.get("completion_tokens", 0),
                 "total_tokens": usage.get("total_tokens", 0),
             }
+            # OpenRouter reports the billed USD cost (always on /v1/images).
+            if "cost" in usage:
+                token_usage["cost"] = usage["cost"]
     else:
         # Google AI Studio format
         usage = response.get("usageMetadata", {})
@@ -1610,7 +1948,11 @@ def log_cost_entry(
     entries: list[dict[str, Any]] = []
     if costs_path.exists():
         try:
-            entries = json.loads(costs_path.read_text(encoding="utf-8"))
+            loaded = json.loads(costs_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                entries = loaded
+            else:
+                log.warning(f"{costs_path} did not contain a list, starting fresh")
         except (json.JSONDecodeError, OSError):
             log.warning(f"Could not read {costs_path}, starting fresh")
 
@@ -1723,9 +2065,22 @@ def main() -> None:
         print("Image generation model keywords:")
         for kw, info in MODEL_REGISTRY.items():
             default = " (default)" if info["id"] == DEFAULT_MODELS.get("openrouter") else ""
-            print(f"  {kw:12s} -> {info['id']}{default}")
-            print(f"               {info['description']}")
-            print(f"               modalities: {', '.join(info['modalities'])}")
+            print(f"  {kw:13s} -> {info['id']}{default}")
+            print(f"                {info['description']}")
+            if info.get("api") == "images":
+                caps = info["caps"]
+                limits = [f"refs <= {caps.get('input_references', 0)}"]
+                if "resolution" in caps:
+                    limits.append(f"-s {'/'.join(caps['resolution'])}")
+                if "quality" in caps:
+                    limits.append(f"--quality {'/'.join(caps['quality'])}")
+                if "transparent" in caps.get("background", []):
+                    limits.append("native -t")
+                if "aspect_ratio" not in caps:
+                    limits.append("no -a")
+                print(f"                api: images · {' · '.join(limits)}")
+            else:
+                print(f"                api: chat · modalities: {', '.join(info['modalities'])}")
         print("\nVideo analysis model keywords (--analyze-video, cheapest first):")
         for kw, info in VIDEO_MODEL_REGISTRY.items():
             default = " (default)" if kw == DEFAULT_VIDEO_MODEL else ""
@@ -1826,6 +2181,41 @@ def main() -> None:
             sys.exit(1)
         args.image_size = size
 
+    # Images-API models (/v1/images) — gate every option against the model's
+    # documented caps here, so an unsupported flag fails with a clear message
+    # instead of an opaque upstream 400 (or a silently ignored field).
+    entry = None if args.analyze_video else registry_entry(model)
+    images_api = bool(entry and entry.get("api") == "images")
+    caps: dict[str, Any] = entry["caps"] if entry and images_api else {}
+    if images_api:
+        kw = next(k for k, e in MODEL_REGISTRY.items() if e is entry)
+        cap_errors: list[str] = []
+        if args.provider != "openrouter":
+            cap_errors.append(f"'{kw}' uses the OpenRouter Images API — requires --provider openrouter")
+        if args.analyze:
+            cap_errors.append(f"'{kw}' outputs images only — use a multimodal chat model for --analyze (e.g. gemini)")
+        if args.aspect_ratio and "aspect_ratio" not in caps:
+            cap_errors.append(f"'{kw}' does not accept --aspect-ratio")
+        if args.image_size and args.image_size not in caps.get("resolution", []):
+            allowed = ", ".join(caps.get("resolution", [])) or "none (model picks its own size)"
+            cap_errors.append(f"'{kw}' does not accept --image-size {args.image_size} (supported: {allowed})")
+        if args.quality and args.quality not in caps.get("quality", []):
+            allowed = ", ".join(caps.get("quality", [])) or "none"
+            cap_errors.append(f"'{kw}' does not accept --quality {args.quality} (supported: {allowed})")
+        max_refs = caps.get("input_references", 0)
+        if args.ref and len(args.ref) > max_refs:
+            cap_errors.append(f"'{kw}' accepts at most {max_refs} reference image(s) via -r, got {len(args.ref)}")
+        if cap_errors:
+            for err_msg in cap_errors:
+                print(f"ERROR: {err_msg}", file=sys.stderr)
+            sys.exit(1)
+    elif args.quality:
+        quality_kws = [k for k, e in MODEL_REGISTRY.items() if "quality" in e.get("caps", {})]
+        print(f"ERROR: --quality is only supported by: {', '.join(quality_kws)}", file=sys.stderr)
+        sys.exit(1)
+    # Native transparency (background=transparent) replaces the green-screen pipeline.
+    native_transparent = args.transparent and "transparent" in caps.get("background", [])
+
     # Video source for --analyze-video (a file path or URL passed via -r).
     # Kept separate from the image ref_images plumbing below.
     video_source: str | None = None
@@ -1878,12 +2268,17 @@ def main() -> None:
             print(f"WARNING: {which} requires ffmpeg (not found); skipping frame grounding.", file=sys.stderr)
         else:
             grounding_tmpdir = Path(tempfile.mkdtemp(prefix="aivc_kf_"))
+            atexit.register(shutil.rmtree, grounding_tmpdir, ignore_errors=True)
             print("Extracting keyframes for grounding...", file=sys.stderr)
             grounding_frames = extract_keyframes(Path(video_source), grounding_tmpdir)
             if not grounding_frames:
                 print("WARNING: keyframe extraction produced no frames; skipping grounding.", file=sys.stderr)
             else:
-                sheet_target = Path(args.contact_sheet) if args.contact_sheet else (grounding_tmpdir / "contact_sheet.png")
+                sheet_target = (
+                    _contain_output_path(args.contact_sheet, _ALLOW_EXTERNAL_OUTPUT)
+                    if args.contact_sheet
+                    else (grounding_tmpdir / "contact_sheet.png")
+                )
                 if build_contact_sheet(grounding_frames, sheet_target):
                     grounding_sheet = sheet_target
                     if args.contact_sheet:
@@ -1894,18 +2289,23 @@ def main() -> None:
     # Validate reference images (image-generation / --analyze paths only)
     ref_images = [] if args.analyze_video else (args.ref or [])
     if ref_images:
-        # Check model supports multimodal input
-        if "text" not in modalities:
+        # Chat-endpoint models need multimodal input; Images-API models were
+        # already checked against their input_references cap above.
+        if not images_api and "text" not in modalities:
+            ref_kws = [
+                k for k, e in MODEL_REGISTRY.items()
+                if e.get("caps", {}).get("input_references", 0) > 0
+                or (e.get("api") != "images" and "text" in e["modalities"])
+            ]
             _mm_hint = (
                 "Use --model gemini or geminipro"
                 if args.provider == "google"
-                else "Use --model gemini, geminipro, gpt5, or gpt5.4"
+                else f"Use --model {', '.join(ref_kws)}"
             )
             print(
-                f"ERROR: Reference images (-r) require a multimodal model. "
-                f"'{model}' only supports image output.\n"
+                f"ERROR: Reference images (-r) are not supported by '{model}'.\n"
                 f"{_mm_hint} for image editing/style transfer "
-                f"(--analyze / -r is OpenRouter-oriented; gpt5/gpt5.4 need --provider openrouter).",
+                f"(--analyze needs a multimodal chat model; all but gemini/geminipro need --provider openrouter).",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -1923,13 +2323,19 @@ def main() -> None:
 
     # Validate transparent mode tools
     if args.transparent:
-        if not shutil.which("ffmpeg"):
-            print("ERROR: Transparent mode requires FFmpeg. Install with: brew install ffmpeg", file=sys.stderr)
+        if output_path and output_path.suffix.lower() in (".jpg", ".jpeg"):
+            print("ERROR: --transparent requires a PNG or WebP --output — JPEG has no alpha channel.", file=sys.stderr)
             sys.exit(1)
-        if not find_imagemagick():
-            print("ERROR: Transparent mode requires ImageMagick. Install with: brew install imagemagick", file=sys.stderr)
-            sys.exit(1)
-        print("Transparent mode: enabled", file=sys.stderr)
+        if native_transparent:
+            print("Transparent mode: enabled (native background=transparent)", file=sys.stderr)
+        else:
+            if not shutil.which("ffmpeg"):
+                print("ERROR: Transparent mode requires FFmpeg. Install with: brew install ffmpeg", file=sys.stderr)
+                sys.exit(1)
+            if not find_imagemagick():
+                print("ERROR: Transparent mode requires ImageMagick. Install with: brew install imagemagick", file=sys.stderr)
+                sys.exit(1)
+            print("Transparent mode: enabled", file=sys.stderr)
 
     # Default prompt for analyze / analyze-video mode (if user didn't provide one).
     # Always assign the analyze default here — do NOT fall through to a stale
@@ -1950,8 +2356,8 @@ def main() -> None:
     # Resolve prompt
     prompt = resolve_prompt(args)
 
-    # Inject green screen instructions for transparent mode
-    if args.transparent:
+    # Inject green screen instructions for (non-native) transparent mode
+    if args.transparent and not native_transparent:
         prompt += (
             "\n\nIMPORTANT: Place the subject on a perfectly solid, flat, bright green "
             "background (#00FF00). No shadows, no gradients, no floor reflections — "
@@ -1973,12 +2379,17 @@ def main() -> None:
 
     print(f"Provider: {args.provider}", file=sys.stderr)
     print(f"Model: {model}", file=sys.stderr)
-    print(f"Modalities: {', '.join(modalities)}", file=sys.stderr)
+    if images_api:
+        print("API: images (/v1/images)", file=sys.stderr)
+    else:
+        print(f"Modalities: {', '.join(modalities)}", file=sys.stderr)
     print(f"Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}", file=sys.stderr)
     if args.aspect_ratio:
         print(f"Aspect ratio: {args.aspect_ratio}", file=sys.stderr)
     if args.image_size:
         print(f"Image size: {args.image_size}", file=sys.stderr)
+    if args.quality:
+        print(f"Quality: {args.quality}", file=sys.stderr)
 
     # Detect mode
     mode, config = detect_mode(args.provider)
@@ -1986,18 +2397,26 @@ def main() -> None:
 
     # Build request
     if mode == "gateway":
-        url = build_gateway_url(args.provider, model, config)
+        url = build_gateway_url(args.provider, model, config, images_api=images_api)
     else:
-        url = build_direct_url(args.provider, model)
+        url = build_direct_url(args.provider, model, images_api=images_api)
 
     headers = build_headers(args.provider, mode, config)
-    body = build_request_body(
-        args.provider, model, prompt, args.aspect_ratio, args.image_size,
-        modalities=modalities,
-        ref_images=ref_images if ref_images else None,
-        video_source=video_source,
-        json_schema=VIDEO_JSON_SCHEMA if video_json_mode else None,
-    )
+    if images_api:
+        body = build_images_request_body(
+            model, prompt, args.aspect_ratio, args.image_size,
+            quality=args.quality,
+            background="transparent" if native_transparent else None,
+            ref_images=ref_images or None,
+        )
+    else:
+        body = build_request_body(
+            args.provider, model, prompt, args.aspect_ratio, args.image_size,
+            modalities=modalities,
+            ref_images=ref_images if ref_images else None,
+            video_source=video_source,
+            json_schema=VIDEO_JSON_SCHEMA if video_json_mode else None,
+        )
 
     print(f"URL: {url}", file=sys.stderr)
     if args.analyze_video:
@@ -2013,13 +2432,19 @@ def main() -> None:
     try:
         response = make_request(url, headers, body)
     except RuntimeError as e:
-        if mode == "gateway" and config.get("direct_key"):
+        # A 400/422 is a permanent client error — the request body itself is the
+        # problem, so replaying it to direct fails identically (and re-uploads any
+        # large grounding/ref body). Only fall back for errors direct could
+        # plausibly fix (gateway-auth, gateway-specific 5xx, exhausted transients).
+        msg_str = str(e)
+        permanent_client = msg_str.startswith("HTTP 400") or msg_str.startswith("HTTP 422")
+        if mode == "gateway" and config.get("direct_key") and not permanent_client:
             print(
                 f"Gateway request failed: {e}\nFalling back to direct API...",
                 file=sys.stderr,
             )
             log.info("Initiating fallback to direct API")
-            url = build_direct_url(args.provider, model)
+            url = build_direct_url(args.provider, model, images_api=images_api)
             headers = build_headers(args.provider, "direct", config)
             try:
                 response = make_request(url, headers, body)
@@ -2191,7 +2616,9 @@ def main() -> None:
 
     # Extract image
     try:
-        if args.provider == "openrouter":
+        if images_api:
+            image_bytes, text_content = extract_image_openrouter_images(response)
+        elif args.provider == "openrouter":
             image_bytes, text_content = extract_image_openrouter(response)
         else:
             image_bytes, text_content = extract_image_google(response)
@@ -2204,7 +2631,7 @@ def main() -> None:
     assert output_path is not None  # guaranteed by validation above
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if args.transparent:
+    if args.transparent and not native_transparent:
         # Write to temp file, then process through transparent pipeline
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_raw:
             tmp_raw_path = Path(tmp_raw.name)
@@ -2216,7 +2643,10 @@ def main() -> None:
         finally:
             tmp_raw_path.unlink(missing_ok=True)
     else:
-        output_path.write_bytes(image_bytes)
+        write_image(image_bytes, output_path)
+        # Re-read: a format conversion changes the bytes (and size) on disk
+        image_bytes = output_path.read_bytes()
+    image_format = sniff_image_format(image_bytes) or "unknown"
 
     total_elapsed = time.time() - total_start
 
@@ -2230,6 +2660,8 @@ def main() -> None:
             prompt_meta += f"- **Aspect ratio:** {args.aspect_ratio}\n"
         if args.image_size:
             prompt_meta += f"- **Image size:** {args.image_size}\n"
+        if args.quality:
+            prompt_meta += f"- **Quality:** {args.quality}\n"
         if args.transparent:
             prompt_meta += f"- **Transparent:** yes\n"
         if ref_images:
@@ -2272,6 +2704,7 @@ def main() -> None:
     result = {
         "ok": True,
         "output": str(output_path),
+        "format": image_format,
         "size_bytes": len(image_bytes),
         "provider": args.provider,
         "model": model,

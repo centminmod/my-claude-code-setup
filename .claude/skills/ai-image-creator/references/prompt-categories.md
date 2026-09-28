@@ -17,7 +17,7 @@ on/against [surface/background]. Shot with [camera] [lens] at [aperture].
 
 **Key Elements:** Camera hardware, specific surface material, lighting direction/quality, product texture/finish/color, atmosphere
 
-**Recommended model:** `gemini` or `gpt5`
+**Recommended model:** `gemini` or `gpt5.4`
 
 **Example:**
 > Create a cinematic product photograph of a matte-black wireless headphone on a polished obsidian surface. Shot with Sony A7R IV, 85mm macro lens at f/2.8, 45-degree product angle. Single soft key light from upper-left creates gentle shadows that define the headphone's contours, with a subtle reflection in the obsidian surface. Deep shadows on the right add drama and luxury. The headphone's ear cushion texture is clearly visible — soft leather grain catching the light. Dark, moody atmosphere with rich tonal depth. 4:5 aspect ratio.
@@ -37,7 +37,7 @@ Create a [mood] lifestyle photograph showcasing [product] in [real-world setting
 
 **Key Elements:** Environmental storytelling, natural lighting, contextual props, aspirational setting, human touch
 
-**Recommended model:** `gemini` or `gpt5`
+**Recommended model:** `gemini` or `gpt5.4`
 
 **Example:**
 > Create a warm, inviting lifestyle photograph showcasing a compact walnut bookshelf speaker in a cozy reading nook. The speaker sits on a mid-century modern side table beside a plush armchair with a knitted throw blanket. A half-drunk cup of coffee and an open paperback add lived-in charm. Warm afternoon light streams through linen curtains, casting soft shadows across the scene. Shot with Sony A7III, 35mm lens at f/2.8. The composition draws the eye from the warm light to the speaker naturally. Aspirational but attainable — the kind of moment you want to step into.
@@ -162,7 +162,7 @@ Shot with [camera] [macro lens] at [aperture].
 
 **Key Elements:** Macro lens detail, food styling (garnish, drips, steam), appetizing color temperature, surface/props
 
-**Recommended model:** `gemini` or `gpt5`
+**Recommended model:** `gemini` or `gpt5.4`
 
 **Example:**
 > Create a warm, appetizing overhead photograph of a rustic sourdough pizza fresh from a wood-fired oven. Bubbling mozzarella with golden-brown leopard spots, scattered fresh basil leaves, a drizzle of olive oil catching the light. The pizza sits on a weathered wooden cutting board with a pizza cutter, scattered flour, and a small bowl of chili flakes nearby. Shot with Canon R5, 100mm macro lens at f/2.8. Warm natural window light from the left creating gentle shadows. Steam rising from the cheese. Rich, warm color palette — golden crust, vivid green basil, white mozzarella, deep red sauce peeking through.
@@ -183,7 +183,7 @@ Shot with [wide-angle lens] at [aperture].
 
 **Key Elements:** Wide angle, corrected verticals, material accuracy, ambient lighting, atmosphere
 
-**Recommended model:** `gpt5` or `flux2`
+**Recommended model:** `gpt5.4` or `flux2`
 
 **Example:**
 > Create a bright, airy interior photograph of a modern Scandinavian living room. Floor-to-ceiling windows flooding the space with soft diffused daylight. Light oak hardwood floors, a low-profile grey linen sofa, a round marble coffee table, and a single Monstera plant in a ceramic pot. White walls with subtle texture. Shot with Canon 5D, 24mm tilt-shift lens at f/11 for corrected verticals and deep focus. The composition leads from the plant in the foreground through the sofa to the window view. Minimal, serene atmosphere with muted neutral tones — cream, grey, natural oak, touches of sage green.

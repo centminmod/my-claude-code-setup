@@ -115,13 +115,13 @@ Use these descriptions instead of font names:
 
 | Category | Recommended Model | Why |
 |----------|------------------|-----|
-| product_hero, lifestyle | `gemini` or `gpt5` | Best photorealism, lighting accuracy |
-| food_drink | `gemini` or `gpt5` | Macro detail, appetizing color |
+| product_hero, lifestyle | `gemini` or `gpt5.4` | Best photorealism, lighting accuracy |
+| food_drink | `gemini` or `gpt5.4` | Macro detail, appetizing color |
 | illustration, pod_design | `riverflow` or `flux2` | Artistic quality, clean lines |
 | web_app, icon_logo | `gemini` | Clean output, good text rendering |
 | social_media | `gemini` or `seedream` | Bold colors, visual impact |
-| architecture | `gpt5` or `flux2` | Accurate perspective, materials |
+| architecture | `gpt5.4` or `flux2` | Accurate perspective, materials |
 | marketing_banner | `gemini` | Text rendering, layout control |
-| infographic | `gemini` | Text accuracy, clean layout |
+| infographic | `gemini` or `qwen` | Text accuracy, clean layout (`qwen` renders text down to 10px) |
 
 When the user doesn't specify a model, default to `gemini` (most versatile). Suggest alternatives when a different model would produce notably better results for the detected category.

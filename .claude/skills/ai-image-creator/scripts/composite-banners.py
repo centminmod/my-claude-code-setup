@@ -197,6 +197,9 @@ def resolve_fonts(fonts_config: dict, magick: str) -> dict[str, str]:
             if found != candidates[0]:
                 log.warning(f"Font fallback for {role}: using '{found}' (preferred '{candidates[0]}' not available)")
             resolved[role] = found
+        elif role == "url":
+            # Non-fatal: renderers fall back to the tagline font via fonts.get("url", fonts["tagline"])
+            log.warning(f"No available font for 'url' (tried: {candidates}); falling back to tagline font '{resolved['tagline']}'")
         else:
             print(f"ERROR: No available font for '{role}'. Tried: {candidates}", file=sys.stderr)
             print("  Run `magick -list font` to see available fonts.", file=sys.stderr)
@@ -204,9 +207,16 @@ def resolve_fonts(fonts_config: dict, magick: str) -> dict[str, str]:
     return resolved
 
 
-def run_magick(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
+def run_magick(cmd: list[str], check: bool = True, timeout: float = 120.0) -> subprocess.CompletedProcess:
     log.debug(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if check:
+            raise RuntimeError(f"magick command timed out after {timeout:.0f}s: {' '.join(cmd)}")
+        # check=False caller (dimension verify) reads .returncode — surface as a
+        # non-zero CompletedProcess so it's treated as "skip", not a crash.
+        return subprocess.CompletedProcess(args=cmd, returncode=124)
     if check and result.returncode != 0:
         log.error(f"ImageMagick failed: {result.stderr.strip()}")
         raise RuntimeError(f"magick command failed: {result.stderr.strip()}")
@@ -240,7 +250,7 @@ def measure_text_width(magick: str, font: str, pointsize: int, text: str) -> int
 def get_image_dimensions(path: Path, magick: str) -> tuple[int, int]:
     result = subprocess.run(
         [magick, "identify", "-format", "%w %h", str(path)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, timeout=30,
     )
     if result.returncode != 0:
         raise RuntimeError(f"Cannot read image dimensions: {path}")
@@ -402,7 +412,19 @@ def extract_logo_mark(logo_path: Path, logo_config: dict, tmp_dir: Path, magick:
 
     if mode == "extract":
         crop = logo_config.get("crop", {})
-        geometry = f"{crop['w']}x{crop['h']}+{crop['x']}+{crop['y']}"
+        try:
+            cw, ch = int(crop["w"]), int(crop["h"])
+            cx, cy = int(crop["x"]), int(crop["y"])
+        except (KeyError, TypeError, ValueError):
+            print(
+                "ERROR: logo crop requires integer fields {w, h, x, y}.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if cw <= 0 or ch <= 0:
+            print("ERROR: logo crop w/h must be positive.", file=sys.stderr)
+            sys.exit(1)
+        geometry = f"{cw}x{ch}+{cx}+{cy}"
         cropped = tmp_dir / "logo-cropped.png"
         run_magick([magick, str(processed), "-crop", geometry, "+repage", str(cropped)])
         processed = cropped
@@ -438,6 +460,10 @@ def render_horizontal(banner: dict, brand: dict, fonts: dict, logo_path: Path,
     url_size = max(0, int(h * banner.get("url_size_pct", 0) / 100))
 
     logo_pad_left = int(w * 0.04)
+    # Cap logo height so a wide logo's rendered width stays ≤ 40% of banner width
+    # — otherwise text_x lands off the right edge (logo_aspect = w/h of the logo).
+    if logo_aspect[1] > 0:
+        logo_h = min(logo_h, int(w * 0.40 * logo_aspect[1] / logo_aspect[0]))
     logo_pad_top = (h - logo_h) // 2
     logo_w = int(logo_h * (logo_aspect[0] / logo_aspect[1]))
     text_x = logo_pad_left + logo_w + int(w * 0.03)
@@ -493,6 +519,9 @@ def render_horizontal_compact(banner: dict, brand: dict, fonts: dict, logo_path:
     tagline_size = max(0, int(h * banner.get("tagline_size_pct", 0) / 100))
 
     logo_pad = int(h * 0.1)
+    # Cap logo height so a wide logo's rendered width stays ≤ 40% of banner width.
+    if logo_aspect[1] > 0:
+        logo_h = min(logo_h, int(w * 0.40 * logo_aspect[1] / logo_aspect[0]))
     logo_w = int(logo_h * (logo_aspect[0] / logo_aspect[1]))
     text_x = logo_pad + logo_w + int(w * 0.02)
     text_y = (h - title_size) // 2 + int(title_size * 0.75)
@@ -544,8 +573,11 @@ def render_centered(banner: dict, brand: dict, fonts: dict, logo_path: Path,
 
     url_text = brand.get("url_text")
     has_url = url_text and url_size > 0 and banner.get("url_size_pct", 0) > 0
+    has_tagline = banner.get("tagline_size_pct", 0) > 0
 
-    total_h = logo_h + int(h * 0.04) + title_size + int(h * 0.02) + tagline_size
+    total_h = logo_h + int(h * 0.04) + title_size
+    if has_tagline:
+        total_h += int(h * 0.02) + tagline_size
     if has_url:
         total_h += int(h * 0.015) + url_size
     start_y = max(int(h * 0.08), (h - total_h) // 2)
@@ -568,16 +600,20 @@ def render_centered(banner: dict, brand: dict, fonts: dict, logo_path: Path,
         "-gravity", "North",
         "-annotate", f"+0+{title_y}",
         brand.get("title", ""),
-        "-font", fonts["tagline"],
-        "-pointsize", str(tagline_size),
-        "-fill", brand.get("tagline_color", "#b0b8cc"),
-        "-gravity", "North",
-        "-annotate", f"+0+{tagline_y}",
-        brand.get("tagline", ""),
     ]
 
+    if has_tagline:
+        cmd.extend([
+            "-font", fonts["tagline"],
+            "-pointsize", str(tagline_size),
+            "-fill", brand.get("tagline_color", "#b0b8cc"),
+            "-gravity", "North",
+            "-annotate", f"+0+{tagline_y}",
+            brand.get("tagline", ""),
+        ])
+
     if has_url:
-        url_y = tagline_y + tagline_size + int(h * 0.015)
+        url_y = (tagline_y + tagline_size if has_tagline else title_y + title_size) + int(h * 0.015)
         cmd.extend([
             "-font", fonts.get("url", fonts["tagline"]),
             "-pointsize", str(url_size),
@@ -785,8 +821,10 @@ def main():
                 # Convert format if needed
                 final_path = convert_format(output, args.format, magick) if args.format != "png" else output
                 # Verify
-                result = run_magick([magick, "identify", str(final_path)], check=False)
-                dims = result.stdout.strip().split()[2] if result.returncode == 0 else "?"
+                # -format avoids parsing the default identify line, which breaks
+                # on filenames containing spaces.
+                result = run_magick([magick, "identify", "-format", "%wx%h", str(final_path)], check=False)
+                dims = result.stdout.strip() if result.returncode == 0 else "?"
                 size_bytes = final_path.stat().st_size if final_path.exists() else 0
                 if not args.quiet:
                     print(f"  OK: {final_path.name}  {dims}  [{b.get('category', '?')}]  ({size_bytes / 1024:.1f} KB)", file=sys.stderr)
@@ -817,10 +855,9 @@ def main():
         sys.exit(0 if not failed else 1)
 
     finally:
-        # Cleanup temp
-        for f in tmp_dir.iterdir():
-            f.unlink(missing_ok=True)
-        tmp_dir.rmdir()
+        # Recursive cleanup — iterdir+unlink raises IsADirectoryError if magick
+        # left a subdir behind; rmtree tolerates nested contents.
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

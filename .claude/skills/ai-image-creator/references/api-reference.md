@@ -2,21 +2,30 @@
 
 ## Supported Models (OpenRouter)
 
-All models use the same OpenRouter `/v1/chat/completions` endpoint and response format. The `modalities` value differs by model type.
+Chat models use the OpenRouter `/v1/chat/completions` endpoint, and their `modalities` value differs by model type. Images-API models use the dedicated `/v1/images` endpoint (see [OpenRouter Images API](#openrouter-images-api-v1images) below).
 
-| Keyword | Model ID | Modalities | Type |
-|---------|----------|------------|------|
-| `gemini` | [`google/gemini-3.1-flash-image`](https://openrouter.ai/google/gemini-3.1-flash-image) | `["image", "text"]` | Multimodal (default) |
-| `geminipro` | [`google/gemini-3-pro-image`](https://openrouter.ai/google/gemini-3-pro-image) | `["image", "text"]` | Multimodal |
-| `riverflow` | [`sourceful/riverflow-v2-pro`](https://openrouter.ai/sourceful/riverflow-v2-pro) | `["image"]` | Image-only |
-| `flux2` | [`black-forest-labs/flux.2-max`](https://openrouter.ai/black-forest-labs/flux.2-max) | `["image"]` | Image-only |
-| `seedream` | [`bytedance-seed/seedream-4.5`](https://openrouter.ai/bytedance-seed/seedream-4.5) | `["image"]` | Image-only |
-| `gpt5` | [`openai/gpt-5-image`](https://openrouter.ai/openai/gpt-5-image) | `["image", "text"]` | Multimodal |
-| `gpt5.4` | [`openai/gpt-5.4-image-2`](https://openrouter.ai/openai/gpt-5.4-image-2) | `["image", "text"]` | Multimodal |
+| Keyword | Model ID | Endpoint | Modalities / limits |
+|---------|----------|----------|---------------------|
+| `gemini` | [`google/gemini-3.1-flash-image`](https://openrouter.ai/google/gemini-3.1-flash-image) | chat | `["image", "text"]` (default) |
+| `gemini-lite` | [`google/gemini-3.1-flash-lite-image`](https://openrouter.ai/google/gemini-3.1-flash-lite-image) | chat | `["image", "text"]`, 1K only |
+| `geminipro` | [`google/gemini-3-pro-image`](https://openrouter.ai/google/gemini-3-pro-image) | chat | `["image", "text"]` |
+| `riverflow` | [`sourceful/riverflow-v2-pro`](https://openrouter.ai/sourceful/riverflow-v2-pro) | chat | `["image"]` |
+| `flux2` | [`black-forest-labs/flux.2-max`](https://openrouter.ai/black-forest-labs/flux.2-max) | chat | `["image"]` |
+| `gpt5.4` | [`openai/gpt-5.4-image-2`](https://openrouter.ai/openai/gpt-5.4-image-2) | chat | `["image", "text"]` |
+| `seedream` | [`bytedance-seed/seedream-5-0-lite`](https://openrouter.ai/bytedance-seed/seedream-5-0-lite) | images | resolution 2K/4K, 14 refs |
+| `gpt-sunburst` | [`openai/gpt-image-2.5-sunburst`](https://openrouter.ai/openai/gpt-image-2.5-sunburst) | images | quality auto→max, background, 16 refs |
+| `gpt-flare` | [`openai/gpt-image-2.5-flare`](https://openrouter.ai/openai/gpt-image-2.5-flare) | images | quality auto→max, background, 16 refs |
+| `mai` | [`microsoft/mai-image-2.6`](https://openrouter.ai/microsoft/mai-image-2.6) | images | 5 refs |
+| `mai-flash` | [`microsoft/mai-image-2.6-flash`](https://openrouter.ai/microsoft/mai-image-2.6-flash) | images | 5 refs |
+| `grok` | [`x-ai/grok-imagine-image-2.0`](https://openrouter.ai/x-ai/grok-imagine-image-2.0) | images | resolution 1K/2K, quality low/medium, 3 refs |
+| `qwen` | [`qwen/qwen-image-3`](https://openrouter.ai/qwen/qwen-image-3) | images | resolution 1K/2K, 4 refs |
+| `qwen-pro` | [`qwen/qwen-image-3-pro`](https://openrouter.ai/qwen/qwen-image-3-pro) | images | resolution 1K/2K, 4 refs |
+| `muse` | [`meta/muse-image`](https://openrouter.ai/meta/muse-image) | images | prompt only (no aspect ratio, size or refs) |
+| `recraft-flash` | [`recraft/recraft-v4.1-flash`](https://openrouter.ai/recraft/recraft-v4.1-flash) | images | aspect ratio only (no refs) |
 
-**Important:** Image-only models MUST use `"modalities": ["image"]`. Using `["image", "text"]` may cause errors with these models. The script handles this automatically when using keywords.
+**Important:** Image-only chat models MUST use `"modalities": ["image"]`. Using `["image", "text"]` may cause errors with these models. The script handles this automatically when using keywords.
 
-**Reference image support:** Only multimodal models (gemini, geminipro, gpt5, gpt5.4) support image input for editing and style transfer. Image-only models (riverflow, flux2, seedream) do not accept reference images.
+**Reference image support:** Multimodal chat models (gemini, gemini-lite, geminipro, gpt5.4) accept image input via message content. Images-API models accept up to their `input_references` limit (above). Chat image-only models (riverflow, flux2) and `muse`/`recraft-flash` do not accept reference images through this script.
 
 ---
 
@@ -154,6 +163,51 @@ curl -s -X POST \
     "modalities": ["image", "text"]
   }'
 ```
+
+---
+
+### OpenRouter Images API (`/v1/images`)
+
+Used by every registry entry marked `"api": "images"`. The script builds the URL, body and headers itself; the same BYOK headers apply as for chat.
+
+**Gateway URL:**
+```
+https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openrouter/v1/images
+```
+
+**Direct URL:**
+```
+https://openrouter.ai/api/v1/images
+```
+
+**Request format:** flat fields rather than `messages`/`image_config`. The script sends only the fields the model supports:
+```json
+{
+  "model": "openai/gpt-image-2.5-flare",
+  "prompt": "A friendly robot mascot",
+  "aspect_ratio": "1:1",
+  "resolution": "2K",
+  "quality": "high",
+  "background": "transparent",
+  "input_references": [
+    {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo..."}}
+  ]
+}
+```
+
+`-a` → `aspect_ratio`, `-s` → `resolution`, `--quality` → `quality`, native `-t` → `background: "transparent"`, `-r` → `input_references`.
+
+**Response format:**
+```json
+{
+  "data": [{"b64_json": "iVBORw0KGgo...", "media_type": "image/png"}],
+  "usage": {"prompt_tokens": 0, "completion_tokens": 4175, "total_tokens": 4175, "cost": 0.04}
+}
+```
+
+**Image extraction:** base64-decode `data[0].b64_json`. Billing is all-or-nothing: a failed generation is not charged. `usage.cost` (USD) is recorded in the cost log.
+
+**Per-model capabilities:** `GET https://openrouter.ai/api/v1/images/models` (free) returns each model's `supported_parameters` (value lists, max `input_references`). The registry `caps` mirror it; re-check it when adding or updating a model.
 
 ---
 

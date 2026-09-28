@@ -75,7 +75,7 @@ done
 | Model | Best For |
 |-------|----------|
 | `gemini` (default) | General analysis, fast and cost-effective. Good at text extraction and structured output |
-| `gpt5` | Nuanced descriptions, creative interpretation, detailed comparisons |
+| `gpt5.4` | Nuanced descriptions, creative interpretation, detailed comparisons |
 
 ## Output Handling
 

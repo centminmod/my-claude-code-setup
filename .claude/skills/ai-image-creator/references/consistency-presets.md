@@ -19,9 +19,10 @@ levers, and you should use **both together**:
 
 1. **Canonical anchor text** — a fixed description block reused *verbatim* (copy-paste, never
    paraphrase) in every frame's prompt.
-2. **Reference-image chaining** — pass an anchor image via `-r`. **Multimodal models only**
-   (`gemini`, `geminipro`, `gpt5`). Image-only models (`riverflow`, `flux2`, `seedream`)
-   ignore or error on `-r`.
+2. **Reference-image chaining** — pass an anchor image via `-r`. Needs a model that accepts
+   references: the multimodal chat models (`gemini`, `geminipro`, `gpt5.4`) or an
+   Images-API model within its limit (`gpt-sunburst`, `seedream`, `mai`, `qwen`, … — see
+   `--list-models`). `riverflow`, `flux2`, `muse` and `recraft-flash` error on `-r`.
 
 ## Step 1 — Define the preset (anchors)
 
