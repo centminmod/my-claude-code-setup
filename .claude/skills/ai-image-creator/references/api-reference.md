@@ -6,8 +6,9 @@ Chat models use the OpenRouter `/v1/chat/completions` endpoint, and their `modal
 
 | Keyword | Model ID | Endpoint | Modalities / limits |
 |---------|----------|----------|---------------------|
-| `gemini` | [`google/gemini-3.1-flash-image`](https://openrouter.ai/google/gemini-3.1-flash-image) | chat | `["image", "text"]` (default) |
+| `gemini` | [`google/gemini-3.1-flash-image`](https://openrouter.ai/google/gemini-3.1-flash-image) | chat | `["image", "text"]` |
 | `gemini-lite` | [`google/gemini-3.1-flash-lite-image`](https://openrouter.ai/google/gemini-3.1-flash-lite-image) | chat | `["image", "text"]`, 1K only |
+| `nano-banana-2.1` | [`google/gemini-nano-banana-2.1`](https://openrouter.ai/google/gemini-nano-banana-2.1) | chat | `["image", "text"]`, 1K/2K/4K (default) |
 | `geminipro` | [`google/gemini-3-pro-image`](https://openrouter.ai/google/gemini-3-pro-image) | chat | `["image", "text"]` |
 | `riverflow` | [`sourceful/riverflow-v2-pro`](https://openrouter.ai/sourceful/riverflow-v2-pro) | chat | `["image"]` |
 | `flux2` | [`black-forest-labs/flux.2-max`](https://openrouter.ai/black-forest-labs/flux.2-max) | chat | `["image"]` |
@@ -25,7 +26,7 @@ Chat models use the OpenRouter `/v1/chat/completions` endpoint, and their `modal
 
 **Important:** Image-only chat models MUST use `"modalities": ["image"]`. Using `["image", "text"]` may cause errors with these models. The script handles this automatically when using keywords.
 
-**Reference image support:** Multimodal chat models (gemini, gemini-lite, geminipro, gpt5.4) accept image input via message content. Images-API models accept up to their `input_references` limit (above). Chat image-only models (riverflow, flux2) and `muse`/`recraft-flash` do not accept reference images through this script.
+**Reference image support:** Multimodal chat models (gemini, gemini-lite, nano-banana-2.1, geminipro, gpt5.4) accept image input via message content. Images-API models accept up to their `input_references` limit (above). Chat image-only models (riverflow, flux2) and `muse`/`recraft-flash` do not accept reference images through this script.
 
 ---
 

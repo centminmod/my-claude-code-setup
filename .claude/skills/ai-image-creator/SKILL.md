@@ -17,8 +17,9 @@ When the user mentions a model keyword in their image request, use the correspon
 
 | Keyword | Model | Use When User Says | Best For (measured cost · time per image) |
 |---------|-------|--------------------|-------------------------------------------|
-| `gemini` | [Google Gemini 3.1 Flash](https://openrouter.ai/google/gemini-3.1-flash-image) (default) | "gemini", "generate an image" (no model specified) | Versatile default; up to 4K ($0.067 · 12s at 1K) |
+| `gemini` | [Google Gemini 3.1 Flash](https://openrouter.ai/google/gemini-3.1-flash-image) | "gemini", "nano banana 2" | Previous default; still marginally closer on the Opus benchmark; up to 4K ($0.067 · 12s at 1K) |
 | `gemini-lite` | [Google Gemini 3.1 Flash Lite](https://openrouter.ai/google/gemini-3.1-flash-lite-image) | "gemini lite", "nano banana lite", "fast draft" | Fast cheap iteration; **1K only** ($0.034 · 5s) |
+| `nano-banana-2.1` | [Google Nano Banana 2.1](https://openrouter.ai/google/gemini-nano-banana-2.1) (default) | "nano banana 2.1", "nb 2.1", "generate an image" (no model specified) | Versatile default, Flash-tier successor to `gemini`: refs, `--analyze`, up to 4K; near-identical fidelity for ~44% less ($0.038 · 12s at 1K) |
 | `geminipro` | [Google Gemini 3 Pro](https://openrouter.ai/google/gemini-3-pro-image) | "geminipro", "gemini pro", "use gemini pro" | Highest-quality Gemini (~$0.17 at 2K) |
 | `riverflow` | [Sourceful Riverflow v2 Pro](https://openrouter.ai/sourceful/riverflow-v2-pro) | "riverflow", "use riverflow" | Artistic/illustration ($0.15) |
 | `flux2` | [FLUX.2 Max](https://openrouter.ai/black-forest-labs/flux.2-max) | "flux2", "flux", "use flux" | Illustration, clean lines (~$0.07/MP) |
@@ -36,7 +37,7 @@ When the user mentions a model keyword in their image request, use the correspon
 
 Models from `seedream` down to `recraft-flash` (except `gpt5.4`) use the OpenRouter **Images API** (`/v1/images`). Each accepts only the `-a`/`-s`/`--quality`/`-r` options it supports, and the script rejects anything else before calling the API. Run `--list-models` to see each model's limits.
 
-**Cost and time** are real OpenRouter charges and end-to-end times (through the Cloudflare gateway) at default settings. They come from the Claude Opus robot benchmark, one sample per model on 2026-09-28. `geminipro`, `riverflow`, `flux2` and `gpt5.4` were not benchmarked; their figures are list prices or earlier cost-log values. For per-model output format, resolution and quality notes, read `references/model-benchmarks.md`. Re-run the benchmark with the `ai-image-test-run` skill.
+**Cost and time** are real OpenRouter charges and end-to-end times (through the Cloudflare gateway) at default settings. They come from the Claude Opus robot benchmark, one sample per model on 2026-09-28 (`nano-banana-2.1` on 2026-10-07). `geminipro`, `riverflow`, `flux2` and `gpt5.4` were not benchmarked; their figures are list prices or earlier cost-log values. For per-model output format, resolution and quality notes, read `references/model-benchmarks.md`. Re-run the benchmark with the `ai-image-test-run` skill.
 
 ## Instructions
 
@@ -168,16 +169,16 @@ If the user needs resizing, format conversion, or other manipulation, first dete
 
 | Argument | Short | Required | Default | Description |
 |----------|-------|----------|---------|-------------|
-| `--output` | `-o` | Yes | -- | Output file path (parent dirs auto-created). Saved in the format its extension names (`.png`, `.jpg`, `.webp`; anything else means PNG). Models that return another format (Gemini Flash Lite, Grok and Seedream send JPEG; Muse and Recraft send WebP) are converted with ImageMagick, or saved unconverted with a warning if it's missing. The result JSON's `format` field reports what was written |
+| `--output` | `-o` | Yes | -- | Output file path (parent dirs auto-created). Saved in the format its extension names (`.png`, `.jpg`, `.webp`; anything else means PNG). Models that return another format (Gemini Flash Lite, Grok and Seedream send JPEG; Muse and Recraft send WebP; Nano Banana 2.1 also sends a non-PNG format) are converted with ImageMagick, or saved unconverted with a warning if it's missing. The result JSON's `format` field reports what was written |
 | `--prompt` | `-p` | No | -- | Inline prompt text |
 | `--prompt-file` | -- | No | `../tmp/prompt.txt` | Path to prompt file |
 | `--provider` | -- | No | `openrouter` | `openrouter` or `google` |
 | `--aspect-ratio` | `-a` | No | model default | OpenRouter only: `1:1`, `16:9`, `9:16`, `3:2`, `2:3`, `4:3`, `3:4`, `4:5`, `5:4`, `21:9` |
 | `--image-size` | `-s` | No | model default | OpenRouter only: `1K`, `2K`, `4K`. Images-API models accept only their listed sizes (`seedream` 2K/4K; `grok`/`qwen`/`qwen-pro` 1K/2K; the rest none). `gemini-lite` is 1K only. `0.5K` is accepted **only** on the Gemini 3.1 Flash preview build (`-m google/gemini-3.1-flash-image-preview-20260226`); every selectable keyword rejects it |
-| `--model` | `-m` | No | `gemini` | Model keyword (see **Model Selection** or `--list-models`) or full model ID |
+| `--model` | `-m` | No | `nano-banana-2.1` | Model keyword (see **Model Selection** or `--list-models`) or full model ID |
 | `--ref` | `-r` | No | -- | Reference image file (repeatable). For editing/style transfer. See **Reference Images** for supported models and per-model limits |
 | `--quality` | -- | No | model default | Images-API models only: `gpt-sunburst`/`gpt-flare` take `auto`, `low`, `medium`, `high`, `xhigh`, `max`; `grok` takes `low`, `medium` |
-| `--analyze` | -- | No | -- | Analyze/describe a reference image (text-only output, no image generated). Requires `-r`. Multimodal chat models only (gemini, gemini-lite, geminipro, gpt5.4) |
+| `--analyze` | -- | No | -- | Analyze/describe a reference image (text-only output, no image generated). Requires `-r`. Multimodal chat models only (gemini, gemini-lite, nano-banana-2.1, geminipro, gpt5.4) |
 | `--analyze-video` | -- | No | -- | Analyze/describe a video. Pass the video via `-r` (local file or URL). OpenRouter only. Choose a model/preset with `-m` (default `gemini3.5-flash`). Returns **structured JSON** by default |
 | `--prose` | -- | No | -- | (`--analyze-video` only) Return free-text prose instead of the default structured JSON |
 | `--contact-sheet` | -- | No | -- | (`--analyze-video`, local file only) Extract evenly-spaced keyframes with ffmpeg and save a labeled contact-sheet image to `PATH` — a human ground-truth reference. Skipped for URL sources / if ffmpeg is missing |
@@ -225,7 +226,7 @@ Send existing images alongside text prompts for editing, style transfer, or guid
 
 | Models | Max `-r` |
 |--------|----------|
-| `gemini`, `gemini-lite`, `geminipro`, `gpt5.4` (chat) | no script limit |
+| `gemini`, `gemini-lite`, `nano-banana-2.1`, `geminipro`, `gpt5.4` (chat) | no script limit |
 | `gpt-sunburst`, `gpt-flare` | 16 |
 | `seedream` | 14 |
 | `mai`, `mai-flash` | 5 |
@@ -247,7 +248,7 @@ Supported formats: PNG, JPEG, WebP, GIF.
 
 ## Image Analysis (`--analyze`)
 
-Describe, analyze, or explain existing images using multimodal AI vision. Returns text-only output (no image generated). **Multimodal chat models only** (gemini, gemini-lite, geminipro, gpt5.4). Images-API models output images only and are rejected.
+Describe, analyze, or explain existing images using multimodal AI vision. Returns text-only output (no image generated). **Multimodal chat models only** (gemini, gemini-lite, nano-banana-2.1, geminipro, gpt5.4). Images-API models output images only and are rejected.
 
 No `-o` output path needed. No prompt enhancement needed. The script outputs JSON to stdout with the model's analysis in the `analysis` field.
 

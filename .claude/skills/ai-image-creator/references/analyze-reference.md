@@ -74,7 +74,7 @@ done
 
 | Model | Best For |
 |-------|----------|
-| `gemini` (default) | General analysis, fast and cost-effective. Good at text extraction and structured output |
+| `nano-banana-2.1` (default) / `gemini` | General analysis, fast and cost-effective. Good at text extraction and structured output |
 | `gpt5.4` | Nuanced descriptions, creative interpretation, detailed comparisons |
 
 ## Output Handling

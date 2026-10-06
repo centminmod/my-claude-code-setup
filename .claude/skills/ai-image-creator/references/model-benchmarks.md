@@ -57,3 +57,29 @@ start a new benchmark series instead of mixing results.
 **Artifacts:** `Create Images/ai-image-creator-test-images/` — `opus-<keyword>.png` per model, its
 `.prompt.md`, `standardized-prompt.txt`, `00-reference-opus-from-castsheet.png` and the labelled
 comparison sheet `opus-model-comparison.png`.
+
+## Run 2 — 2026-10-07
+
+**Test:** Nano Banana 2.1 (released on OpenRouter 2026-10-06) against the `gemini` baseline, with the
+same standard prompt and settings as Run 1 (`-a 1:1`, default size, CF gateway). One sample per
+model. Total run cost: $0.105.
+
+| Keyword | Model ID | Cost | Time | Tokens (in / out) | Native output | Fidelity to the cast-sheet Opus |
+|---|---|---|---|---|---|---|
+| `nano-banana-2.1` | `google/gemini-nano-banana-2.1` | $0.038 | 11.9 s | 424 / 1585 | non-PNG (converted) 1024² | Passes every check; one-line plaque, stockier chibi build, hand-on-hip pose, cape hides the left pauldron |
+| `gemini` (baseline) | `google/gemini-3.1-flash-image` | $0.067 | 10.9 s | 423 / 1120 | PNG 1024² | Still the closest match: two-line plaque and upright, symmetric stance like the sheet |
+
+### Takeaways
+
+- **Cost:** `nano-banana-2.1` is 44% cheaper than `gemini` at 1K. OpenRouter lists its image-output
+  tokens at $30/M, half of `gemini`'s $60/M. The 1120 image tokens come to about $0.034. The
+  other ~465 output tokens are text/thinking billed at $7.50/M (~$0.003); `gemini` emits none.
+- **Speed:** same as `gemini` within one-sample noise (11.9 s vs 10.9 s; `gemini` took 12.4 s in Run 1).
+- **Fidelity:** both pass every check. `gemini` stays marginally closer to the sheet's layout,
+  probably helped by having drawn the original cast sheet.
+- **Native format:** the saved PNG carries ImageMagick's conversion chunks, so the API returned a
+  non-PNG format. `results.json` does not record which one.
+- **Not measured:** 2K/4K cost, `-r` editing quality, `--analyze`.
+
+**Artifacts:** `Create Images/ai-image-creator-test-images/20261007_084553/` (`results.json`,
+`opus-model-comparison.png`).

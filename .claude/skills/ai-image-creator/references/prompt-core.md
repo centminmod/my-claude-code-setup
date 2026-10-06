@@ -124,4 +124,4 @@ Use these descriptions instead of font names:
 | marketing_banner | `gemini` | Text rendering, layout control |
 | infographic | `gemini` or `qwen` | Text accuracy, clean layout (`qwen` renders text down to 10px) |
 
-When the user doesn't specify a model, default to `gemini` (most versatile). Suggest alternatives when a different model would produce notably better results for the detected category.
+When the user doesn't specify a model, default to `nano-banana-2.1` (most versatile; `gemini` is its pricier predecessor). Suggest alternatives when a different model would produce notably better results for the detected category.

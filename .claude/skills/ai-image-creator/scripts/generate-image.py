@@ -2,8 +2,9 @@
 """AI Image Generator — Generate PNG images via multiple OpenRouter models or Google AI Studio.
 
 Supports multiple image generation models via keyword shortcuts:
-    gemini        — Google Gemini 3.1 Flash (default, multimodal)
+    gemini        — Google Gemini 3.1 Flash (multimodal)
     gemini-lite   — Google Gemini 3.1 Flash Lite (multimodal, fast, 1K only)
+    nano-banana-2.1 — Google Nano Banana 2.1 (default, multimodal, Flash-tier successor to gemini)
     geminipro     — Google Gemini 3 Pro (multimodal, highest quality)
     riverflow     — Sourceful Riverflow v2 Pro (image-only)
     flux2         — Black Forest Labs FLUX.2 Max (image-only)
@@ -55,8 +56,8 @@ from typing import Any  # noqa: F401 — used in type hints below
 
 # Default models per provider
 DEFAULT_MODELS = {
-    "openrouter": "google/gemini-3.1-flash-image",
-    "google": "gemini-3.1-flash-image",
+    "openrouter": "google/gemini-nano-banana-2.1",
+    "google": "gemini-nano-banana-2.1",
 }
 
 # Model registry — maps keyword shortcuts to model metadata.
@@ -72,12 +73,17 @@ MODEL_REGISTRY: dict[str, dict[str, Any]] = {
     "gemini": {
         "id": "google/gemini-3.1-flash-image",
         "modalities": ["image", "text"],
-        "description": "Google Gemini 3.1 Flash — multimodal (text+image), default; ~$0.067/image at 1K",
+        "description": "Google Gemini 3.1 Flash — multimodal (text+image), previous default; ~$0.067/image at 1K",
     },
     "gemini-lite": {
         "id": "google/gemini-3.1-flash-lite-image",
         "modalities": ["image", "text"],
         "description": "Google Gemini 3.1 Flash Lite — multimodal, ~5s, 1K only; ~$0.034/image (half of Flash)",
+    },
+    "nano-banana-2.1": {
+        "id": "google/gemini-nano-banana-2.1",
+        "modalities": ["image", "text"],
+        "description": "Google Nano Banana 2.1 — multimodal (text+image), default, Flash-tier successor to Nano Banana 2, 1K/2K/4K; ~$0.038/image at 1K (~44% less than gemini)",
     },
     "geminipro": {
         "id": "google/gemini-3-pro-image",
@@ -491,7 +497,7 @@ def resolve_model(model_arg: str | None, provider: str) -> tuple[str, list[str]]
     """Resolve a model keyword or full ID to (model_id, modalities).
 
     Supports three modes:
-    1. No --model flag: returns the default model for the provider (gemini).
+    1. No --model flag: returns the default model for the provider (nano-banana-2.1).
     2. Keyword match (e.g. 'riverflow'): looks up MODEL_REGISTRY.
     3. Full model ID (e.g. 'sourceful/riverflow-v2-pro'): reverse-lookups
        registry for modalities, or defaults to ["image", "text"] if unknown.
@@ -508,7 +514,7 @@ def resolve_model(model_arg: str | None, provider: str) -> tuple[str, list[str]]
     if model_arg is None:
         model_id = DEFAULT_MODELS[provider]
         if provider == "openrouter":
-            entry = MODEL_REGISTRY.get("gemini", {})
+            entry = MODEL_REGISTRY.get("nano-banana-2.1", {})
             return model_id, entry.get("modalities", ["image", "text"])
         return model_id, ["image", "text"]
 
