@@ -76,6 +76,10 @@ _INPUT_RATE_PER_M_BY_MODEL: tuple[tuple[str, float], ...] = (
     ("claude-opus-4-5", 5.00),
     ("claude-opus-4-1", 15.00),
     ("claude-3-opus", 15.00),
+    # Haiku 5.5's <=100K-prompt rate. Its >100K card ($0.50) is not modelled —
+    # audit impact estimates are approximate by design (see pricing tiers in
+    # session-metrics.py:_PRICING_PROMPT_TIERS).
+    ("claude-haiku-5-5", 0.10),
     ("claude-haiku-4-9", 1.00),
     ("claude-haiku-4-8", 1.00),
     ("claude-haiku-4-7", 1.00),
@@ -91,6 +95,7 @@ _INPUT_RATE_PER_M_BY_MODEL: tuple[tuple[str, float], ...] = (
     # Sonnet 5 is $2/M (v1.89.1) — below the bare `claude-sonnet` $3 needle, so
     # it needs its own major-only row (allow-listed in the drift guard's
     # ALLOWED_MAJOR_ONLY); `(?!\d)` keeps it off a hypothetical `claude-sonnet-50`.
+    ("claude-sonnet-5-5", 2.00),
     ("claude-sonnet-5", 2.00),
     ("claude-sonnet", 3.00),
     ("claude-haiku", 1.00),

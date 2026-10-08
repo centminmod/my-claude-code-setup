@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.90.3"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.91.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -100,7 +100,12 @@ _PRICING: dict[str, dict[str, float]] = {
     # variant is safe (same reasoning as the bare `claude-sonnet-4` below).
     # Sonnet 5 standard is $2/$10 (v1.89.1): the launch "introductory" price
     # became permanent and the planned 2026-09-01 rise to $3/$15 was cancelled.
-    "claude-sonnet-5":           {"input":  2.00, "output": 10.00, "cache_read": 0.20,  "cache_write":  2.50, "cache_write_1h":  4.00},
+    # Sonnet 5.5 (v1.91.0) keeps Sonnet 5's $2/$10 and cache-write rates but
+    # reads cache at $0.10 (0.05x base input, as Opus 5.5). Needs its own key
+    # BEFORE the bare-major `claude-sonnet-5`, else the prefix sweep bills its
+    # cache reads (and `[1m]` / date forms) at Sonnet 5's $0.20 — a 2x over-count.
+    "claude-sonnet-5-5":         {"input":  2.00, "output": 10.00, "cache_read": 0.10,  "cache_write":  2.50, "cache_write_1h":  4.00},
+    "claude-sonnet-5":         {"input":  2.00, "output": 10.00, "cache_read": 0.20,  "cache_write":  2.50, "cache_write_1h":  4.00},
     "claude-sonnet-4-9":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-sonnet-4-8":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-sonnet-4-7":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
@@ -110,6 +115,13 @@ _PRICING: dict[str, dict[str, float]] = {
     "claude-3-7-sonnet":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     "claude-3-5-sonnet":         {"input":  3.00, "output": 15.00, "cache_read": 0.30,  "cache_write":  3.75, "cache_write_1h":  6.00},
     # --- Haiku 4.5 (own tier: $1 input / $5 output) ---
+    # Haiku 5.5 (v1.91.0) is 10x CHEAPER than Haiku 4.5: $0.10/$0.50, standard
+    # cache ratios (read 0.1x = $0.01, 5m-write 1.25x = $0.125, 1h-write 2x =
+    # $0.20). These are its <=100K-prompt rates; prompts over 100K tokens bill
+    # the whole request on a second rate card — see _PRICING_PROMPT_TIERS.
+    # Listed BEFORE the bare-major `claude-haiku-5`, otherwise the prefix sweep
+    # bills `claude-haiku-5-5` (and its `[1m]` / date forms) at $1/$5 silently.
+    "claude-haiku-5-5":          {"input":  0.10, "output":  0.50, "cache_read": 0.01,  "cache_write":  0.125, "cache_write_1h":  0.20},
     # `claude-haiku-5` bare-major key (pre-provisioned, v1.44.0): assumed same
     # Haiku tier; as a prefix it catches every 5.x minor + `[1m]` + date suffix.
     "claude-haiku-5":            {"input":  1.00, "output":  5.00, "cache_read": 0.10,  "cache_write":  1.25, "cache_write_1h":  2.00},
@@ -290,6 +302,28 @@ _PRICING_SCHEDULES: dict[str, list[dict]] = {
          "rates": {"input":  1.00, "output":  6.00, "cache_read": 0.10,
                    "cache_write":  1.25, "cache_write_1h":  1.25}},
     ],
+}
+
+# ---------------------------------------------------------------------------
+# Prompt-length rate tiers  (v1.91.0)
+# ---------------------------------------------------------------------------
+# A model listed here bills a request on a second rate card when its prompt —
+# input + cache-read + cache-write tokens, all of which count toward the
+# context window — exceeds ``threshold``. Every token category of that request
+# moves to the higher card, output included (the published rate card has one
+# row per prompt-length band). Applied per turn by `_pricing_for_turn`; the flat
+# `_PRICING` entry is the <=threshold card. Matched by identity on the flat
+# entry, so `[1m]` / date-suffixed forms inherit the tier.
+#
+# Claude Haiku 5.5 is the only such model: prompts over 100,000 tokens pay
+# $0.50 / $2.50 (cache read $0.05, writes $0.625 / $1.00). Every other current
+# Anthropic model bills its full 1M window at one rate.
+_PRICING_PROMPT_TIERS: dict[str, dict] = {
+    "claude-haiku-5-5": {
+        "threshold": 100_000,
+        "rates": {"input": 0.50, "output": 2.50, "cache_read": 0.05,
+                  "cache_write": 0.625, "cache_write_1h": 1.00},
+    },
 }
 
 # Fast-mode (research preview) premium multipliers. Source: Anthropic pricing
@@ -895,6 +929,7 @@ del _rp_m
 _da_m = _load_leaf("_data")
 _pricing_for                = _da_m._pricing_for
 _pricing_for_at             = _da_m._pricing_for_at
+_pricing_for_turn           = _da_m._pricing_for_turn
 _load_pricing_supplement    = _da_m._load_pricing_supplement
 _fast_multiplier_for        = _da_m._fast_multiplier_for
 _parse_jsonl                = _da_m._parse_jsonl

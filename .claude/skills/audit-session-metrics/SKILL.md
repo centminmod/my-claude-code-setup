@@ -19,9 +19,11 @@ Reads a session-metrics JSON export and produces a prioritised, plain-English
 audit of token-usage waste. It runs on the session's current model (it no
 longer pins one — a hard model pin capped the usable context at that model's
 window and broke invocation on long sessions). The work is mostly
-summarisation over a small disk-read export, so for a ~10× cheaper run
-`/model haiku` before invoking (short/early sessions only — Haiku's 200k
-window can't hold a long conversation).
+summarisation over a small disk-read export, so for a much cheaper run
+`/model haiku` before invoking. On the Anthropic API `haiku` is Haiku 5.5
+(1M window, so long sessions fit; prompts over 100K tokens bill at its higher
+rate). On Bedrock, Google Cloud, Microsoft Foundry, and Claude Platform on AWS
+it is still Haiku 4.5 with a 200k window — short/early sessions only there.
 
 Supports three JSON scopes auto-detected from `digest.scope`:
 - **session** — single session (`session_*.json`) — per-turn analysis
@@ -132,10 +134,10 @@ session-metrics *suggests* `/audit-session-metrics` rather than invoking it
 programmatically. Running it as a fresh slash command keeps the turn focused
 and lets the user decide when to spend on it. The work is summarisation-heavy
 and the input is tiny, so the cost path is `/model haiku` before invoking
-(short/early sessions only — Haiku's 200k window can't hold a long
-conversation) — ~10× cheaper than a frontier model, with identical output
-(every dollar figure is pre-computed by `audit-extract.py`, not guessed by
-the model).
+(Haiku 5.5 with a 1M window on the Anthropic API; on other providers
+`haiku` is Haiku 4.5 with a 200k window, so short/early sessions only) — far
+cheaper than a frontier model, with identical output (every dollar figure is
+pre-computed by `audit-extract.py`, not guessed by the model).
 
 ## Reference files
 

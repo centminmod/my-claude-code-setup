@@ -688,8 +688,12 @@ def _cache_write_split(u: dict) -> tuple[int, int]:
 
 def _cost(u: dict, model: str, ts: str | None = None) -> float:
     pricing_date = _effective_date(ts)
-    r = _sm()._pricing_for_at(model, pricing_date)
     tokens_5m, tokens_1h = _cache_write_split(u)
+    # Prompt length (all three input buckets) picks the rate card on
+    # prompt-length-tiered models (Haiku 5.5 >100K, see _PRICING_PROMPT_TIERS).
+    prompt = ((u.get("input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
+              + tokens_5m + tokens_1h)
+    r = _sm()._pricing_for_turn(model, pricing_date, prompt)
     # ``… or 0`` (not ``.get(k, 0)``) so an explicit ``"input_tokens": null`` in a
     # hand-edited / truncated transcript collapses to 0 instead of propagating
     # ``None`` into ``None * rate`` (TypeError). The default in ``.get(k, 0)`` only
@@ -723,7 +727,8 @@ def _cost(u: dict, model: str, ts: str | None = None) -> float:
             # missing-key and empty-string to the parent turn's model so the
             # advisor charge tracks the parent's rate (the correct fallback
             # when the iteration record is partial).
-            adv_rates = _sm()._pricing_for_at(it.get("model") or model, pricing_date)
+            adv_rates = _sm()._pricing_for_turn(it.get("model") or model, pricing_date,
+                                                it.get("input_tokens") or 0)
             advisor += (
                 (it.get("input_tokens") or 0)  * adv_rates["input"]  / 1_000_000
               + (it.get("output_tokens") or 0) * adv_rates["output"] / 1_000_000
@@ -760,7 +765,8 @@ def _advisor_info(u: dict, model: str, ts: str | None = None) -> tuple[int, floa
             adv_model = it.get("model") or ""
             if adv_model and advisor_model is None:
                 advisor_model = adv_model
-            adv_rates = _sm()._pricing_for_at(adv_model or model, pricing_date)
+            adv_rates = _sm()._pricing_for_turn(adv_model or model, pricing_date,
+                                                it.get("input_tokens") or 0)
             # ``… or 0`` for the same reason as the sibling loops in ``_cost``
             # and ``_no_cache_cost``: an advisor iteration can carry a
             # present-but-null token field, which ``.get(k, 0)`` would pass
@@ -776,7 +782,6 @@ def _advisor_info(u: dict, model: str, ts: str | None = None) -> tuple[int, floa
 
 def _no_cache_cost(u: dict, model: str, ts: str | None = None) -> float:
     pricing_date = _effective_date(ts)
-    r = _sm()._pricing_for_at(model, pricing_date)
     # Route the cache-creation token count via _cache_write_split for parity
     # with _cost (which also reads through the same helper). Empirically
     # equal today (55/55 turns per CLAUDE-activeContext.md:430-432), but
@@ -791,6 +796,9 @@ def _no_cache_cost(u: dict, model: str, ts: str | None = None) -> float:
         + (u.get("cache_read_input_tokens") or 0)
         + cw_5m + cw_1h
     )
+    # Same prompt length as ``_cost`` → same rate card (caching doesn't change
+    # what counts toward the prompt), so the savings delta stays like-for-like.
+    r = _sm()._pricing_for_turn(model, pricing_date, total_input)
     primary = (
         total_input * r["input"] / 1_000_000
         + (u.get("output_tokens") or 0) * r["output"] / 1_000_000
@@ -810,7 +818,8 @@ def _no_cache_cost(u: dict, model: str, ts: str | None = None) -> float:
     advisor = 0.0
     for it in u.get("iterations") or []:
         if it.get("type") == "advisor_message":
-            adv_rates = _sm()._pricing_for_at(it.get("model") or model, pricing_date)
+            adv_rates = _sm()._pricing_for_turn(it.get("model") or model, pricing_date,
+                                                it.get("input_tokens") or 0)
             advisor += (
                 (it.get("input_tokens") or 0)  * adv_rates["input"]  / 1_000_000
               + (it.get("output_tokens") or 0) * adv_rates["output"] / 1_000_000

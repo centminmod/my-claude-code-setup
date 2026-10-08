@@ -3,6 +3,49 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.91.0 — 2026-10-08
+
+### Haiku 5.5 and Sonnet 5.5 pricing, prompt-length rate tier, 1M context windows (minor)
+
+- **Pricing fix.** `claude-haiku-5-5` was billed at $1 / $5 through the
+  pre-provisioned bare-major `claude-haiku-5` key, with no unknown-model
+  warning. Haiku 5.5 costs $0.10 / $0.50 (cache read $0.01, writes $0.125 /
+  $0.20), so its turns were over-counted 10×. It now has its own key, listed
+  before `claude-haiku-5`, which also covers its `[1m]` / date-suffixed forms.
+- **New: prompt-length rate tier.** Haiku 5.5 bills a request whose prompt
+  is over 100,000 tokens on a second rate card: $0.50 / $2.50 (cache read
+  $0.05, writes $0.625 / $1.00). The prompt is input + cache-read +
+  cache-write tokens. Over the threshold, every token category in the
+  request is billed on the higher card, including output.
+  `_PRICING_PROMPT_TIERS` holds the card, and `_pricing_for_turn` picks one
+  per turn. It is used for turn cost, the no-cache baseline, the 1h-TTL
+  premium KPI, and advisor iterations. Model tables still show the ≤100K
+  card. No other model is tiered.
+- **Context pressure.** Haiku 5.5 has a 1M context window, and Claude Code
+  records it as bare `claude-haiku-5-5`. `_MODEL_CONTEXT_WINDOWS` now lists
+  `claude-haiku-5` at 1M. Haiku 4.5 stays at 200K.
+- **audit-session-metrics.** `audit-extract.py` adds a `claude-haiku-5-5`
+  row at $0.10 input. Without it, the bare `claude-haiku` needle used $1.00.
+  The >100K card is not modelled there, because audit estimates are
+  approximate by design.
+- **Sonnet 5.5 cache reads.** `claude-sonnet-5-5` fell through to the
+  bare-major `claude-sonnet-5` key, so its cache reads were billed at
+  $0.20 instead of $0.10, a 2× over-count. Sonnet 5.5 now has its own key:
+  $2 / $10, cache read $0.10 (0.05× input), writes $2.50 / $4. It has no
+  prompt-length tier. `audit-extract.py` adds a matching $2 row.
+- **Sonnet 5 / 5.5 context pressure.** Both always run with a 1M window
+  (no 200K variant), and Claude Code records them bare. They were measured
+  against 200K. `_MODEL_CONTEXT_WINDOWS` now lists `claude-sonnet-5` at 1M,
+  which also covers `claude-sonnet-5-5`. Sonnet 4.x stays at 200K.
+- **Docs.** In Claude Code on the Anthropic API, `/model haiku` now selects
+  Haiku 5.5, which has a 1M window. The audit-session-metrics guidance and
+  the README no longer say Haiku's 200k window limits the cheap audit path
+  to short sessions. That caveat now applies only on Bedrock, Google Cloud,
+  Microsoft Foundry, and Claude Platform on AWS, where `haiku` is still
+  Haiku 4.5.
+- `references/pricing.md` adds Haiku 5.5 and Sonnet 5.5 to *Current
+  models* and to *Effort support by model*, and documents the tier.
+
 ## v1.90.3 — 2026-09-25
 
 ### IFEval scores each prompt's final answer, not its first turn (patch)

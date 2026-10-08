@@ -175,6 +175,26 @@ def _pricing_for_at(model: str, pricing_date=None) -> dict[str, float]:
     return base
 
 
+def _pricing_for_turn(model: str, pricing_date=None, prompt_tokens: int = 0) -> dict[str, float]:
+    """Prompt-length-tier wrapper over ``_pricing_for_at``.
+
+    Returns the ``_PRICING_PROMPT_TIERS`` high-band rates when ``model``
+    resolves to a tiered flat entry and ``prompt_tokens`` (input + cache read
+    + cache write) exceeds that tier's threshold; otherwise the date-effective
+    rate. Not cached — ``prompt_tokens`` varies per turn; both lookups it makes
+    are.
+    """
+    rates = _pricing_for_at(model, pricing_date)
+    if prompt_tokens:
+        flat = _pricing_for(model)
+        for key, tier in _sm()._PRICING_PROMPT_TIERS.items():
+            if flat is _sm()._PRICING.get(key):
+                if prompt_tokens > tier["threshold"]:
+                    return tier["rates"]
+                break
+    return rates
+
+
 def _load_pricing_supplement(path: str, unresolved_only: bool = True) -> None:
     """C.6: supplement ``_PRICING`` from a JSON file for unresolved models only.
 
@@ -873,7 +893,9 @@ def _totals_from_turns(turn_records: list[dict]) -> dict:
         # same tokens at the 5m rate). Meaningful only when cache_write_1h > 0.
         tokens_1h = r.get("cache_write_1h_tokens", 0)
         if tokens_1h:
-            rates = _pricing_for_at(r["model"], _sm()._effective_date(r.get("timestamp")))
+            rates = _pricing_for_turn(
+                r["model"], _sm()._effective_date(r.get("timestamp")),
+                r.get("input_tokens", 0) + cr + cw)
             extra = tokens_1h * (rates["cache_write_1h"] - rates["cache_write"]) / 1_000_000
             # Fast mode scales every rate uniformly, so the 1h-vs-5m premium
             # delta scales too — mirror _cost's per-turn multiplier or this KPI

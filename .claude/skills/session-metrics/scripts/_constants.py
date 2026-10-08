@@ -26,12 +26,16 @@ _CACHE_BREAK_DEFAULT_THRESHOLD = 100_000
 # carries 1M (v1.88.0) — at 200K the context-pressure signal exceeded 100%.
 # Opus 5 / 5.5 are the same: 1M is their only window and Claude Code stamps
 # bare ``claude-opus-5`` / ``claude-opus-5-5`` (v1.90.2); the longer prefix
-# wins over ``claude-opus``.
+# wins over ``claude-opus``. Sonnet 5 / 5.5 and Haiku 5.5 likewise run 1M as
+# their only window (v1.91.0); ``claude-sonnet-5`` covers ``claude-sonnet-5-5``
+# and ``claude-haiku-5`` covers ``claude-haiku-5-5``.
 _MODEL_CONTEXT_WINDOWS = {
     "claude-opus":   200_000,
     "claude-opus-5": 1_000_000,
     "claude-sonnet": 200_000,
+    "claude-sonnet-5": 1_000_000,
     "claude-haiku":  200_000,
+    "claude-haiku-5": 1_000_000,
     "claude-fable":  1_000_000,
 }
 _DEFAULT_CONTEXT_WINDOW = 200_000

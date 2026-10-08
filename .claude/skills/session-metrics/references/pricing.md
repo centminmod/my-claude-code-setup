@@ -16,7 +16,7 @@ back to the 5-minute rate — preserves pre-v1.2.0 numbers for those
 files.
 
 **Cache read** (hits + refreshes) is **0.1× base input** regardless
-of TTL.
+of TTL (exceptions: Fable 5.1 0.025×, Opus 5.5 and Sonnet 5.5 0.05× — see below).
 
 ## Current models
 
@@ -31,10 +31,13 @@ of TTL.
 | `claude-sonnet-4-7`         | sonnet-4-7 |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
 | `claude-sonnet-4-6`         | sonnet-4-6 |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
 | `claude-sonnet-4-5`         | sonnet-4-5 |  3.00 |  15.00 |       0.30 |           3.75 |           6.00 |
+| `claude-haiku-5-5` ‡        | haiku-5-5  |  0.10 |   0.50 |       0.01 |          0.125 |           0.20 |
+| `claude-haiku-5-5` ‡ (prompt >100K) | haiku-5-5 | 0.50 | 2.50 |   0.05 |          0.625 |           1.00 |
 | `claude-haiku-4-5-20251001` | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
 | `claude-haiku-4-5`          | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
 | `claude-fable-5-1`          | fable-5-1  | 10.00 |  50.00 |       0.25 |          12.50 |          20.00 |
 | `claude-fable-5`            | fable-5    | 10.00 |  50.00 |       1.00 |          12.50 |          20.00 |
+| `claude-sonnet-5-5`         | sonnet-5-5 |  2.00 |  10.00 |       0.10 |           2.50 |           4.00 |
 | `claude-sonnet-5` †         | sonnet-5   |  2.00 |  10.00 |       0.20 |           2.50 |           4.00 |
 
 > **Important — pricing tier change at Opus 4.5**: Opus 4.5 / 4.6 / 4.7 / 4.8
@@ -91,6 +94,28 @@ of TTL.
 > `audit-extract.py` carries a matching `claude-sonnet-5` row ($2), allow-listed
 > in the drift guard's `ALLOWED_MAJOR_ONLY`.
 >
+> **Sonnet 5.5** (`claude-sonnet-5-5`, v1.91.0) keeps Sonnet 5's $2 / $10 and
+> cache-write rates ($2.50 / $4) but **cache reads are $0.10** (0.05× base input,
+> as Opus 5.5). Its own key precedes the bare-major `claude-sonnet-5`, which
+> would otherwise bill its cache reads at $0.20. One rate across the full 1M
+> window (no prompt-length tier). Sonnet 5.5 and Sonnet 5 are 1M-only and
+> stamped bare (no `[1m]`), so `_MODEL_CONTEXT_WINDOWS` carries `claude-sonnet-5`
+> at 1M (prefix covers `claude-sonnet-5-5`); Sonnet 4.x stays at 200K.
+>
+> **‡ Haiku 5.5 is priced by prompt length (v1.91.0)**: `claude-haiku-5-5` bills
+> $0.10 / $0.50 when the prompt is ≤100,000 tokens and $0.50 / $2.50 above that
+> (verified against the Anthropic pricing page 2026-10-08). "Prompt" = `input_tokens`
+> + `cache_read_input_tokens` + `cache_creation_input_tokens` — all three count
+> toward the context window. Over the threshold, **every** token category of that
+> request moves to the higher card, output included. The flat `_PRICING` entry is
+> the ≤100K card; `_PRICING_PROMPT_TIERS` holds the >100K card and
+> `_pricing_for_turn` picks one per turn (also for the no-cache baseline, the
+> 1h-TTL premium KPI, and advisor iterations). Model tables show the ≤100K
+> card. Its own key precedes the bare-major `claude-haiku-5`, which would
+> otherwise bill it at $1 / $5. Haiku 5.5 has a **1M** context window with no
+> `[1m]` tag, so `_MODEL_CONTEXT_WINDOWS` carries `claude-haiku-5` at 1M.
+> `audit-extract.py` uses the ≤100K $0.10 input rate only (approximate by design).
+>
 > **Date-effective pricing** (`_PRICING_SCHEDULES` + `_pricing_for_at`) prices
 > each turn at the rate in effect on its own UTC date, so reprocessing an old
 > transcript stays correct. Current windows cover GPT-5.6 only (see the OpenAI
@@ -117,6 +142,8 @@ added 2026-09-25
 | `claude-opus-5`         | low / medium / high / xhigh / max  | high        | high (xhigh for demanding coding/agentic; thinking can't be disabled at xhigh/max) |
 | `claude-opus-5-5`       | low / medium / high / xhigh / max  | **medium**  | set explicitly (thinking always on; `disabled` is rejected) |
 | `claude-sonnet-4-6`+    | low / medium / high / max          | high        | medium                                    |
+| `claude-sonnet-5-5`     | low / medium / high / xhigh / max  | high (Claude Code: medium) | medium for agentic coding (levels recalibrated from Sonnet 5) |
+| `claude-haiku-5-5`      | low / medium / high / xhigh / max  | **medium**  | set explicitly (`budget_tokens` rejected; `claude-haiku-4-5` has no effort) |
 
 Note: Opus 4.8's default is `high` on all surfaces including Claude
 Code — `xhigh` is the *recommended* setting for coding, not the default.
@@ -139,7 +166,7 @@ case Anthropic re-tiers a generation.
 | `claude-haiku-4-7` | Haiku $1/$5       | |
 | `claude-haiku-4-8` | Haiku $1/$5       | |
 | `claude-haiku-4-9` | Haiku $1/$5       | |
-| `claude-haiku-5`   | Haiku $1/$5       | **bare-major** — catches all `5.x` minors + `[1m]` |
+| `claude-haiku-5`   | Haiku $1/$5       | **bare-major** — catches un-keyed `5.x` minors + `[1m]`. Haiku 5.5 shipped at $0.10/$0.50 and has its own key (see Current models) |
 
 Anything *beyond* these keys (e.g. a hypothetical `claude-opus-6`) still falls to
 the family-fallback regex: priced at the family tier **and** flagged in the
