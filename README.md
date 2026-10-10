@@ -1432,7 +1432,7 @@ Chrome Devtool MCP server takes up ~16,977 tokens across 26 MCP tools
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=centminmod/my-claude-code-setup&type=Date)](https://www.star-history.com/#centminmod/my-claude-code-setup&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=centminmod/my-claude-code-setup&type=Date)](https://star-history.dera.page/#centminmod/my-claude-code-setup&Date)
 
 
 ## Stats

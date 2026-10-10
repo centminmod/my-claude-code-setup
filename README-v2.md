@@ -1425,7 +1425,7 @@ claude config set -g <key> <value>
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=centminmod/my-claude-code-setup&type=Date)](https://www.star-history.com/#centminmod/my-claude-code-setup&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=centminmod/my-claude-code-setup&type=Date)](https://star-history.dera.page/#centminmod/my-claude-code-setup&Date)
 
 ---
 
