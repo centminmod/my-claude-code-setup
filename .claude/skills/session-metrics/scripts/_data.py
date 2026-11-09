@@ -261,20 +261,22 @@ def _load_pricing_supplement(path: str, unresolved_only: bool = True) -> None:
 def _fast_multiplier_for(model: str) -> float:
     """Per-model fast-mode (``usage.speed == "fast"``) cost multiplier.
 
-    Fast mode (research preview) is Opus-only and prices every token category
+    Fast mode (Opus 4.6+ minors and Fable / Mythos 5.2) prices every token category
     at a uniform premium over standard rates (prompt-caching multipliers apply
     on top of the fast base), so multiplying the computed token cost by a single
     per-model factor is exact. Resolution mirrors ``_pricing_for``'s silent
     chain: exact key → prefix sweep (catches ``[1m]`` and date suffixes) →
     default ``1.0`` (never invent a premium for an unmapped model). No regex /
-    family-fallback tier is needed — fast mode is bounded to the Opus
-    minors in ``_FAST_MODE_MULTIPLIERS``, whose ids are non-colliding prefixes.
+    family-fallback tier is needed — fast mode is bounded to the models in
+    ``_FAST_MODE_MULTIPLIERS``. The prefix sweep refuses a match when the next
+    character is a digit, so a dated Fable 5 id (``claude-fable-5-20260601``)
+    does not inherit the ``claude-fable-5-2`` premium.
     """
     table = _sm()._FAST_MODE_MULTIPLIERS
     if model in table:
         return table[model]
     for prefix, factor in table.items():
-        if model.startswith(prefix):
+        if model.startswith(prefix) and not model[len(prefix):len(prefix) + 1].isdigit():
             return factor
     return 1.0
 

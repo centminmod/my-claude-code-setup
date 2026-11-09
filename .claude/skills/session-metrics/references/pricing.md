@@ -16,7 +16,7 @@ back to the 5-minute rate — preserves pre-v1.2.0 numbers for those
 files.
 
 **Cache read** (hits + refreshes) is **0.1× base input** regardless
-of TTL (exceptions: Fable 5.1 0.025×, Opus 5.5 and Sonnet 5.5 0.05× — see below).
+of TTL (exceptions: Fable / Mythos 5.1 and 5.2 0.025×, Opus 5.5 and Sonnet 5.5 0.05× — see below).
 
 ## Current models
 
@@ -35,8 +35,12 @@ of TTL (exceptions: Fable 5.1 0.025×, Opus 5.5 and Sonnet 5.5 0.05× — see be
 | `claude-haiku-5-5` ‡ (prompt >100K) | haiku-5-5 | 0.50 | 2.50 |   0.05 |          0.625 |           1.00 |
 | `claude-haiku-4-5-20251001` | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
 | `claude-haiku-4-5`          | haiku-4-5  |  1.00 |   5.00 |       0.10 |           1.25 |           2.00 |
+| `claude-fable-5-2`          | fable-5-2  |  8.00 |  40.00 |       0.20 |          10.00 |          16.00 |
 | `claude-fable-5-1`          | fable-5-1  | 10.00 |  50.00 |       0.25 |          12.50 |          20.00 |
 | `claude-fable-5`            | fable-5    | 10.00 |  50.00 |       1.00 |          12.50 |          20.00 |
+| `claude-mythos-5-2`         | mythos-5-2 |  8.00 |  40.00 |       0.20 |          10.00 |          16.00 |
+| `claude-mythos-5-1`         | mythos-5-1 | 10.00 |  50.00 |       0.25 |          12.50 |          20.00 |
+| `claude-mythos-5`           | mythos-5   | 10.00 |  50.00 |       1.00 |          12.50 |          20.00 |
 | `claude-sonnet-5-5`         | sonnet-5-5 |  2.00 |  10.00 |       0.10 |           2.50 |           4.00 |
 | `claude-sonnet-5` †         | sonnet-5   |  2.00 |  10.00 |       0.20 |           2.50 |           4.00 |
 
@@ -70,6 +74,25 @@ of TTL (exceptions: Fable 5.1 0.025×, Opus 5.5 and Sonnet 5.5 0.05× — see be
 > Claude Code stamps `message.model` as bare `claude-fable-5-1`, and the Fable
 > family's **default** context window is 1M (no `[1m]` tag), which the
 > session-health context-pressure signal now honours.
+>
+> **Fable 5.2** (`claude-fable-5-2`, v1.92.0) is **cheaper** than Fable 5.1:
+> $8 / $40, cache writes $10 (5m) / $16 (1h), cache reads $0.20 (0.025× base
+> input). Before v1.92.0 it prefix-matched the bare-major `claude-fable-5` and
+> was billed at $10 / $50 / $1.00 with no warning; it now has its own key.
+> Because a dated Fable 5 id (`claude-fable-5-YYYYMMDD`) also starts with
+> `claude-fable-5-2`, an anchored regex in `_PRICING_PATTERNS` keeps those on
+> the Fable 5 rate. Fast mode is $16 / $80 (2× standard), applied via
+> `_FAST_MODE_MULTIPLIERS`. No prompt-length band: the full 1M window bills
+> at one rate.
+>
+> **Mythos 5 / 5.1 / 5.2** (`claude-mythos-5`, `-5-1`, `-5-2`, v1.92.0;
+> limited availability) are priced exactly like Fable 5 / 5.1 / 5.2 and keyed
+> the same way: minors before the bare-major `claude-mythos-5`, an anchored
+> regex for dated Mythos 5 ids, a 1M default window, and a Mythos 6+ family
+> fallback at the Mythos 5 tier (flagged). Only Mythos 5.2 has fast mode
+> ($16 / $80, 2×). Before v1.92.0 every Mythos id fell to the Sonnet default
+> ($3 / $15) with an unknown-model warning. `claude-mythos-preview` has no
+> published rate and still falls to the default.
 >
 > **Opus 5.5** (`claude-opus-5-5`, v1.89.0) is **cheaper** than Opus 5:
 > $4 / $20, cache writes $5 (5m) / $8 (1h), and **cache reads $0.20** (0.05×
@@ -139,6 +162,8 @@ added 2026-09-25
 | `claude-opus-4-7` / `-4-8` | low / medium / high / xhigh / max | high      | xhigh                                     |
 | `claude-fable-5`        | low / medium / high / xhigh / max  | high        | high (xhigh only for the most capability-sensitive work) |
 | `claude-fable-5-1`      | low / medium / high / xhigh / max  | high        | high (thinking always on; `disabled` is rejected)         |
+| `claude-fable-5-2`      | low / medium / high / xhigh / max  | high        | high (xhigh only where a gain is measured; thinking always on) |
+| `claude-mythos-5*`      | same as the Fable counterpart      | high        | same as the Fable counterpart                                  |
 | `claude-opus-5`         | low / medium / high / xhigh / max  | high        | high (xhigh for demanding coding/agentic; thinking can't be disabled at xhigh/max) |
 | `claude-opus-5-5`       | low / medium / high / xhigh / max  | **medium**  | set explicitly (thinking always on; `disabled` is rejected) |
 | `claude-sonnet-4-6`+    | low / medium / high / max          | high        | medium                                    |
@@ -397,10 +422,10 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
   `message.usage.cache_creation.ephemeral_{5m,1h}_input_tokens` and charges
   each at the correct rate. Turns without the nested object (legacy
   transcripts) fall back to the 5-minute rate, preserving their prior cost.
-- **Fast mode** (research preview, **Opus 4.6 / 4.7 / 4.8 / 5 / 5.5 only**): a
+- **Fast mode** (**Opus 4.6 / 4.7 / 4.8 / 5 / 5.5 and Fable / Mythos 5.2 only**): a
   premium rate tier — Opus 4.6/4.7 bill at **6× standard** ($30 input / $150
   output), Opus 4.8 and Opus 5 at **2×** ($10 / $50), Opus 5.5 at **2×** ($8 /
-  $40). Prompt-caching multipliers apply *on top of*
+  $40), Fable 5.2 and Mythos 5.2 at **2×** ($16 / $80). Prompt-caching multipliers apply *on top of*
   the fast base, so every token category scales by the same factor. **Applied
   since v1.64.0**: `_cost` / `_no_cache_cost` multiply the per-turn *primary*
   token cost by the per-model factor (`_FAST_MODE_MULTIPLIERS`) when

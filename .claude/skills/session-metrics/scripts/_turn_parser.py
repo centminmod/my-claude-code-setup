@@ -705,7 +705,7 @@ def _cost(u: dict, model: str, ts: str | None = None) -> float:
         + tokens_5m                               * r["cache_write"]     / 1_000_000
         + tokens_1h                               * r["cache_write_1h"]  / 1_000_000
     )
-    # Fast mode (Opus 4.6/4.7/4.8 research preview, usage.speed == "fast") is a
+    # Fast mode (Opus 4.6+ and Fable / Mythos 5.2, usage.speed == "fast") is a
     # premium rate tier that scales EVERY token category uniformly — prompt-
     # caching multipliers apply on top of the fast base — so multiplying the
     # computed ``primary`` token cost by the per-model factor is exact. Parent

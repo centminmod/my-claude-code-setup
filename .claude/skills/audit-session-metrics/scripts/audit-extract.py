@@ -86,8 +86,15 @@ _INPUT_RATE_PER_M_BY_MODEL: tuple[tuple[str, float], ...] = (
     ("claude-haiku-4-6", 1.00),
     ("claude-haiku-4-5", 1.00),
     ("claude-3-5-haiku", 0.80),
+    # Fable 5.2 is $8/M — below the `claude-fable-5` $10 needle. The `(?!\d)`
+    # boundary keeps this needle off a dated Fable 5 id (`claude-fable-5-2026…`).
+    ("claude-fable-5-2", 8.00),
     ("claude-fable-5-1", 10.00),
     ("claude-fable-5", 10.00),
+    # Mythos rows mirror Fable (same rates per minor, same ordering).
+    ("claude-mythos-5-2", 8.00),
+    ("claude-mythos-5-1", 10.00),
+    ("claude-mythos-5", 10.00),
     ("claude-3-7-sonnet", 3.00),
     ("claude-3-5-sonnet", 3.00),
     ("claude-sonnet-4-9", 3.00),

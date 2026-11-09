@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.91.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.92.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -148,8 +148,23 @@ _PRICING: dict[str, dict[str, float]] = {
     # the bare-major `claude-fable-5` so the prefix sweep lands here for the
     # `[1m]` / date-suffixed forms instead of on the $1.00 Fable 5 read rate.
     # Claude Code stamps `message.model` as `claude-fable-5-1` (no `[1m]`).
+    # Fable 5.2 (v1.92.0): CHEAPER tier — $8 / $40, cache writes $10 (5m) /
+    # $16 (1h), cache reads $0.20 (0.025x base input, same ratio as 5.1).
+    # Listed before the bare-major `claude-fable-5`, which would otherwise
+    # price it at the $10/$50/$1.00 Fable 5 rate with no warning. A dated
+    # Fable 5 id (`claude-fable-5-YYYYMMDD`) also starts with `claude-fable-5-2`;
+    # the anchored Fable 5 regex in `_PRICING_PATTERNS` (checked before this
+    # prefix sweep) keeps those on the Fable 5 rate.
+    "claude-fable-5-2":          {"input":  8.00, "output": 40.00, "cache_read": 0.20,  "cache_write": 10.00, "cache_write_1h": 16.00},
     "claude-fable-5-1":          {"input": 10.00, "output": 50.00, "cache_read": 0.25,  "cache_write": 12.50, "cache_write_1h": 20.00},
     "claude-fable-5":            {"input": 10.00, "output": 50.00, "cache_read": 1.00,  "cache_write": 12.50, "cache_write_1h": 20.00},
+    # --- Mythos 5 / 5.1 / 5.2 (v1.92.0): limited-availability counterparts of
+    #     Fable 5 / 5.1 / 5.2, priced identically (the rate card lists each pair
+    #     at the same rates). Same layout as Fable: minors before the bare-major,
+    #     and the dated-Mythos-5 regex in `_PRICING_PATTERNS` guards `-5-2`.
+    "claude-mythos-5-2":         {"input":  8.00, "output": 40.00, "cache_read": 0.20,  "cache_write": 10.00, "cache_write_1h": 16.00},
+    "claude-mythos-5-1":         {"input": 10.00, "output": 50.00, "cache_read": 0.25,  "cache_write": 12.50, "cache_write_1h": 20.00},
+    "claude-mythos-5":           {"input": 10.00, "output": 50.00, "cache_read": 1.00,  "cache_write": 12.50, "cache_write_1h": 20.00},
     # --- Non-Anthropic models (OpenRouter rates, 2026-04-25 unless noted; cache
     #     columns 0 unless the entry bills caching: GLM + DeepSeek V4 families
     #     and kimi-k3 bill cache reads, the GPT-5.6 / GPT-6 families bill reads
@@ -326,15 +341,18 @@ _PRICING_PROMPT_TIERS: dict[str, dict] = {
     },
 }
 
-# Fast-mode (research preview) premium multipliers. Source: Anthropic pricing
+# Fast-mode premium multipliers. Source: Anthropic pricing
 # (https://platform.claude.com/docs/en/about-claude/pricing § "Fast mode
-# pricing"). Fast mode is Opus-only and prices EVERY token category at a uniform
-# premium over standard rates — prompt-caching multipliers apply on top of the
-# fast base — so a single per-model factor applied to the computed token cost is
-# exact (not an approximation). Keyed by model-id prefix; `[1m]` and date
-# suffixes resolve via the prefix sweep in `_fast_multiplier_for`. Models absent
-# here → 1.0 (no premium is ever invented for an unmapped model).
+# pricing"). Fast mode exists on the Opus minors below and on Fable / Mythos 5.2, and
+# prices EVERY token category at a uniform premium over standard rates —
+# prompt-caching multipliers apply on top of the fast base — so a single
+# per-model factor applied to the computed token cost is exact (not an
+# approximation). Keyed by model-id prefix; `[1m]` and date suffixes resolve via
+# the prefix sweep in `_fast_multiplier_for`. Models absent here → 1.0 (no
+# premium is ever invented for an unmapped model).
 _FAST_MODE_MULTIPLIERS: dict[str, float] = {
+    "claude-fable-5-2": 2.0,  # fast $16/$80  vs standard $8/$40
+    "claude-mythos-5-2": 2.0, # fast $16/$80  vs standard $8/$40
     "claude-opus-5-5": 2.0,   # fast $8/$40   vs standard $4/$20 (before opus-5: prefix)
     "claude-opus-5":   2.0,   # fast $10/$50  vs standard $5/$25
     "claude-opus-4-8": 2.0,   # fast $10/$50  vs standard $5/$25
@@ -462,6 +480,14 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # routes to the NEW-tier family fallback (with a warning).
     (re.compile(r"^claude-opus-4-1(?:-|\[|$)",       re.I),
         {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75, "cache_write_1h": 30.00}),
+    # ----- Dated Fable 5 / Mythos 5 (anchored regex; v1.92.0).
+    # `claude-fable-5-YYYYMMDD` starts with the `claude-fable-5-2` key (likewise
+    # Mythos), so without this the prefix sweep would price a dated 5.0 id at
+    # the cheaper 5.2 rate. Exactly 8 digits, so `claude-fable-5-2`,
+    # `claude-fable-5-2[1m]` and `claude-fable-5-2-YYYYMMDD` do NOT match and
+    # still reach the 5.2 key.
+    (re.compile(r"^claude-fable-5-\d{8}(?:-|\[|$)",  re.I), _PRICING["claude-fable-5"]),
+    (re.compile(r"^claude-mythos-5-\d{8}(?:-|\[|$)", re.I), _PRICING["claude-mythos-5"]),
 ]
 
 # Family-aware fallbacks (v1.41.2). Consulted by `_pricing_for` AFTER the exact
@@ -521,6 +547,8 @@ _PRICING_FAMILY_FALLBACKS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # fallback; without it a future `claude-fable-6` would default to Sonnet $3
     # (a ~70% under-count on a $10 model). Holds the Fable 5 tier as the bet.
     (re.compile(r"^claude-fable-(?:[6-9]|\d{2,})(?:-|\[|$)", re.I), _PRICING["claude-fable-5"]),
+    # Future Mythos majors (6+): same reasoning as Fable, at the Mythos 5 tier.
+    (re.compile(r"^claude-mythos-(?:[6-9]|\d{2,})(?:-|\[|$)", re.I), _PRICING["claude-mythos-5"]),
     # GPT-5.6 with an unrecognised or missing tier token (bare `gpt-5.6`, a
     # future `gpt-5.6-codex` / new tier name): price at Terra — OpenAI's
     # documented "balanced default" tier — and warn, rather than silently
@@ -556,7 +584,8 @@ def _print_run_advisories() -> None:
         if _FAST_PREMIUM_DISABLED:
             print(
                 f"[note] {n} fast-mode turn{plural} detected; the fast-mode "
-                "premium (Opus 4.6/4.7 6×, 4.8 2× standard rates) was SUPPRESSED "
+                "premium (Opus 4.6/4.7 6×; Opus 4.8/5/5.5 and Fable/Mythos 5.2 2× "
+                "standard rates) was SUPPRESSED "
                 "via --no-fast-premium, so cost is under-stated for those turns. "
                 "See references/pricing.md § Fast mode.",
                 file=sys.stderr,
@@ -564,7 +593,8 @@ def _print_run_advisories() -> None:
         else:
             print(
                 f"[note] {n} fast-mode turn{plural} detected; priced at the "
-                "fast-mode premium (Opus 4.6/4.7 6×, 4.8 2× standard rates). "
+                "fast-mode premium (Opus 4.6/4.7 6×; Opus 4.8/5/5.5 and Fable/Mythos 5.2 "
+                "2× standard rates). "
                 "Pass --no-fast-premium to reproduce pre-premium numbers. "
                 "See references/pricing.md § Fast mode.",
                 file=sys.stderr,

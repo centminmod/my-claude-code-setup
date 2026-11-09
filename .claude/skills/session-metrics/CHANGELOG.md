@@ -3,6 +3,43 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.92.0 — 2026-11-10
+
+### Claude Fable 5.2 and Mythos 5 / 5.1 / 5.2 pricing, fast mode (minor)
+
+- **Pricing fix.** `claude-fable-5-2` prefix-matched the bare-major
+  `claude-fable-5` key and was billed at $10 / $50, cache read $1.00, with
+  no unknown-model warning. Fable 5.2 costs $8 / $40, cache read $0.20
+  (0.025× input), writes $10 / $16, so its turns were over-counted: 25% on
+  input, output and cache writes, 5× on cache reads. It now has its own key,
+  listed before `claude-fable-5`, which also covers its `[1m]` /
+  date-suffixed forms.
+- **Dated Fable 5 ids.** A `claude-fable-5-YYYYMMDD` id also starts with
+  `claude-fable-5-2`. A new anchored regex in `_PRICING_PATTERNS` keeps those
+  on the Fable 5 rate.
+- **Mythos 5 / 5.1 / 5.2.** `claude-mythos-5`, `-5-1` and `-5-2` fell to the
+  Sonnet default ($3 / $15) with an unknown-model warning. They now have
+  their own keys at the same rates as their Fable counterparts, plus a
+  dated-Mythos-5 regex, a 1M default context window, a Mythos 6+ family
+  fallback (flagged) and audit-extract rows. Mythos 5.2 also has fast mode
+  ($16 / $80). `claude-mythos-preview` has no published rate and is
+  unchanged.
+- **Fast mode.** Fable 5.2 fast mode is $16 / $80 (2× standard).
+  `_FAST_MODE_MULTIPLIERS` gains a `claude-fable-5-2` entry; fast Fable 5.2
+  turns previously got no premium. `_fast_multiplier_for` now refuses a
+  prefix match when the next character is a digit, so a dated Fable 5 id
+  cannot inherit the 5.2 premium. The `--no-fast-premium` help and the
+  at-exit fast-mode note (which also omitted Opus 5 / 5.5) no longer
+  describe fast mode as Opus-only.
+- **audit-session-metrics.** `audit-extract.py` adds a `claude-fable-5-2`
+  row at $8 input. Without it, the `claude-fable-5` needle used $10.
+- **Context window.** No change needed: the `claude-fable` family key
+  already carries the 1M default window. A test now pins it for 5.2.
+- **Docs.** pricing.md gains the Fable 5.2 row, a note, an effort row and
+  the fast-mode rate; jsonl-schema.md's fast-tier line is updated.
+  `_PRICING_SNAPSHOT_DATE` is unchanged, because the rest of the table was
+  not re-verified.
+
 ## v1.91.0 — 2026-10-08
 
 ### Haiku 5.5 and Sonnet 5.5 pricing, prompt-length rate tier, 1M context windows (minor)
