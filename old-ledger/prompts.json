@@ -1,0 +1,18 @@
+{
+  "prompts": {
+    "main": {
+      "size": "1536x864",
+      "prompt": "An elderly British accountant character, 70 years old, grumpy but kind face, grey messy hair, thick grey eyebrows, small round gold glasses on the tip of his nose, pencil behind his ear. Wearing a white shirt with rolled sleeves, black sleeve garters, brown tweed waistcoat, loose dark tie. Sitting at an old wooden desk with a huge open leather ledger book, a vintage mechanical calculator, ink pot and stacks of papers. Old office with warm lamp light, wooden shelves full of ledgers. Stylized 3D animated movie style, warm sepia and brown tones, soft cinematic lighting, highly detailed"
+    },
+    "sheet": {
+      "size": "1536x1024",
+      "prompt": "Character reference sheet of the same elderly British accountant: front view, side view, back view, full body, standing, neutral pose, plain light beige background, same outfit: tweed waistcoat, white shirt, sleeve garters, round gold glasses, pencil behind ear. Stylized 3D animated movie style, consistent design"
+    },
+    "emotions": {
+      "size": "1536x1024",
+      "prompt": "Expression sheet of the same elderly British accountant with round glasses: 6 facial expressions - grumpy, shocked looking at numbers, sarcastic smirk, angry, rare warm smile, adjusting glasses suspiciously. Stylized 3D animated style, plain beige background"
+    }
+  },
+  "negative_prompt": "blurry, distorted face, extra fingers, deformed hands, text, watermark, logo, modern clothes, smartphone, childish cartoon style",
+  "_note": "OpenAI's image API has no negative-prompt parameter, so negative_prompt is NOT sent. It is kept here in case you switch services."
+}
