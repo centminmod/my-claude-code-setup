@@ -3,6 +3,24 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.95.0 — 2026-11-23
+
+### Price GLM-4.5-Air; resolve `z-ai/glm-4.7` and `z-ai/glm-5` (minor)
+
+- **GLM-4.5-Air.** `glm-4.5-air` had no entry and was billed at the Sonnet
+  default ($3 / $15, cache read $0.30) with an unknown-model warning. It now
+  has its own key `z-ai/glm-4.5-air` at OpenRouter's rate (2026-11-23):
+  $0.13 / $0.85, cache read $0.025, plus a `glm-4\.5(?!\d).*air\b` guard. Base
+  `glm-4.5` and `glm-4.5v` stay unkeyed and still warn.
+- **`z-ai/` aliases.** `z-ai/glm-4.7` and `z-ai/glm-5` (and suffixed forms
+  such as `z-ai/glm-5-20260101`) matched no key and fell to the Sonnet default
+  with a warning. They are now aliases that share the bare `glm-4.7` /
+  `glm-5` rate object, so a future re-snapshot updates both. The `glm-5.x`
+  guards and exact `z-ai/` keys still take precedence.
+- `references/pricing.md` gains the rows and a note. `tests/test_pricing.py`
+  adds tests for both id forms, the shared rate object, and base `glm-4.5`
+  still warning.
+
 ## v1.94.0 — 2026-11-23
 
 ### Recognise GLM-5.3-Prime, GLM-5V-Turbo and GLM-4.7-Flash (minor)

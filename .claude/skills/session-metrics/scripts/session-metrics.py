@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.94.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.95.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -177,7 +177,9 @@ _PRICING: dict[str, dict[str, float]] = {
     # GLM-4.7-Flash (v1.94.0): OpenRouter publishes no cache-read rate for it,
     # so cache_read stays 0 (the one GLM entry that doesn't bill cache reads).
     "z-ai/glm-4.7-flash":        {"input":  0.0605, "output":  0.40,   "cache_read": 0.00,    "cache_write": 0.00, "cache_write_1h": 0.00},
-    "glm-5":                     {"input":  1.00,   "output":  3.20,   "cache_read": 0.20,    "cache_write": 0.00, "cache_write_1h": 0.00},
+    # GLM-4.5-Air (v1.95.0, OpenRouter 2026-11-23): was the Sonnet default + warning.
+    "z-ai/glm-4.5-air":          {"input":  0.13,   "output":  0.85,   "cache_read": 0.025,   "cache_write": 0.00, "cache_write_1h": 0.00},
+    "glm-5":                    {"input":  1.00,   "output":  3.20,   "cache_read": 0.20,    "cache_write": 0.00, "cache_write_1h": 0.00},
     "glm-5.1":                   {"input":  1.40,   "output":  4.40,   "cache_read": 0.26,    "cache_write": 0.00, "cache_write_1h": 0.00},
     # GLM-5.2: own key; a dedicated regex guard below keeps suffixed forms off
     # the bare `glm-5` prefix (same trap documented for glm-5.1).
@@ -267,6 +269,12 @@ _PRICING: dict[str, dict[str, float]] = {
     # matched by the `glm-5-turbo` guard and would fall to the bare `glm-5` prefix.
     "z-ai/glm-5v-turbo":         {"input":  1.20, "output":   4.00, "cache_read": 0.24, "cache_write": 0.00, "cache_write_1h": 0.00},
 }
+# v1.95.0: OpenRouter-style `z-ai/` ids for the two GLM entries keyed bare.
+# Without these, `z-ai/glm-4.7` / `z-ai/glm-5` (and their suffixed forms)
+# prefix-matched nothing and fell to the Sonnet default. Same dict object as
+# the bare key, so a re-snapshot of the bare entry updates both.
+_PRICING["z-ai/glm-4.7"] = _PRICING["glm-4.7"]
+_PRICING["z-ai/glm-5"]   = _PRICING["glm-5"]
 _DEFAULT_PRICING = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75, "cache_write_1h": 6.00}
 # Zero-rate tier for non-billable placeholder turns. Dynamic-workflow
 # transcripts carry a single ``<synthetic>``-model orchestrator row per run
@@ -457,6 +465,8 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     (re.compile(r"minimax[-_/.]m3(?!\d)",            re.I), _PRICING["minimax/minimax-m3"]),
     # GLM-4.7-Flash before the `glm-4.7` prefix entry (v1.94.0)
     (re.compile(r"glm-4\.7(?!\d).*flash\b",          re.I), _PRICING["z-ai/glm-4.7-flash"]),
+    # GLM-4.5-Air (v1.95.0). `air\b` only: base glm-4.5 / glm-4.5v stay unkeyed.
+    (re.compile(r"glm-4\.5(?!\d).*air\b",            re.I), _PRICING["z-ai/glm-4.5-air"]),
     # GLM-5-Turbo before the bare glm-5 prefix entry
     (re.compile(r"glm-5-turbo\b",                    re.I), _PRICING["z-ai/glm-5-turbo"]),
     # GLM-5V-Turbo before the bare glm-5 prefix entry (v1.94.0)

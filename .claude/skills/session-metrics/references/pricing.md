@@ -266,9 +266,10 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 
 | Model ID                     | Input  | Output | Cache read | Regex pattern |
 |------------------------------|--------|--------|------------|---------------|
-| `glm-4.7`                    | 0.60   | 2.20   | 0.11       | `glm-4\.7`    |
+| `z-ai/glm-4.5-air`           | 0.13   | 0.85   | 0.025      | `glm-4\.5(?!\d).*air\b` |
+| `glm-4.7` / `z-ai/glm-4.7`   | 0.60   | 2.20   | 0.11       | prefix (both keys) |
 | `z-ai/glm-4.7-flash`         | 0.0605 | 0.40   | 0          | `glm-4\.7(?!\d).*flash\b` |
-| `glm-5`                      | 1.00   | 3.20   | 0.20       | `glm-5`       |
+| `glm-5` / `z-ai/glm-5`       | 1.00   | 3.20   | 0.20       | prefix (both keys) |
 | `glm-5.1`                    | 1.40   | 4.40   | 0.26       | `glm-5\.1`    |
 | `glm-5.2`                    | 0.62   | 2.42   | 0.14       | `glm-5\.2`    |
 | `z-ai/glm-5.3-flash`         | 0.0399 | 0.0784 | 0.03       | `glm-5\.3(?!\d).*flash\b`  |
@@ -305,6 +306,12 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 > than `z-ai/glm-5.3-prime`) fell to the Sonnet default with one.
 > GLM-4.7-Flash is the one GLM entry with `cache_read` 0: OpenRouter publishes
 > no cache-read rate for it.
+>
+> **GLM-4.5-Air and `z-ai/` aliases (v1.95.0).** `glm-4.5-air` had no entry and
+> billed at the Sonnet default ($3 / $15) with a warning; it now has its own
+> key and an `air\b` guard (base `glm-4.5` / `glm-4.5v` stay unkeyed and still
+> warn). `z-ai/glm-4.7` and `z-ai/glm-5` are aliases that share the bare
+> entries' rate object, so OpenRouter-style ids no longer fall to the default.
 
 ### Google Gemma 4
 
