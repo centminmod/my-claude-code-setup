@@ -3,6 +3,37 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.93.1 — 2026-11-23
+
+### Re-snapshot GLM pricing from OpenRouter (patch)
+
+Every stored GLM rate was checked against OpenRouter `/api/v1/models` on
+2026-11-23. Seven had drifted since the 2026-09-23 snapshot (v1.90.1)
+(input / output / cache read, $ per 1M tokens):
+
+| Key                  | Was                       | Now                     |
+|----------------------|---------------------------|-------------------------|
+| `glm-4.7`            | 0.40 / 1.75 / 0.08        | 0.60 / 2.20 / 0.11      |
+| `glm-5`              | 0.60 / 1.92 / 0.12        | 1.00 / 3.20 / 0.20      |
+| `glm-5.1`            | 0.966 / 3.036 / 0.1794    | 1.40 / 4.40 / 0.26      |
+| `glm-5.2`            | 0.6496 / 2.0416 / 0.12064 | 0.62 / 2.42 / 0.14      |
+| `z-ai/glm-5.3-flash` | 0.15 / 0.50 / 0.05        | 0.0399 / 0.0784 / 0.03  |
+| `z-ai/glm-5.3`       | 0.6538 / 2.0548 / 0.12142 | 0.0699 / 1.40 / 0.0689  |
+
+`glm-5`'s change also reprices every id that falls back to the bare `glm-5`
+prefix. `z-ai/glm-5.3-flashx` and `z-ai/glm-5-turbo` were unchanged. Cache
+writes stay $0 (OpenRouter charges no write premium).
+
+- **GLM-5.4 is unchanged.** OpenRouter has no `glm-5.4` entry, so it keeps
+  the provisional v1.93.0 rate ($0.6538 / $2.0548 / $0.12142, the
+  pre-re-snapshot `glm-5.3` value).
+- **OpenRouter vs z.ai.** OpenRouter's GLM-5.3 ($0.0699 input) is far below
+  z.ai's own list price ($1.40 / $4.40 / $0.26); GLM-5.3-Flash lists at
+  $0.15 / $0.50 / $0.03 on z.ai. `references/pricing.md` notes the gap.
+  Reports keep using OpenRouter.
+- Historical turns reprice at the new rates (OpenRouter publishes no
+  effective dates). `tests/test_pricing.py` expectations follow the new rates.
+
 ## v1.93.0 — 2026-11-23
 
 ### Recognise GLM-5.4 at a provisional rate (minor)

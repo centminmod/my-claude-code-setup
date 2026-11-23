@@ -240,7 +240,7 @@ The `gemma4` entry is a prefix fallback that covers Ollama local variants
 OpenRouter rate — a reasonable estimate for mixed-environment JSONL files.
 
 Source: [OpenRouter pricing](https://openrouter.ai/pricing) — snapshot 2026-04-25;
-GLM + DeepSeek V4 re-snapshotted 2026-09-23 from `https://openrouter.ai/api/v1/models`
+DeepSeek V4 re-snapshotted 2026-09-23 and GLM 2026-11-23 from `https://openrouter.ai/api/v1/models`
 (per-token `pricing.prompt` / `completion` / `input_cache_read`, × 1e6).
 
 `_pricing_for` uses three tiers in order: **exact match → regex patterns
@@ -266,31 +266,34 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 
 | Model ID                     | Input  | Output | Cache read | Regex pattern |
 |------------------------------|--------|--------|------------|---------------|
-| `glm-4.7`                    | 0.40   | 1.75   | 0.08       | `glm-4\.7`    |
-| `glm-5`                      | 0.60   | 1.92   | 0.12       | `glm-5`       |
-| `glm-5.1`                    | 0.966  | 3.036  | 0.1794     | `glm-5\.1`    |
-| `glm-5.2`                    | 0.6496 | 2.0416 | 0.12064    | `glm-5\.2`    |
-| `z-ai/glm-5.3-flash`         | 0.15   | 0.50   | 0.05       | `glm-5\.3(?!\d).*flash\b`  |
+| `glm-4.7`                    | 0.60   | 2.20   | 0.11       | `glm-4\.7`    |
+| `glm-5`                      | 1.00   | 3.20   | 0.20       | `glm-5`       |
+| `glm-5.1`                    | 1.40   | 4.40   | 0.26       | `glm-5\.1`    |
+| `glm-5.2`                    | 0.62   | 2.42   | 0.14       | `glm-5\.2`    |
+| `z-ai/glm-5.3-flash`         | 0.0399 | 0.0784 | 0.03       | `glm-5\.3(?!\d).*flash\b`  |
 | `z-ai/glm-5.3-flashx`        | 0.37   | 1.25   | 0.075      | `glm-5\.3(?!\d).*flashx\b` |
-| `z-ai/glm-5.3`               | 0.6538 | 2.0548 | 0.12142    | `glm-5\.3(?!\d)` (after the flash tiers) |
+| `z-ai/glm-5.3`               | 0.0699 | 1.40   | 0.0689     | `glm-5\.3(?!\d)` (after the flash tiers) |
 | `z-ai/glm-5.4` (provisional) | 0.6538 | 2.0548 | 0.12142    | `glm-5\.4(?!\d)` |
 | `z-ai/glm-5-turbo`           | 1.20   | 4.00   | 0.24       | `glm-5-turbo` |
 
-> **GLM re-snapshot (v1.90.1, OpenRouter `/api/v1/models`, 2026-09-23)**: every
-> GLM entry now carries OpenRouter's current rate, including billed cache reads
-> (no write premium). Previous values were the 2026-04-25 snapshot with cache
-> reads recorded as $0. Every bare `glm-5.x` form has a guard that keeps it off
-> the bare `glm-5` prefix. `flash\b` and `flashx\b` separate the two Flash
-> SKUs, and the base `glm-5.3` pattern runs after both. Non-round figures
-> (0.6496, 0.6538 …) are OpenRouter's provider-weighted prices, which drift.
-> Re-snapshot rather than trust them long-term. Historical turns reprice at
-> the current rate, because OpenRouter publishes no effective dates.
+> **GLM re-snapshot (v1.93.1, OpenRouter `/api/v1/models`, 2026-11-23)**: every
+> GLM entry carries OpenRouter's current rate, including billed cache reads
+> (no write premium); the previous snapshot was 2026-09-23 (v1.90.1). Every
+> bare `glm-5.x` form has a guard that keeps it off the bare `glm-5` prefix.
+> `flash\b` and `flashx\b` separate the two Flash SKUs, and the base `glm-5.3`
+> pattern runs after both. OpenRouter's figures are provider-weighted and
+> drift: GLM-5.3 at $0.0699 input is well below z.ai's own list price ($1.40
+> input / $4.40 output / $0.26 cache read on docs.z.ai), and GLM-5.3-Flash
+> lists at $0.15 / $0.50 / $0.03 there. Re-snapshot rather than trust them
+> long-term. Historical turns reprice at the current rate, because OpenRouter
+> publishes no effective dates.
 >
 > **GLM-5.4 (v1.93.0) is provisional.** It had no published rate on 2026-11-23
 > (absent from OpenRouter `/api/v1/models` and the docs.z.ai pricing page), so
-> it is billed at the `glm-5.3` rate. Before this, every `glm-5.4*` id silently
-> matched the bare `glm-5` prefix. Any `glm-5.4-flash*` id uses the same base
-> rate until Flash tiers are published.
+> it is billed at the `glm-5.3` rate as stored before the v1.93.1 re-snapshot
+> ($0.6538 / $2.0548 / $0.12142, OpenRouter 2026-09-23). Before v1.93.0, every
+> `glm-5.4*` id silently matched the bare `glm-5` prefix. Any `glm-5.4-flash*`
+> id uses the same base rate until Flash tiers are published.
 
 ### Google Gemma 4
 
