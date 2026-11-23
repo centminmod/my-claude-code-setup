@@ -267,14 +267,17 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 | Model ID                     | Input  | Output | Cache read | Regex pattern |
 |------------------------------|--------|--------|------------|---------------|
 | `glm-4.7`                    | 0.60   | 2.20   | 0.11       | `glm-4\.7`    |
+| `z-ai/glm-4.7-flash`         | 0.0605 | 0.40   | 0          | `glm-4\.7(?!\d).*flash\b` |
 | `glm-5`                      | 1.00   | 3.20   | 0.20       | `glm-5`       |
 | `glm-5.1`                    | 1.40   | 4.40   | 0.26       | `glm-5\.1`    |
 | `glm-5.2`                    | 0.62   | 2.42   | 0.14       | `glm-5\.2`    |
 | `z-ai/glm-5.3-flash`         | 0.0399 | 0.0784 | 0.03       | `glm-5\.3(?!\d).*flash\b`  |
 | `z-ai/glm-5.3-flashx`        | 0.37   | 1.25   | 0.075      | `glm-5\.3(?!\d).*flashx\b` |
-| `z-ai/glm-5.3`               | 0.0699 | 1.40   | 0.0689     | `glm-5\.3(?!\d)` (after the flash tiers) |
+| `z-ai/glm-5.3-prime`         | 1.68   | 5.28   | 0.336      | `glm-5\.3(?!\d).*prime\b` |
+| `z-ai/glm-5.3`               | 0.0699 | 1.40   | 0.0689     | `glm-5\.3(?!\d)` (after the flash / prime tiers) |
 | `z-ai/glm-5.4` (provisional) | 0.6538 | 2.0548 | 0.12142    | `glm-5\.4(?!\d)` |
 | `z-ai/glm-5-turbo`           | 1.20   | 4.00   | 0.24       | `glm-5-turbo` |
+| `z-ai/glm-5v-turbo`          | 1.20   | 4.00   | 0.24       | `glm-5v-turbo` |
 
 > **GLM re-snapshot (v1.93.1, OpenRouter `/api/v1/models`, 2026-11-23)**: every
 > GLM entry carries OpenRouter's current rate, including billed cache reads
@@ -294,6 +297,14 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 > ($0.6538 / $2.0548 / $0.12142, OpenRouter 2026-09-23). Before v1.93.0, every
 > `glm-5.4*` id silently matched the bare `glm-5` prefix. Any `glm-5.4-flash*`
 > id uses the same base rate until Flash tiers are published.
+>
+> **GLM-5.3-Prime, GLM-5V-Turbo, GLM-4.7-Flash (v1.94.0)** have their own keys
+> and guards. Before, `glm-5.3-prime` billed at the base GLM-5.3 rate,
+> `glm-5v-turbo` at the bare `glm-5` prefix and `glm-4.7-flash` at the
+> `glm-4.7` prefix, all without a warning; their `z-ai/`-prefixed forms (other
+> than `z-ai/glm-5.3-prime`) fell to the Sonnet default with one.
+> GLM-4.7-Flash is the one GLM entry with `cache_read` 0: OpenRouter publishes
+> no cache-read rate for it.
 
 ### Google Gemma 4
 

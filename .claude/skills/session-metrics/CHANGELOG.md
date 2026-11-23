@@ -3,6 +3,32 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.94.0 — 2026-11-23
+
+### Recognise GLM-5.3-Prime, GLM-5V-Turbo and GLM-4.7-Flash (minor)
+
+Three GLM models listed on OpenRouter had no key of their own and were
+billed as a neighbouring model (input / output / cache read, $ per 1M):
+
+| Model            | Was billed as                    | Now (OpenRouter, 2026-11-23) |
+|------------------|----------------------------------|------------------------------|
+| `glm-5.3-prime`  | base GLM-5.3 (0.0699 / 1.40 / 0.0689), silent | 1.68 / 5.28 / 0.336 |
+| `glm-5v-turbo`   | bare `glm-5` (1.00 / 3.20 / 0.20), silent     | 1.20 / 4.00 / 0.24  |
+| `glm-4.7-flash`  | `glm-4.7` (0.60 / 2.20 / 0.11), silent        | 0.0605 / 0.40 / 0   |
+
+The `z-ai/glm-5v-turbo` and `z-ai/glm-4.7-flash` forms fell to the Sonnet
+default ($3 / $15) with a warning.
+
+- New keys `z-ai/glm-5.3-prime`, `z-ai/glm-5v-turbo`, `z-ai/glm-4.7-flash`
+  and guards in `_PRICING_PATTERNS`: `glm-5\.3(?!\d).*prime\b` (before the
+  base 5.3 pattern), `glm-5v-turbo\b`, `glm-4\.7(?!\d).*flash\b`.
+- GLM-4.7-Flash has `cache_read` 0 because OpenRouter publishes no cache-read
+  rate for it. `test_pricing_glm_deepseek_bill_cache_reads_not_writes` names
+  it as the one exception.
+- `references/pricing.md` gains the three rows and a note.
+  `tests/test_pricing.py` adds a test covering all three (both id forms),
+  plus checks that `glm-4.7` and `glm-5.3-flash` are unaffected.
+
 ## v1.93.1 — 2026-11-23
 
 ### Re-snapshot GLM pricing from OpenRouter (patch)

@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.93.1"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.94.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -174,6 +174,9 @@ _PRICING: dict[str, dict[str, float]] = {
     # premium). OpenRouter's figures are provider-weighted and drift (z.ai's
     # own list prices differ); re-snapshot rather than trust them long-term.
     "glm-4.7":                   {"input":  0.60,   "output":  2.20,   "cache_read": 0.11,    "cache_write": 0.00, "cache_write_1h": 0.00},
+    # GLM-4.7-Flash (v1.94.0): OpenRouter publishes no cache-read rate for it,
+    # so cache_read stays 0 (the one GLM entry that doesn't bill cache reads).
+    "z-ai/glm-4.7-flash":        {"input":  0.0605, "output":  0.40,   "cache_read": 0.00,    "cache_write": 0.00, "cache_write_1h": 0.00},
     "glm-5":                     {"input":  1.00,   "output":  3.20,   "cache_read": 0.20,    "cache_write": 0.00, "cache_write_1h": 0.00},
     "glm-5.1":                   {"input":  1.40,   "output":  4.40,   "cache_read": 0.26,    "cache_write": 0.00, "cache_write_1h": 0.00},
     # GLM-5.2: own key; a dedicated regex guard below keeps suffixed forms off
@@ -184,6 +187,8 @@ _PRICING: dict[str, dict[str, float]] = {
     "z-ai/glm-5.3-flash":        {"input":  0.0399, "output":  0.0784, "cache_read": 0.03,    "cache_write": 0.00, "cache_write_1h": 0.00},
     "z-ai/glm-5.3-flashx":       {"input":  0.37,   "output":  1.25,   "cache_read": 0.075,   "cache_write": 0.00, "cache_write_1h": 0.00},
     "z-ai/glm-5.3":              {"input":  0.0699, "output":  1.40,   "cache_read": 0.0689,  "cache_write": 0.00, "cache_write_1h": 0.00},
+    # GLM-5.3-Prime (v1.94.0): own key + regex guard ahead of the base 5.3 pattern.
+    "z-ai/glm-5.3-prime":        {"input":  1.68,   "output":  5.28,   "cache_read": 0.336,   "cache_write": 0.00, "cache_write_1h": 0.00},
     # GLM-5.4 (v1.93.0): PROVISIONAL — no published rate yet (absent from
     # OpenRouter /api/v1/models and docs.z.ai pricing, 2026-11-23), so it is
     # provisioned at the glm-5.3 rate as stored before the v1.93.1 re-snapshot
@@ -258,6 +263,9 @@ _PRICING: dict[str, dict[str, float]] = {
     "minimax/minimax-m3":        {"input":  0.30, "output":   1.20, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     # GLM-5-Turbo (Z.ai) — must precede glm-5 in prefix scan; regex guard also added below
     "z-ai/glm-5-turbo":          {"input":  1.20, "output":   4.00, "cache_read": 0.24, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # GLM-5V-Turbo (v1.94.0, OpenRouter 2026-11-23) — `glm-5v-turbo` is NOT
+    # matched by the `glm-5-turbo` guard and would fall to the bare `glm-5` prefix.
+    "z-ai/glm-5v-turbo":         {"input":  1.20, "output":   4.00, "cache_read": 0.24, "cache_write": 0.00, "cache_write_1h": 0.00},
 }
 _DEFAULT_PRICING = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75, "cache_write_1h": 6.00}
 # Zero-rate tier for non-billable placeholder turns. Dynamic-workflow
@@ -447,8 +455,12 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     (re.compile(r"minimax[-_/.]m2\.7(?!\d)",         re.I), _PRICING["minimax/minimax-m2.7"]),
     # MiniMax M3 (integer version; (?!\d) blocks an `m30`+ glue-on)
     (re.compile(r"minimax[-_/.]m3(?!\d)",            re.I), _PRICING["minimax/minimax-m3"]),
+    # GLM-4.7-Flash before the `glm-4.7` prefix entry (v1.94.0)
+    (re.compile(r"glm-4\.7(?!\d).*flash\b",          re.I), _PRICING["z-ai/glm-4.7-flash"]),
     # GLM-5-Turbo before the bare glm-5 prefix entry
     (re.compile(r"glm-5-turbo\b",                    re.I), _PRICING["z-ai/glm-5-turbo"]),
+    # GLM-5V-Turbo before the bare glm-5 prefix entry (v1.94.0)
+    (re.compile(r"glm-5v-turbo\b",                   re.I), _PRICING["z-ai/glm-5v-turbo"]),
     # GLM-5.1 before the bare glm-5 prefix entry. `glm-5` is a strict prefix of
     # `glm-5.1`, so without this guard a suffixed variant (`glm-5.1-air`,
     # `glm-5.1:1m`, `glm-5.1-20260101`) prefix-matches the cheaper `glm-5` entry
@@ -464,6 +476,8 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     # deliberately does NOT match `flashx` (a separate, pricier SKU).
     (re.compile(r"glm-5\.3(?!\d).*flash\b",          re.I), _PRICING["z-ai/glm-5.3-flash"]),
     (re.compile(r"glm-5\.3(?!\d).*flashx\b",         re.I), _PRICING["z-ai/glm-5.3-flashx"]),
+    # GLM-5.3-Prime (v1.94.0) — also before the base 5.3 pattern.
+    (re.compile(r"glm-5\.3(?!\d).*prime\b",          re.I), _PRICING["z-ai/glm-5.3-prime"]),
     # Bare GLM-5.3 (and any other suffixed 5.3 form) — after the flash tiers.
     (re.compile(r"glm-5\.3(?!\d)",                   re.I), _PRICING["z-ai/glm-5.3"]),
     # GLM-5.4 (provisional rate) — same guard: keeps `glm-5.4`, `glm-5.4[1m]`
