@@ -3,6 +3,23 @@
 All notable changes to the session-metrics skill.
 Versions match the `plugin.json` / `marketplace.json` version field.
 
+## v1.93.0 — 2026-11-23
+
+### Recognise GLM-5.4 at a provisional rate (minor)
+
+- **Pricing fix.** `glm-5.4`, `glm-5.4[1m]` and suffixed forms silently
+  prefix-matched the bare `glm-5` key ($0.60 / $1.92, cache read $0.12) with
+  no unknown-model warning. `z-ai/glm-5.4` fell to the Sonnet default
+  ($3 / $15) with a warning.
+- **New key `z-ai/glm-5.4`**, plus a `glm-5\.4(?!\d)` guard in
+  `_PRICING_PATTERNS`. GLM-5.4 had no published rate on 2026-11-23 (it is
+  not listed on OpenRouter or the docs.z.ai pricing page), so it is billed at
+  the `glm-5.3` rate: $0.6538 / $2.0548, cache read $0.12142. Re-price once a
+  rate is published. Any `glm-5.4-flash*` id uses the same base rate for now.
+- `references/pricing.md` gains a provisional GLM-5.4 row and note.
+  `tests/test_pricing.py` adds `glm-5.4`, `z-ai/glm-5.4`, `glm-5.4[1m]` and a
+  `glm-5.40` case, which still falls back to `glm-5`.
+
 ## v1.92.0 — 2026-11-10
 
 ### Claude Fable 5.2 and Mythos 5 / 5.1 / 5.2 pricing, fast mode (minor)

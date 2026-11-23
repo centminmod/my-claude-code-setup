@@ -273,6 +273,7 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 | `z-ai/glm-5.3-flash`         | 0.15   | 0.50   | 0.05       | `glm-5\.3(?!\d).*flash\b`  |
 | `z-ai/glm-5.3-flashx`        | 0.37   | 1.25   | 0.075      | `glm-5\.3(?!\d).*flashx\b` |
 | `z-ai/glm-5.3`               | 0.6538 | 2.0548 | 0.12142    | `glm-5\.3(?!\d)` (after the flash tiers) |
+| `z-ai/glm-5.4` (provisional) | 0.6538 | 2.0548 | 0.12142    | `glm-5\.4(?!\d)` |
 | `z-ai/glm-5-turbo`           | 1.20   | 4.00   | 0.24       | `glm-5-turbo` |
 
 > **GLM re-snapshot (v1.90.1, OpenRouter `/api/v1/models`, 2026-09-23)**: every
@@ -284,6 +285,12 @@ keeps matching while `deepseekXv4Yflash` is correctly rejected. Suffix tokens
 > (0.6496, 0.6538 …) are OpenRouter's provider-weighted prices, which drift.
 > Re-snapshot rather than trust them long-term. Historical turns reprice at
 > the current rate, because OpenRouter publishes no effective dates.
+>
+> **GLM-5.4 (v1.93.0) is provisional.** It had no published rate on 2026-11-23
+> (absent from OpenRouter `/api/v1/models` and the docs.z.ai pricing page), so
+> it is billed at the `glm-5.3` rate. Before this, every `glm-5.4*` id silently
+> matched the bare `glm-5` prefix. Any `glm-5.4-flash*` id uses the same base
+> rate until Flash tiers are published.
 
 ### Google Gemma 4
 

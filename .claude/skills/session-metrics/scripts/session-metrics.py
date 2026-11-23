@@ -43,7 +43,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # accessed as sm.ZoneInfo 
 # on disk (~9 MB → ~19 MB per typical session); acceptable for a developer-tool
 # cache. Version bump invalidates every existing user blob exactly once.
 _SCRIPT_VERSION = "1.1.0"
-_SKILL_VERSION  = "1.92.0"  # embedded in every export; bump when plugin version bumps
+_SKILL_VERSION  = "1.93.0"  # embedded in every export; bump when plugin version bumps
 # C.6: the date the built-in `_PRICING` table was last verified against the
 # published rate card (mirrors the "Snapshot:" comment below). Embedded in
 # every report so a reader can see how fresh the cost math is and decide
@@ -184,6 +184,10 @@ _PRICING: dict[str, dict[str, float]] = {
     "z-ai/glm-5.3-flash":        {"input":  0.15,   "output":  0.50,   "cache_read": 0.05,    "cache_write": 0.00, "cache_write_1h": 0.00},
     "z-ai/glm-5.3-flashx":       {"input":  0.37,   "output":  1.25,   "cache_read": 0.075,   "cache_write": 0.00, "cache_write_1h": 0.00},
     "z-ai/glm-5.3":              {"input":  0.6538, "output":  2.0548, "cache_read": 0.12142, "cache_write": 0.00, "cache_write_1h": 0.00},
+    # GLM-5.4 (v1.93.0): PROVISIONAL — no published rate yet (absent from
+    # OpenRouter /api/v1/models and docs.z.ai pricing, 2026-11-23), so it is
+    # provisioned at the glm-5.3 rate. Re-price once a rate is published.
+    "z-ai/glm-5.4":              {"input":  0.6538, "output":  2.0548, "cache_read": 0.12142, "cache_write": 0.00, "cache_write_1h": 0.00},
     # Google Gemma 4 — OpenRouter: google/gemma-4-26b-a4b-it @ $0.06/$0.33; prefix covers Ollama variants
     "google/gemma-4-26b-a4b":    {"input":  0.06, "output":  0.33, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
     "gemma4":                    {"input":  0.06, "output":  0.33, "cache_read": 0.00, "cache_write": 0.00, "cache_write_1h": 0.00},
@@ -460,6 +464,10 @@ _PRICING_PATTERNS: list[tuple[re.Pattern[str], dict[str, float]]] = [
     (re.compile(r"glm-5\.3(?!\d).*flashx\b",         re.I), _PRICING["z-ai/glm-5.3-flashx"]),
     # Bare GLM-5.3 (and any other suffixed 5.3 form) — after the flash tiers.
     (re.compile(r"glm-5\.3(?!\d)",                   re.I), _PRICING["z-ai/glm-5.3"]),
+    # GLM-5.4 (provisional rate) — same guard: keeps `glm-5.4`, `glm-5.4[1m]`
+    # and suffixed forms off the bare `glm-5` prefix. No Flash tiers yet, so
+    # any `glm-5.4-flash*` id also lands here until those SKUs are published.
+    (re.compile(r"glm-5\.4(?!\d)",                   re.I), _PRICING["z-ai/glm-5.4"]),
     # ----- Opus 4.0 (anchored regex; replaces the prefix-fallback `claude-opus-4`
     # entry that was removed in v1.41.2). Without this anchored form, the bare
     # `claude-opus-4` prefix in `_PRICING` would silently catch any future
